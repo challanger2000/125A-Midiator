@@ -154,6 +154,37 @@ int clampMusicalPitch(int pitch, int base) {
     return std::clamp(pitch, 0, 120);
 }
 
+void sanitizeOverlaps(Phrase& phrase) {
+    const int used = phrase.usedSteps();
+
+    for (int stepIndex = 0; stepIndex < used; ++stepIndex) {
+        auto& step = phrase.steps[stepIndex];
+
+        for (int noteIndex = 0; noteIndex < step.noteCount; ++noteIndex) {
+            auto& note = step.notes[noteIndex];
+            const int requestedLength = std::max(1, note.lengthSteps);
+            const int endStep = std::min(used, stepIndex + requestedLength);
+
+            for (int futureStep = stepIndex + 1; futureStep < endStep; ++futureStep) {
+                const auto& future = phrase.steps[futureStep];
+                bool retriggered = false;
+
+                for (int futureNote = 0; futureNote < future.noteCount; ++futureNote) {
+                    if (future.notes[futureNote].pitch == note.pitch) {
+                        retriggered = true;
+                        break;
+                    }
+                }
+
+                if (retriggered) {
+                    note.lengthSteps = std::max(1, futureStep - stepIndex);
+                    break;
+                }
+            }
+        }
+    }
+}
+
 } // namespace
 
 const ScaleDefinition& RiffEngine::scaleDefinition(ScaleId id) {
@@ -263,6 +294,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
         result.steps[step] = current;
     }
 
+    sanitizeOverlaps(result);
     return result;
 }
 
@@ -334,6 +366,7 @@ Phrase RiffEngine::vary(const Phrase& source,
     if (result.steps[0].noteCount == 0)
         createStepNote(result.steps[0], base, false, true, true, 1, rng);
 
+    sanitizeOverlaps(result);
     return result;
 }
 

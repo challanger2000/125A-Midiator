@@ -96,6 +96,33 @@ void testAllScalesGenerateValidTones() {
     }
 }
 
+
+void testNoSamePitchOverlap() {
+    midiator::GeneratorSettings s{};
+    s.rootPitchClass = 9;
+    s.scale = midiator::ScaleId::Phrygian;
+    s.bars = 8;
+    s.density = 0.90f;
+    s.repetition = 0.90f;
+
+    const auto phrase = midiator::RiffEngine::generate(s, 424242u);
+
+    for (int stepIndex = 0; stepIndex < phrase.usedSteps(); ++stepIndex) {
+        const auto& step = phrase.steps[stepIndex];
+        for (int noteIndex = 0; noteIndex < step.noteCount; ++noteIndex) {
+            const auto& note = step.notes[noteIndex];
+            for (int futureStep = stepIndex + 1;
+                 futureStep < std::min(phrase.usedSteps(), stepIndex + note.lengthSteps);
+                 ++futureStep) {
+                const auto& future = phrase.steps[futureStep];
+                for (int futureNote = 0; futureNote < future.noteCount; ++futureNote)
+                    require(future.notes[futureNote].pitch != note.pitch,
+                            "same pitch must not retrigger before the previous note ends");
+            }
+        }
+    }
+}
+
 } // namespace
 
 int main() {
@@ -103,6 +130,7 @@ int main() {
     testDeterminism();
     testVariationKeepsTonalFrame();
     testAllScalesGenerateValidTones();
+    testNoSamePitchOverlap();
 
     std::cout << "Midiator core tests: PASS\n";
     return 0;

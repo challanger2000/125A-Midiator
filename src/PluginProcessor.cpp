@@ -41,6 +41,7 @@ tresult PLUGIN_API MidiatorProcessor::initialize(FUnknown* context) {
     if (r != kResultOk)
         return r;
 
+    addEventInput(STR16("MIDI In"), 16, kMain, BusInfo::kDefaultActive);
     addEventOutput(STR16("MIDI Out"), 16, kMain, BusInfo::kDefaultActive);
     return kResultOk;
 }
