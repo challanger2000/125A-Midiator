@@ -9,12 +9,66 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 
 namespace Steinberg::Vst {
 namespace {
 
 constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 2048;
+constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
+constexpr uint32_t kStateVersion = 1u;
+
+template <typename T>
+bool writeValue(IBStream* stream, const T& value) {
+    if (!stream)
+        return false;
+    int32 written = 0;
+    return stream->write((void*)&value, static_cast<int32>(sizeof(T)), &written) == kResultOk &&
+           written == static_cast<int32>(sizeof(T));
+}
+
+template <typename T>
+bool readValue(IBStream* stream, T& value) {
+    if (!stream)
+        return false;
+    int32 read = 0;
+    return stream->read(&value, static_cast<int32>(sizeof(T)), &read) == kResultOk &&
+           read == static_cast<int32>(sizeof(T));
+}
+
+bool readStateHeader(IBStream* state,
+                     midiator::GeneratorSettings& settings,
+                     float& variationAmount,
+                     uint32_t& seed) {
+    uint32_t magic = 0;
+    uint32_t version = 0;
+    int32 root = 0;
+    int32 scale = 0;
+    int32 bars = 0;
+
+    if (!readValue(state, magic) || !readValue(state, version) ||
+        magic != kStateMagic || version != kStateVersion ||
+        !readValue(state, root) || !readValue(state, scale) || !readValue(state, bars) ||
+        !readValue(state, settings.density) || !readValue(state, settings.complexity) ||
+        !readValue(state, settings.repetition) || !readValue(state, settings.powerChordChance) ||
+        !readValue(state, settings.palmMuteChance) || !readValue(state, variationAmount) ||
+        !readValue(state, seed)) {
+        return false;
+    }
+
+    settings.rootPitchClass = std::clamp<int32>(root, 0, 11);
+    settings.scale = static_cast<midiator::ScaleId>(
+        std::clamp<int32>(scale, 0, static_cast<int32>(midiator::ScaleId::Count) - 1));
+    settings.bars = (bars == 1 || bars == 2 || bars == 4 || bars == 8) ? bars : 2;
+    settings.density = std::clamp(settings.density, 0.0f, 1.0f);
+    settings.complexity = std::clamp(settings.complexity, 0.0f, 1.0f);
+    settings.repetition = std::clamp(settings.repetition, 0.0f, 1.0f);
+    settings.powerChordChance = std::clamp(settings.powerChordChance, 0.0f, 1.0f);
+    settings.palmMuteChance = std::clamp(settings.palmMuteChance, 0.0f, 1.0f);
+    variationAmount = std::clamp(variationAmount, 0.0f, 1.0f);
+    return true;
+}
 
 uint32_t nextSeed(uint32_t x) {
     x ^= x << 13;
@@ -54,6 +108,92 @@ tresult PLUGIN_API MidiatorProcessor::setActive(TBool state) {
     return AudioEffect::setActive(state);
 }
 
+tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
+    if (!state)
+        return kInvalidArgument;
+
+    const int32 root = settings_.rootPitchClass;
+    const int32 scale = static_cast<int32>(settings_.scale);
+    const int32 bars = settings_.bars;
+
+    if (!writeValue(state, kStateMagic) || !writeValue(state, kStateVersion) ||
+        !writeValue(state, root) || !writeValue(state, scale) || !writeValue(state, bars) ||
+        !writeValue(state, settings_.density) || !writeValue(state, settings_.complexity) ||
+        !writeValue(state, settings_.repetition) || !writeValue(state, settings_.powerChordChance) ||
+        !writeValue(state, settings_.palmMuteChance) || !writeValue(state, variationAmount_) ||
+        !writeValue(state, seed_)) {
+        return kResultFalse;
+    }
+
+    const int32 phraseBars = phrase_.bars;
+    if (!writeValue(state, phraseBars))
+        return kResultFalse;
+
+    for (int i = 0; i < midiator::kMaxSteps; ++i) {
+        const auto& step = phrase_.steps[i];
+        const int32 noteCount = std::clamp(step.noteCount, 0, midiator::kMaxNotesPerStep);
+        if (!writeValue(state, noteCount))
+            return kResultFalse;
+
+        for (int n = 0; n < midiator::kMaxNotesPerStep; ++n) {
+            const int32 pitch = step.notes[n].pitch;
+            const int32 velocity = step.notes[n].velocity;
+            const int32 lengthSteps = step.notes[n].lengthSteps;
+            if (!writeValue(state, pitch) || !writeValue(state, velocity) || !writeValue(state, lengthSteps))
+                return kResultFalse;
+        }
+    }
+
+    return kResultOk;
+}
+
+tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
+    if (!state)
+        return kInvalidArgument;
+
+    midiator::GeneratorSettings restored = settings_;
+    float restoredVariation = variationAmount_;
+    uint32_t restoredSeed = seed_;
+
+    if (!readStateHeader(state, restored, restoredVariation, restoredSeed))
+        return kResultFalse;
+
+    int32 phraseBars = 0;
+    if (!readValue(state, phraseBars))
+        return kResultFalse;
+
+    midiator::Phrase restoredPhrase{};
+    restoredPhrase.bars = (phraseBars == 1 || phraseBars == 2 || phraseBars == 4 || phraseBars == 8)
+        ? phraseBars : restored.bars;
+
+    for (int i = 0; i < midiator::kMaxSteps; ++i) {
+        int32 noteCount = 0;
+        if (!readValue(state, noteCount))
+            return kResultFalse;
+        restoredPhrase.steps[i].noteCount = std::clamp<int32>(noteCount, 0, midiator::kMaxNotesPerStep);
+
+        for (int n = 0; n < midiator::kMaxNotesPerStep; ++n) {
+            int32 pitch = 0;
+            int32 velocity = 0;
+            int32 lengthSteps = 1;
+            if (!readValue(state, pitch) || !readValue(state, velocity) || !readValue(state, lengthSteps))
+                return kResultFalse;
+
+            restoredPhrase.steps[i].notes[n].pitch = std::clamp<int32>(pitch, 0, 127);
+            restoredPhrase.steps[i].notes[n].velocity = std::clamp<int32>(velocity, 0, 126);
+            restoredPhrase.steps[i].notes[n].lengthSteps = std::clamp<int32>(lengthSteps, 1, 16);
+        }
+    }
+
+    settings_ = restored;
+    variationAmount_ = restoredVariation;
+    seed_ = restoredSeed ? restoredSeed : 0x125A2026u;
+    phrase_ = restoredPhrase;
+    activePitches_.fill(false);
+    wasPlaying_ = false;
+    return kResultOk;
+}
+
 void MidiatorProcessor::generateNew() {
     seed_ = nextSeed(seed_);
     phrase_ = midiator::RiffEngine::generate(settings_, seed_);
@@ -67,6 +207,8 @@ void MidiatorProcessor::generateVariation() {
 void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
     if (!data.inputParameterChanges)
         return;
+
+    bool tonalFrameChanged = false;
 
     for (int32 i = 0; i < data.inputParameterChanges->getParameterCount(); ++i) {
         auto* queue = data.inputParameterChanges->getParameterData(i);
@@ -82,16 +224,30 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
         const auto id = queue->getParameterId();
 
         switch (id) {
-            case kRootId:
-                settings_.rootPitchClass = normalizedIndex(v, 12);
+            case kRootId: {
+                const int next = normalizedIndex(v, 12);
+                if (next != settings_.rootPitchClass) {
+                    settings_.rootPitchClass = next;
+                    tonalFrameChanged = true;
+                }
                 break;
-            case kScaleId:
-                settings_.scale = static_cast<midiator::ScaleId>(
+            }
+            case kScaleId: {
+                const auto next = static_cast<midiator::ScaleId>(
                     normalizedIndex(v, static_cast<int>(midiator::ScaleId::Count)));
+                if (next != settings_.scale) {
+                    settings_.scale = next;
+                    tonalFrameChanged = true;
+                }
                 break;
+            }
             case kBarsId: {
                 static constexpr int bars[] = {1, 2, 4, 8};
-                settings_.bars = bars[normalizedIndex(v, 4)];
+                const int next = bars[normalizedIndex(v, 4)];
+                if (next != settings_.bars) {
+                    settings_.bars = next;
+                    tonalFrameChanged = true;
+                }
                 break;
             }
             case kDensityId:
@@ -128,6 +284,9 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
                 break;
         }
     }
+
+    if (tonalFrameChanged)
+        generateNew();
 }
 
 void MidiatorProcessor::flushActiveNotes(IEventList* output) {
@@ -325,6 +484,40 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     auto* variation = new RangeParameter(STR16("VARIATION"), kVariationId, STR16(""),
                                          0.0, 1.0, 0.0, 1, 0);
     parameters.addParameter(variation);
+
+    return kResultOk;
+}
+
+tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
+    if (!state)
+        return kInvalidArgument;
+
+    midiator::GeneratorSettings restored{};
+    float variationAmount = 0.35f;
+    uint32_t seed = 0;
+    if (!readStateHeader(state, restored, variationAmount, seed))
+        return kResultFalse;
+
+    auto barsIndex = [](int bars) -> double {
+        switch (bars) {
+            case 1: return 0.0;
+            case 2: return 1.0 / 3.0;
+            case 4: return 2.0 / 3.0;
+            case 8: return 1.0;
+            default: return 1.0 / 3.0;
+        }
+    };
+
+    setParamNormalized(kRootId, static_cast<double>(restored.rootPitchClass) / 11.0);
+    setParamNormalized(kScaleId, static_cast<double>(static_cast<int>(restored.scale)) /
+                                  static_cast<double>(static_cast<int>(midiator::ScaleId::Count) - 1));
+    setParamNormalized(kBarsId, barsIndex(restored.bars));
+    setParamNormalized(kDensityId, restored.density);
+    setParamNormalized(kComplexityId, restored.complexity);
+    setParamNormalized(kRepetitionId, restored.repetition);
+    setParamNormalized(kPowerChordId, restored.powerChordChance);
+    setParamNormalized(kPalmMuteId, restored.palmMuteChance);
+    setParamNormalized(kVariationAmountId, variationAmount);
 
     return kResultOk;
 }

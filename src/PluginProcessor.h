@@ -37,6 +37,8 @@ public:
 
     tresult PLUGIN_API initialize(FUnknown* context) SMTG_OVERRIDE;
     tresult PLUGIN_API setActive(TBool state) SMTG_OVERRIDE;
+    tresult PLUGIN_API getState(IBStream* state) SMTG_OVERRIDE;
+    tresult PLUGIN_API setState(IBStream* state) SMTG_OVERRIDE;
     tresult PLUGIN_API process(ProcessData& data) SMTG_OVERRIDE;
 
 private:
@@ -72,6 +74,7 @@ public:
     }
 
     tresult PLUGIN_API initialize(FUnknown* context) SMTG_OVERRIDE;
+    tresult PLUGIN_API setComponentState(IBStream* state) SMTG_OVERRIDE;
 };
 
 } // namespace Steinberg::Vst
