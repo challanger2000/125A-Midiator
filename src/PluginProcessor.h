@@ -4,6 +4,7 @@
 
 #include "public.sdk/source/vst/vstaudioeffect.h"
 #include "public.sdk/source/vst/vsteditcontroller.h"
+#include "pluginterfaces/base/ibstream.h"
 
 #include <array>
 #include <cstdint>
@@ -55,6 +56,8 @@ private:
 
     double sampleRate_ = 44100.0;
     bool wasPlaying_ = false;
+    bool haveExpectedProjectTime_ = false;
+    double expectedProjectTimeQn_ = 0.0;
     std::array<bool, 128> activePitches_{};
 
     double lastNewRiffValue_ = 0.0;

@@ -104,6 +104,8 @@ tresult PLUGIN_API MidiatorProcessor::setActive(TBool state) {
     if (state) {
         activePitches_.fill(false);
         wasPlaying_ = false;
+        haveExpectedProjectTime_ = false;
+        expectedProjectTimeQn_ = 0.0;
     }
     return AudioEffect::setActive(state);
 }
@@ -191,6 +193,8 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     phrase_ = restoredPhrase;
     activePitches_.fill(false);
     wasPlaying_ = false;
+    haveExpectedProjectTime_ = false;
+    expectedProjectTimeQn_ = 0.0;
     return kResultOk;
 }
 
@@ -268,18 +272,20 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
             case kVariationAmountId:
                 variationAmount_ = static_cast<float>(v);
                 break;
-            case kNewRiffId:
-                if (std::abs(v - lastNewRiffValue_) > 0.25) {
-                    lastNewRiffValue_ = v;
+            case kNewRiffId: {
+                const bool rising = v >= 0.5 && lastNewRiffValue_ < 0.5;
+                lastNewRiffValue_ = v;
+                if (rising)
                     generateNew();
-                }
                 break;
-            case kVariationId:
-                if (std::abs(v - lastVariationValue_) > 0.25) {
-                    lastVariationValue_ = v;
+            }
+            case kVariationId: {
+                const bool rising = v >= 0.5 && lastVariationValue_ < 0.5;
+                lastVariationValue_ = v;
+                if (rising)
                     generateVariation();
-                }
                 break;
+            }
             default:
                 break;
         }
@@ -328,10 +334,9 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         if (wasPlaying_)
             flushActiveNotes(data.outputEvents);
         wasPlaying_ = playing;
+        haveExpectedProjectTime_ = false;
         return kResultOk;
     }
-
-    wasPlaying_ = true;
 
     const double tempo = context->tempo;
     const double qnPerSample = tempo / (60.0 * sampleRate_);
@@ -340,6 +345,16 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
 
     const double blockStartQn = context->projectTimeMusic;
     const double blockEndQn = blockStartQn + static_cast<double>(data.numSamples) * qnPerSample;
+
+    if (wasPlaying_ && haveExpectedProjectTime_) {
+        const double tolerance = std::max(1e-6, qnPerSample * 4.0);
+        if (std::abs(blockStartQn - expectedProjectTimeQn_) > tolerance)
+            flushActiveNotes(data.outputEvents);
+    }
+
+    wasPlaying_ = true;
+    haveExpectedProjectTime_ = true;
+    expectedProjectTimeQn_ = blockEndQn;
     const double patternLengthQn = static_cast<double>(phrase_.bars) * 4.0;
 
     if (patternLengthQn <= 0.0)

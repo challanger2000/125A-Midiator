@@ -60,18 +60,23 @@ int wrap12(int v) {
 int chooseDegree(Rng& rng, const GeneratorSettings& s, int stepInBar) {
     const auto& scale = kScales[static_cast<int>(s.scale)];
 
-    // Industrial/heavy bias: pedal root dominates, then characteristic low degrees.
-    if (rng.chance(0.48f + 0.40f * s.repetition))
+    // Heavy/industrial riffs need a strong pedal tone, but not a one-note monoculture.
+    float rootProbability = 0.28f + 0.30f * s.repetition;
+    if ((stepInBar % 4) == 0)
+        rootProbability += 0.16f;
+
+    if (rng.chance(std::clamp(rootProbability, 0.0f, 0.82f)))
         return 0;
 
     std::array<int, 8> candidates{};
     int n = 0;
 
     auto push = [&](int idx) {
-        if (idx >= 0 && idx < scale.count)
+        if (idx >= 1 && idx < scale.count)
             candidates[n++] = idx;
     };
 
+    // Put characteristic tones first so dark modes keep their identity.
     if (s.scale == ScaleId::Phrygian || s.scale == ScaleId::PhrygianDominant)
         push(1);
     if (s.scale == ScaleId::Blues)
@@ -86,8 +91,11 @@ int chooseDegree(Rng& rng, const GeneratorSettings& s, int stepInBar) {
     if (n == 0)
         return 0;
 
-    // Strong beats stay simpler; offbeats may move farther.
-    if ((stepInBar % 4) == 0 && rng.chance(0.60f))
+    const int characteristicSlots =
+        (s.scale == ScaleId::Phrygian || s.scale == ScaleId::PhrygianDominant ||
+         s.scale == ScaleId::Blues) ? 1 : 0;
+
+    if (characteristicSlots > 0 && rng.chance(0.34f + 0.18f * s.complexity))
         return candidates[0];
 
     return candidates[rng.range(0, n - 1)];
@@ -231,67 +239,157 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
     Rng rng(seed);
     const auto& scale = scaleDefinition(s.scale);
     const int base = rootBaseForPitchClass(s.rootPitchClass, s.lowRootMidi);
-    const int used = result.usedSteps();
 
-    // Build a motif first, then reuse it with controlled deviations.
-    const int motifSteps = (s.complexity > 0.67f) ? 16 : 8;
-    std::array<Step, 16> motif{};
+    auto makeMusicalStep = [&](int stepInBar, bool preferRoot) {
+        Step out{};
+        const bool accent = (stepInBar % 4) == 0;
 
-    for (int i = 0; i < motifSteps; ++i) {
-        if (!shouldHit(rng, s, i))
-            continue;
-
-        const bool accent = (i % 4) == 0;
-        const int degree = chooseDegree(rng, s, i);
+        int degree = preferRoot ? 0 : chooseDegree(rng, s, stepInBar);
         int pitch = base + scale.intervals[degree];
 
-        if (rng.chance(0.10f + 0.22f * s.complexity))
+        if (!preferRoot && rng.chance(0.08f + 0.20f * s.complexity))
             pitch += 12;
 
         pitch = clampMusicalPitch(pitch, base);
 
         const bool palmMute = rng.chance(s.palmMuteChance * (accent ? 0.68f : 1.0f));
-        const bool powerChord = accent && !palmMute && rng.chance(s.powerChordChance);
-        int length = palmMute ? 1 : (rng.chance(0.35f + 0.25f * (1.0f - s.density)) ? 2 : 1);
 
-        createStepNote(motif[i], pitch, powerChord, palmMute, accent, length, rng);
+        // Palm-muted power chords are musically valid, so chord generation must
+        // not depend on the note being "open".
+        const float chordChance = s.powerChordChance * (accent ? 1.0f : 0.30f);
+        const bool powerChord = rng.chance(chordChance);
+
+        const int length = palmMute
+            ? 1
+            : (rng.chance(0.34f + 0.28f * (1.0f - s.density)) ? 2 : 1);
+
+        createStepNote(out, pitch, powerChord, palmMute, accent, length, rng);
+        return out;
+    };
+
+    // A full 4/4 bar is the primary motif unit. This prevents the default
+    // generator from merely repeating an 8-step half-bar twice.
+    std::array<Step, kStepsPerBar> baseBar{};
+
+    for (int i = 0; i < kStepsPerBar; ++i) {
+        if (!shouldHit(rng, s, i))
+            continue;
+        baseBar[i] = makeMusicalStep(i, false);
     }
 
-    if (motif[0].noteCount == 0)
-        createStepNote(motif[0], base, false, true, true, 1, rng);
+    // Always give the riff a stable downbeat anchor.
+    baseBar[0] = makeMusicalStep(0, true);
 
-    for (int step = 0; step < used; ++step) {
-        const int motifIndex = step % motifSteps;
-        Step current = motif[motifIndex];
+    // At moderate/high complexity, guarantee at least a little tonal movement
+    // in the seed bar when density allows it.
+    if (s.complexity >= 0.25f && s.density >= 0.25f) {
+        int nonRootCount = 0;
+        for (const auto& step : baseBar) {
+            if (step.noteCount > 0 &&
+                wrap12(step.notes[0].pitch) != wrap12(s.rootPitchClass))
+                ++nonRootCount;
+        }
 
-        const int phraseBlock = step / motifSteps;
-        const float mutationChance = (1.0f - s.repetition) * (0.10f + 0.38f * s.complexity);
+        if (nonRootCount < 2) {
+            const int candidates[] = {3, 6, 10, 14};
+            for (int pos : candidates) {
+                if (pos >= kStepsPerBar)
+                    continue;
+                if (baseBar[pos].noteCount == 0 && !shouldHit(rng, s, pos))
+                    continue;
 
-        if (phraseBlock > 0 && rng.chance(mutationChance)) {
-            if (current.noteCount == 0) {
-                if (rng.chance(0.50f) && shouldHit(rng, s, step)) {
-                    const int degree = chooseDegree(rng, s, step % 16);
-                    int pitch = clampMusicalPitch(base + scale.intervals[degree], base);
-                    createStepNote(current, pitch, false, true, false, 1, rng);
+                Step movement = makeMusicalStep(pos, false);
+                if (movement.noteCount > 0 &&
+                    wrap12(movement.notes[0].pitch) == wrap12(s.rootPitchClass)) {
+                    const int degree = (scale.count > 2) ? 2 : 1;
+                    const int pitch = clampMusicalPitch(base + scale.intervals[degree], base);
+                    const bool palmMute = rng.chance(s.palmMuteChance);
+                    createStepNote(movement, pitch, false, palmMute, false, palmMute ? 1 : 2, rng);
                 }
-            } else if (rng.chance(0.65f)) {
-                const int degree = chooseDegree(rng, s, step % 16);
-                int pitch = clampMusicalPitch(base + scale.intervals[degree], base);
-                const bool accent = (step % 4) == 0;
-                const bool palmMute = rng.chance(s.palmMuteChance);
-                const bool powerChord = accent && !palmMute && rng.chance(s.powerChordChance);
-                createStepNote(current, pitch, powerChord, palmMute, accent, palmMute ? 1 : 2, rng);
-            } else {
-                current = {};
+
+                baseBar[pos] = movement;
+                if (++nonRootCount >= 2)
+                    break;
             }
         }
+    }
 
-        // Bar endings get an occasional answer note or short stop.
-        if ((step % 16) == 15 && step + 1 < used && rng.chance(0.35f + 0.20f * s.complexity)) {
-            current = {};
+    auto roleFactorForBar = [&](int bar) {
+        if (bar == 0)
+            return 0.0f;
+
+        const int role = bar % 4;
+        float factor = 1.0f;
+        if (role == 1)
+            factor = 0.80f;   // A'
+        else if (role == 2)
+            factor = 1.10f;   // answer / development
+        else if (role == 3)
+            factor = 1.50f;   // turnaround
+
+        if (bar >= 4)
+            factor += 0.15f;  // second four-bar phrase develops further
+
+        return factor;
+    };
+
+    for (int bar = 0; bar < s.bars; ++bar) {
+        int changedSteps = 0;
+        const float roleFactor = roleFactorForBar(bar);
+        const float mutationChance =
+            (0.04f + (1.0f - s.repetition) * (0.16f + 0.34f * s.complexity)) * roleFactor;
+
+        for (int i = 0; i < kStepsPerBar; ++i) {
+            Step current = baseBar[i];
+
+            if (bar > 0 && rng.chance(mutationChance)) {
+                ++changedSteps;
+                const float action = rng.unit();
+
+                if (current.noteCount == 0) {
+                    if (action < 0.55f && shouldHit(rng, s, i))
+                        current = makeMusicalStep(i, false);
+                } else if (action < 0.18f && i != 0) {
+                    current = {};
+                } else if (action < 0.76f) {
+                    const bool oldPowerChord = current.noteCount == 2;
+                    const bool oldPalmMute = current.notes[0].velocity <= 72;
+                    const int oldLength = current.notes[0].lengthSteps;
+
+                    int degree = chooseDegree(rng, s, i);
+                    int pitch = clampMusicalPitch(base + scale.intervals[degree], base);
+
+                    createStepNote(current, pitch, oldPowerChord, oldPalmMute,
+                                   (i % 4) == 0, oldLength, rng);
+                } else {
+                    current = makeMusicalStep(i, false);
+                }
+            }
+
+            // Turnaround bars get a little extra activity/change in beat 4,
+            // creating a phrase ending rather than a flat repeated loop.
+            if (bar > 0 && (bar % 4) == 3 && i >= 12 &&
+                rng.chance(0.10f + 0.18f * s.complexity)) {
+                ++changedSteps;
+                if (i == 15 && rng.chance(0.60f))
+                    current = {};
+                else
+                    current = makeMusicalStep(i, false);
+            }
+
+            result.steps[bar * kStepsPerBar + i] = current;
         }
 
-        result.steps[step] = current;
+        // Unless Repetition is intentionally almost maxed, avoid accidental
+        // byte-identical bars. One small answer note/rest is enough.
+        if (bar > 0 && changedSteps == 0 && s.repetition < 0.95f) {
+            const int pos = 12 + rng.range(0, 3);
+            auto& target = result.steps[bar * kStepsPerBar + pos];
+            if (target.noteCount > 0 && pos != 12)
+                target = {};
+            else
+                target = makeMusicalStep(pos, false);
+        }
     }
 
     sanitizeOverlaps(result);
