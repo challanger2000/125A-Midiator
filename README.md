@@ -121,3 +121,5 @@ The first prototype contains a pure C++ riff engine, live VST3 MIDI output, NEW/
 Current prototype safety checks also prevent same-pitch retrigger overlap and use the proven VST3 MIDI event-bus layout.
 
 Current phrase engine now enforces role-aware four-bar development (A / A' / answer / turnaround) while preserving the selected tonal frame.
+
+Development measurements now use event-aware phrase similarity (onset Jaccard and shared-onset pitch identity) instead of treating matching rests as musical similarity.
