@@ -1,0 +1,47 @@
+name: Build Windows VST3
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - development
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configure
+        shell: pwsh
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DSMTG_CREATE_PLUGIN_LINK=0 -DSMTG_CREATE_BUNDLE_FOR_WINDOWS=1
+
+      - name: Build Midiator and tests
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+
+      - name: Run core tests
+        shell: pwsh
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Locate Midiator VST3 bundle
+        shell: pwsh
+        run: |
+          $artifact = "$env:GITHUB_WORKSPACE\artifact"
+          New-Item -ItemType Directory -Force -Path $artifact | Out-Null
+          $bundles = Get-ChildItem "$env:GITHUB_WORKSPACE\build" -Recurse -Directory -Filter "Midiator.vst3" -ErrorAction SilentlyContinue
+          $p = $bundles | Where-Object { Test-Path (Join-Path $_.FullName "Contents") } | Select-Object -First 1
+          if (-not $p) { throw "Midiator.vst3 bundle not found" }
+          Copy-Item $p.FullName "$artifact\Midiator.vst3" -Recurse -Force
+
+      - name: Upload Midiator VST3
+        uses: actions/upload-artifact@v5
+        with:
+          name: Midiator-Windows-VST3
+          path: artifact
+          if-no-files-found: error
