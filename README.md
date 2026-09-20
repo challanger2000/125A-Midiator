@@ -117,3 +117,5 @@ A small number of convincing riff engines is preferable to a large number of con
 Current work happens on the `development` branch.
 
 The first prototype contains a pure C++ riff engine, live VST3 MIDI output, NEW/VARIATION controls and automated core tests. GUI work is intentionally deferred until the musical and host-integration core is stable.
+
+Current prototype safety checks also prevent same-pitch retrigger overlap and use the proven VST3 MIDI event-bus layout.
