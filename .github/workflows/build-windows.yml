@@ -29,6 +29,18 @@ jobs:
         shell: pwsh
         run: ctest --test-dir build -C Release --output-on-failure
 
+      - name: Generate measurement report
+        shell: pwsh
+        run: |
+          .\\build\\tests\\Release\\MidiatorMeasure.exe | Tee-Object -FilePath midiator-measurements.txt
+
+      - name: Upload measurement report
+        uses: actions/upload-artifact@v5
+        with:
+          name: Midiator-Measurements
+          path: midiator-measurements.txt
+          if-no-files-found: error
+
       - name: Locate Midiator VST3 bundle
         shell: pwsh
         run: |
