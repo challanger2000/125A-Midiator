@@ -388,15 +388,74 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
             result.steps[bar * kStepsPerBar + i] = current;
         }
 
-        // Unless Repetition is intentionally almost maxed, avoid accidental
-        // byte-identical bars. One small answer note/rest is enough.
-        if (bar > 0 && changedSteps == 0 && s.repetition < 0.95f) {
-            const int pos = 12 + rng.range(0, 3);
-            auto& target = result.steps[bar * kStepsPerBar + pos];
-            if (target.noteCount > 0 && pos != 12)
-                target = {};
-            else
-                target = makeMusicalStep(pos, false);
+        // Give each bar role a minimum amount of structural development.
+        // A' remains close to the seed, bar 3 answers it, bar 4 turns it around.
+        if (bar > 0 && s.repetition < 0.95f) {
+            int minChanges = 1;
+            const int role = bar % 4;
+            if (role == 2)
+                minChanges = 3;
+            else if (role == 3)
+                minChanges = 4;
+
+            if (bar >= 4)
+                ++minChanges;
+
+            static constexpr int developmentPositions[] = {
+                15, 14, 11, 10, 7, 6, 13, 3, 9, 5
+            };
+
+            auto differsFromBase = [&](int pos) {
+                return !(result.steps[bar * kStepsPerBar + pos] == baseBar[pos]);
+            };
+
+            int actualChanges = 0;
+            for (int pos = 0; pos < kStepsPerBar; ++pos)
+                actualChanges += differsFromBase(pos) ? 1 : 0;
+
+            for (int candidate : developmentPositions) {
+                if (actualChanges >= minChanges)
+                    break;
+                if (differsFromBase(candidate))
+                    continue;
+
+                auto& target = result.steps[bar * kStepsPerBar + candidate];
+                const auto& seedStep = baseBar[candidate];
+
+                if (seedStep.noteCount == 0) {
+                    target = makeMusicalStep(candidate, false);
+                } else {
+                    const float action = rng.unit();
+
+                    if (action < 0.28f && candidate != 0) {
+                        target = {};
+                    } else {
+                        const bool oldPowerChord = seedStep.noteCount == 2;
+                        const bool oldPalmMute = seedStep.notes[0].velocity <= 72;
+                        const int oldLength = seedStep.notes[0].lengthSteps;
+
+                        int degree = chooseDegree(rng, s, candidate);
+                        int pitch = clampMusicalPitch(base + scale.intervals[degree], base);
+
+                        // Ensure this forced development step really differs
+                        // from the seed motif instead of randomly landing on it again.
+                        if (pitch == seedStep.notes[0].pitch) {
+                            const int fallbackDegree =
+                                (scale.count > 2) ? ((degree + 2) % scale.count) : 1;
+                            pitch = clampMusicalPitch(base + scale.intervals[fallbackDegree], base);
+                        }
+
+                        createStepNote(target, pitch, oldPowerChord, oldPalmMute,
+                                       (candidate % 4) == 0, oldLength, rng);
+
+                        if (target == seedStep)
+                            target = {};
+                    }
+                }
+
+                if (differsFromBase(candidate))
+                    ++actualChanges;
+            }
         }
     }
 
