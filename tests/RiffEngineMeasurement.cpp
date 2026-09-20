@@ -6,6 +6,39 @@
 
 using namespace midiator;
 
+static const char* pitchClassName(int pc) {
+    static const char* names[12] = {
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+    };
+    pc %= 12;
+    if (pc < 0) pc += 12;
+    return names[pc];
+}
+
+static void printPhraseGrid(const Phrase& p, const char* title) {
+    std::cout << "\n" << title << "\n";
+    std::cout << "Legend: P=palm/mute-like, O=open-like, 5=power chord\n";
+
+    for (int bar = 0; bar < p.bars; ++bar) {
+        std::cout << "Bar " << (bar + 1) << ": ";
+        for (int i = 0; i < 16; ++i) {
+            const auto& step = p.steps[bar * 16 + i];
+            if (step.noteCount <= 0) {
+                std::cout << "[----]";
+                continue;
+            }
+
+            const auto& n = step.notes[0];
+            const int octave = (n.pitch / 12) - 1;
+            std::cout << "[" << pitchClassName(n.pitch) << octave
+                      << (n.velocity <= 72 ? "P" : "O")
+                      << (step.noteCount == 2 ? "5" : " ")
+                      << "]";
+        }
+        std::cout << "\n";
+    }
+}
+
 static int countHits(const Phrase& p) {
     int hits = 0;
     for (int i = 0; i < p.usedSteps(); ++i)
@@ -136,6 +169,12 @@ int main() {
     std::cout << "Variation changed steps (20%): " << countDiffSteps(base, var20) << "/" << base.usedSteps() << "\n";
     std::cout << "Variation changed steps (50%): " << countDiffSteps(base, var50) << "/" << base.usedSteps() << "\n";
     std::cout << "Variation changed steps (80%): " << countDiffSteps(base, var80) << "/" << base.usedSteps() << "\n";
+
+    GeneratorSettings exampleSettings = s;
+    exampleSettings.bars = 4;
+    printPhraseGrid(RiffEngine::generate(exampleSettings, 101u), "Example riff A - A Phrygian");
+    printPhraseGrid(RiffEngine::generate(exampleSettings, 202u), "Example riff B - A Phrygian");
+    printPhraseGrid(RiffEngine::generate(exampleSettings, 303u), "Example riff C - A Phrygian");
 
     return 0;
 }
