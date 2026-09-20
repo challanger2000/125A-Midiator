@@ -119,3 +119,5 @@ Current work happens on the `development` branch.
 The first prototype contains a pure C++ riff engine, live VST3 MIDI output, NEW/VARIATION controls and automated core tests. GUI work is intentionally deferred until the musical and host-integration core is stable.
 
 Current prototype safety checks also prevent same-pitch retrigger overlap and use the proven VST3 MIDI event-bus layout.
+
+Current phrase engine now enforces role-aware four-bar development (A / A' / answer / turnaround) while preserving the selected tonal frame.
