@@ -40,23 +40,69 @@ int main() {
     long long muteLike = 0;
     long long openLike = 0;
     long long vel127 = 0;
+    long long repeatedBarPairs = 0;
+    long long comparedBarPairs = 0;
+    long long completelyIdenticalBarPairs = 0;
+    long long phrasesWithLongRest = 0;
+    long long phrasesWithLongHitRun = 0;
+    long long distinctPrimaryPitchClassesTotal = 0;
 
     for (unsigned seed = 1; seed <= 1000; ++seed) {
         const auto p = RiffEngine::generate(s, seed);
         ++phrases;
+        int longestRest = 0;
+        int currentRest = 0;
+        int longestHitRun = 0;
+        int currentHitRun = 0;
+        bool pcs[12] = {};
+
         for (int i = 0; i < p.usedSteps(); ++i) {
             const auto& st = p.steps[i];
-            if (st.noteCount <= 0) continue;
+            if (st.noteCount <= 0) {
+                ++currentRest;
+                longestRest = std::max(longestRest, currentRest);
+                currentHitRun = 0;
+                continue;
+            }
+
+            currentRest = 0;
+            ++currentHitRun;
+            longestHitRun = std::max(longestHitRun, currentHitRun);
             ++hits;
             if ((i % 4) != 0) ++offbeats;
             if (st.noteCount == 2) ++powerChords;
 
             const auto& n = st.notes[0];
             ++primaryNotes;
+            pcs[(n.pitch % 12 + 12) % 12] = true;
             if ((n.pitch % 12 + 12) % 12 == s.rootPitchClass) ++rootNotes;
             if (n.velocity <= 72) ++muteLike;
             if (n.velocity >= 88) ++openLike;
             if (n.velocity == 127) ++vel127;
+        }
+
+        if (longestRest >= 4) ++phrasesWithLongRest;
+        if (longestHitRun >= 8) ++phrasesWithLongHitRun;
+
+        int distinctPcs = 0;
+        for (bool usedPc : pcs) distinctPcs += usedPc ? 1 : 0;
+        distinctPrimaryPitchClassesTotal += distinctPcs;
+
+        for (int bar = 1; bar < p.bars; ++bar) {
+            int sameSteps = 0;
+            bool identical = true;
+            for (int sidx = 0; sidx < 16; ++sidx) {
+                const auto& a = p.steps[(bar - 1) * 16 + sidx];
+                const auto& b = p.steps[bar * 16 + sidx];
+                if (a == b) {
+                    ++sameSteps;
+                } else {
+                    identical = false;
+                }
+            }
+            ++comparedBarPairs;
+            if (sameSteps >= 10) ++repeatedBarPairs;
+            if (identical) ++completelyIdenticalBarPairs;
         }
     }
 
@@ -77,6 +123,16 @@ int main() {
     std::cout << "Mute-like primary-note share: " << pct(static_cast<double>(muteLike) / primaryNotes) << "%\n";
     std::cout << "Open-like primary-note share: " << pct(static_cast<double>(openLike) / primaryNotes) << "%\n";
     std::cout << "Velocity-127 count: " << vel127 << "\n";
+    std::cout << "Average distinct primary pitch classes / phrase: "
+              << static_cast<double>(distinctPrimaryPitchClassesTotal) / phrases << "\n";
+    std::cout << "Adjacent-bar recognizable similarity (>=10/16 same steps): "
+              << pct(static_cast<double>(repeatedBarPairs) / comparedBarPairs) << "%\n";
+    std::cout << "Completely identical adjacent bars: "
+              << pct(static_cast<double>(completelyIdenticalBarPairs) / comparedBarPairs) << "%\n";
+    std::cout << "Phrases containing >= quarter-note rest: "
+              << pct(static_cast<double>(phrasesWithLongRest) / phrases) << "%\n";
+    std::cout << "Phrases containing >= 8 consecutive hit steps: "
+              << pct(static_cast<double>(phrasesWithLongHitRun) / phrases) << "%\n";
     std::cout << "Variation changed steps (20%): " << countDiffSteps(base, var20) << "/" << base.usedSteps() << "\n";
     std::cout << "Variation changed steps (50%): " << countDiffSteps(base, var50) << "/" << base.usedSteps() << "\n";
     std::cout << "Variation changed steps (80%): " << countDiffSteps(base, var80) << "/" << base.usedSteps() << "\n";
