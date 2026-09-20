@@ -110,3 +110,10 @@ For V1, however, only the guitar layer is in scope.
 **Musical quality before feature count.**
 
 A small number of convincing riff engines is preferable to a large number of controls that produce generic or random-sounding results.
+
+
+## Development status
+
+Current work happens on the `development` branch.
+
+The first prototype contains a pure C++ riff engine, live VST3 MIDI output, NEW/VARIATION controls and automated core tests. GUI work is intentionally deferred until the musical and host-integration core is stable.
