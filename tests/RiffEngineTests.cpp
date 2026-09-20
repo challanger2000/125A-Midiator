@@ -271,6 +271,38 @@ void testVelocityZonesRemainSeparated() {
     require(highZone > 0, "generator must produce open/sustain-like velocity notes");
 }
 
+
+void testFourBarRoleDevelopment() {
+    midiator::GeneratorSettings s{};
+    s.rootPitchClass = 9;
+    s.scale = midiator::ScaleId::Phrygian;
+    s.bars = 4;
+    s.repetition = 0.72f;
+
+    int identicalAdjacentBars = 0;
+    int phraseCount = 0;
+
+    for (unsigned seed = 1; seed <= 256; ++seed) {
+        const auto p = midiator::RiffEngine::generate(s, 50000u + seed);
+        ++phraseCount;
+
+        for (int bar = 1; bar < 4; ++bar) {
+            bool identical = true;
+            for (int step = 0; step < 16; ++step) {
+                if (!(p.steps[(bar - 1) * 16 + step] == p.steps[bar * 16 + step])) {
+                    identical = false;
+                    break;
+                }
+            }
+            identicalAdjacentBars += identical ? 1 : 0;
+        }
+    }
+
+    require(identicalAdjacentBars == 0,
+            "default four-bar generation should not create byte-identical adjacent bars");
+    require(phraseCount == 256, "four-bar role test must execute all samples");
+}
+
 } // namespace
 
 int main() {
@@ -283,6 +315,7 @@ int main() {
     testControlMonotonicity();
     testVariationDistance();
     testVelocityZonesRemainSeparated();
+    testFourBarRoleDevelopment();
 
     std::cout << "Midiator core tests: PASS\n";
     return 0;

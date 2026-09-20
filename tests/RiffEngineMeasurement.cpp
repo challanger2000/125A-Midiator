@@ -76,6 +76,9 @@ int main() {
     long long repeatedBarPairs = 0;
     long long comparedBarPairs = 0;
     long long completelyIdenticalBarPairs = 0;
+    double onsetJaccardSum = 0.0;
+    long long sharedOnsets = 0;
+    long long sharedPitchMatches = 0;
     long long phrasesWithLongRest = 0;
     long long phrasesWithLongHitRun = 0;
     long long distinctPrimaryPitchClassesTotal = 0;
@@ -124,18 +127,38 @@ int main() {
         for (int bar = 1; bar < p.bars; ++bar) {
             int sameSteps = 0;
             bool identical = true;
+            int onsetIntersection = 0;
+            int onsetUnion = 0;
+
             for (int sidx = 0; sidx < 16; ++sidx) {
                 const auto& a = p.steps[(bar - 1) * 16 + sidx];
                 const auto& b = p.steps[bar * 16 + sidx];
+
                 if (a == b) {
                     ++sameSteps;
                 } else {
                     identical = false;
                 }
+
+                const bool hitA = a.noteCount > 0;
+                const bool hitB = b.noteCount > 0;
+                if (hitA || hitB)
+                    ++onsetUnion;
+                if (hitA && hitB) {
+                    ++onsetIntersection;
+                    ++sharedOnsets;
+                    if (a.notes[0].pitch == b.notes[0].pitch)
+                        ++sharedPitchMatches;
+                }
             }
+
             ++comparedBarPairs;
             if (sameSteps >= 10) ++repeatedBarPairs;
             if (identical) ++completelyIdenticalBarPairs;
+
+            onsetJaccardSum += onsetUnion > 0
+                ? static_cast<double>(onsetIntersection) / static_cast<double>(onsetUnion)
+                : 1.0;
         }
     }
 
@@ -162,6 +185,13 @@ int main() {
               << pct(static_cast<double>(repeatedBarPairs) / comparedBarPairs) << "%\n";
     std::cout << "Completely identical adjacent bars: "
               << pct(static_cast<double>(completelyIdenticalBarPairs) / comparedBarPairs) << "%\n";
+    std::cout << "Adjacent-bar onset Jaccard similarity: "
+              << pct(onsetJaccardSum / comparedBarPairs) << "%\n";
+    std::cout << "Pitch identity on shared onsets: "
+              << (sharedOnsets > 0
+                    ? pct(static_cast<double>(sharedPitchMatches) / sharedOnsets)
+                    : 0.0)
+              << "%\n";
     std::cout << "Phrases containing >= quarter-note rest: "
               << pct(static_cast<double>(phrasesWithLongRest) / phrases) << "%\n";
     std::cout << "Phrases containing >= 8 consecutive hit steps: "
