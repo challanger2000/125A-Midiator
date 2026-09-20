@@ -148,7 +148,15 @@ void createStepNote(Step& step,
 
     if (powerChord && pitch <= 120) {
         step.noteCount = 2;
-        step.notes[1] = {pitch + 7, std::max(1, step.notes[0].velocity - rng.range(0, 5)), lengthSteps};
+        int secondVelocity = step.notes[0].velocity - rng.range(0, 5);
+
+        // Keep both notes of a dyad inside the same visible articulation zone.
+        if (step.notes[0].velocity >= 88)
+            secondVelocity = std::max(88, secondVelocity);
+        else
+            secondVelocity = std::clamp(secondVelocity, 1, 72);
+
+        step.notes[1] = {pitch + 7, secondVelocity, lengthSteps};
     }
 }
 
