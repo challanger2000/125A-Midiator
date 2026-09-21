@@ -138,15 +138,96 @@ bool containsType(const EventList& list, Event::EventTypes type) {
 ProcessData makeProcessData(ProcessContext& context,
                             EventList& output,
                             int32 numSamples,
-                            IParameterChanges* changes = nullptr) {
+                            IParameterChanges* changes = nullptr,
+                            IEventList* inputEvents = nullptr) {
     ProcessData data {};
     data.processMode = kRealtime;
     data.symbolicSampleSize = kSample32;
     data.numSamples = numSamples;
     data.processContext = &context;
     data.outputEvents = &output;
+    data.inputEvents = inputEvents;
     data.inputParameterChanges = changes;
     return data;
+}
+
+void testMidiRootSourceTransposesRiff() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "processor must start");
+
+    EventList input;
+    Event rootEvent{};
+    rootEvent.busIndex = 0;
+    rootEvent.sampleOffset = 0;
+    rootEvent.ppqPosition = 0.0;
+    rootEvent.type = Event::kNoteOnEvent;
+    rootEvent.noteOn.channel = 0;
+    rootEvent.noteOn.pitch = 36; // C2 -> pitch class C
+    rootEvent.noteOn.velocity = 1.0f;
+    rootEvent.noteOn.noteId = -1;
+    require(input.addEvent(rootEvent) == kResultOk, "MIDI root fixture must accept C note");
+
+    auto context = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 100, nullptr, &input);
+    require(processor.process(data) == kResultOk, "MIDI-root process call must succeed");
+
+    bool foundGeneratedC = false;
+    bool leakedControlNote = false;
+    for (const auto& event : output.events) {
+        if (event.type != Event::kNoteOnEvent)
+            continue;
+        if ((event.noteOn.pitch % 12 + 12) % 12 == 0)
+            foundGeneratedC = true;
+        if (event.noteOn.pitch == 36 && event.noteOn.velocity == 1.0f)
+            leakedControlNote = true;
+    }
+
+    require(foundGeneratedC,
+            "C input in MIDI root mode must transpose the generated downbeat to C");
+    require(!leakedControlNote,
+            "MIDI root control note must not be passed through as a played guitar note");
+}
+
+void testManualRootSourceIgnoresMidiRootNotes() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "processor must start");
+
+    ParameterChanges changes;
+    int32 queueIndex = 0;
+    auto* sourceQueue = changes.addParameterData(kRootSourceId, queueIndex);
+    require(sourceQueue != nullptr, "Root Source queue must be created");
+    int32 pointIndex = 0;
+    require(sourceQueue->addPoint(0, 0.0, pointIndex) == kResultOk,
+            "Manual Root Source value must be accepted");
+
+    EventList input;
+    Event rootEvent{};
+    rootEvent.busIndex = 0;
+    rootEvent.sampleOffset = 0;
+    rootEvent.ppqPosition = 0.0;
+    rootEvent.type = Event::kNoteOnEvent;
+    rootEvent.noteOn.channel = 0;
+    rootEvent.noteOn.pitch = 36; // C2
+    rootEvent.noteOn.velocity = 1.0f;
+    rootEvent.noteOn.noteId = -1;
+    require(input.addEvent(rootEvent) == kResultOk, "manual-mode MIDI fixture must accept C note");
+
+    auto context = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 100, &changes, &input);
+    require(processor.process(data) == kResultOk, "manual-root process call must succeed");
+
+    bool foundGeneratedA = false;
+    for (const auto& event : output.events) {
+        if (event.type == Event::kNoteOnEvent &&
+            ((event.noteOn.pitch % 12 + 12) % 12) == 9) {
+            foundGeneratedA = true;
+            break;
+        }
+    }
+    require(foundGeneratedA,
+            "Manual root mode must keep the configured A root despite incoming C");
 }
 
 void testTransportStartAtBarTwoBeginsPhraseAtStepZero() {
@@ -289,6 +370,8 @@ void testTransportJumpFlushesHeldNotes() {
 } // namespace
 
 int main() {
+    testMidiRootSourceTransposesRiff();
+    testManualRootSourceIgnoresMidiRootNotes();
     testTransportStartAtBarTwoBeginsPhraseAtStepZero();
     testLiveDownbeatAndStopFlush();
     testNewRiffFlushesHeldNotes();

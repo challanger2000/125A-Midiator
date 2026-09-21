@@ -43,7 +43,8 @@ enum : ParamID {
     kPalmMuteId = 107,
     kVariationAmountId = 108,
     kNewRiffId = 109,
-    kVariationId = 110
+    kVariationId = 110,
+    kRootSourceId = 111
 };
 
 static const FUID ProcessorUID(0x125A4001, 0x6D494449, 0x41544F52, 0x00000100);
@@ -90,10 +91,14 @@ private:
     RisingEdgeTrigger variationTrigger_{};
     float variationAmount_ = 0.35f;
     bool phraseChangedNeedsFlush_ = false;
+    bool midiRootSource_ = true;
+    int manualRootPitchClass_ = 9;
 
     void generateNew();
     void generateVariation();
+    void transposePhraseToRoot(int newRootPitchClass);
     void applyParameterChanges(ProcessData& data);
+    void applyMidiRootInput(ProcessData& data);
     void flushActiveNotes(IEventList* output, double ppqPosition = 0.0);
 };
 

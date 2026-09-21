@@ -39,6 +39,7 @@
     <control-tag name="VariationAmount" tag="108"/>
     <control-tag name="NewRiff" tag="109"/>
     <control-tag name="Variation" tag="110"/>
+    <control-tag name="RootSource" tag="111"/>
   </control-tags>
 
   <template name="MidiatorView" class="CViewContainer" origin="0, 0" size="860, 560" minSize="645, 420" maxSize="1720, 1120" transparent="false" background-color="Bg">
@@ -55,6 +56,8 @@
       <view class="COptionMenu" control-tag="Scale" origin="250, 35" size="210, 30" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
       <view class="CTextLabel" origin="482, 42" size="42, 16" title="BARS" font="Small" font-color="Dim" transparent="true"/>
       <view class="COptionMenu" control-tag="Bars" origin="526, 35" size="84, 30" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CTextLabel" origin="628, 42" size="76, 16" title="ROOT SOURCE" font="Small" font-color="Dim" transparent="true"/>
+      <view class="COptionMenu" control-tag="RootSource" origin="706, 35" size="90, 30" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
 
       <view class="CTextLabel" midiator-id="theoryKey" origin="16, 76" size="330, 20" title="A  Phrygian" font="Heading" font-color="Text" transparent="true"/>
       <view class="CTextLabel" midiator-id="theoryNotes" origin="350, 76" size="430, 20" title="Notes: A A# C D E F G" font="Normal" font-color="Text" transparent="true"/>

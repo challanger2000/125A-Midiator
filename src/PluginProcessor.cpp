@@ -18,7 +18,7 @@ namespace {
 constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 2048;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 1u;
+constexpr uint32_t kStateVersion = 2u;
 
 template <typename T>
 bool writeValue(IBStream* stream, const T& value) {
@@ -41,7 +41,9 @@ bool readValue(IBStream* stream, T& value) {
 bool readStateHeader(IBStream* state,
                      midiator::GeneratorSettings& settings,
                      float& variationAmount,
-                     uint32_t& seed) {
+                     uint32_t& seed,
+                     int& manualRootPitchClass,
+                     bool& midiRootSource) {
     uint32_t magic = 0;
     uint32_t version = 0;
     int32 root = 0;
@@ -49,7 +51,7 @@ bool readStateHeader(IBStream* state,
     int32 bars = 0;
 
     if (!readValue(state, magic) || !readValue(state, version) ||
-        magic != kStateMagic || version != kStateVersion ||
+        magic != kStateMagic || (version != 1u && version != kStateVersion) ||
         !readValue(state, root) || !readValue(state, scale) || !readValue(state, bars) ||
         !readValue(state, settings.density) || !readValue(state, settings.complexity) ||
         !readValue(state, settings.repetition) || !readValue(state, settings.powerChordChance) ||
@@ -59,6 +61,20 @@ bool readStateHeader(IBStream* state,
     }
 
     settings.rootPitchClass = std::clamp<int32>(root, 0, 11);
+
+    if (version >= 2u) {
+        int32 storedManualRoot = settings.rootPitchClass;
+        int32 storedRootSource = 1;
+        if (!readValue(state, storedManualRoot) || !readValue(state, storedRootSource))
+            return false;
+        manualRootPitchClass = std::clamp<int32>(storedManualRoot, 0, 11);
+        midiRootSource = storedRootSource != 0;
+    } else {
+        // V1 had only one fixed root and therefore maps naturally to Manual.
+        manualRootPitchClass = settings.rootPitchClass;
+        midiRootSource = false;
+    }
+
     settings.scale = static_cast<midiator::ScaleId>(
         std::clamp<int32>(scale, 0, static_cast<int32>(midiator::ScaleId::Count) - 1));
     settings.bars = (bars == 1 || bars == 2 || bars == 4 || bars == 8) ? bars : 2;
@@ -160,6 +176,11 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
         return kResultFalse;
     }
 
+    const int32 manualRoot = manualRootPitchClass_;
+    const int32 rootSource = midiRootSource_ ? 1 : 0;
+    if (!writeValue(state, manualRoot) || !writeValue(state, rootSource))
+        return kResultFalse;
+
     const int32 phraseBars = phrase_.bars;
     if (!writeValue(state, phraseBars))
         return kResultFalse;
@@ -189,8 +210,11 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     midiator::GeneratorSettings restored = settings_;
     float restoredVariation = variationAmount_;
     uint32_t restoredSeed = seed_;
+    int restoredManualRoot = manualRootPitchClass_;
+    bool restoredMidiRootSource = midiRootSource_;
 
-    if (!readStateHeader(state, restored, restoredVariation, restoredSeed))
+    if (!readStateHeader(state, restored, restoredVariation, restoredSeed,
+                         restoredManualRoot, restoredMidiRootSource))
         return kResultFalse;
 
     int32 phraseBars = 0;
@@ -223,6 +247,8 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     settings_ = restored;
     variationAmount_ = restoredVariation;
     seed_ = restoredSeed ? restoredSeed : 0x125A2026u;
+    manualRootPitchClass_ = restoredManualRoot;
+    midiRootSource_ = restoredMidiRootSource;
     phrase_ = restoredPhrase;
     // If state is restored while processing, preserve knowledge of currently
     // active notes so the next process call can emit proper NoteOff events.
@@ -245,6 +271,50 @@ void MidiatorProcessor::generateVariation() {
     seed_ = nextSeed(seed_);
     phrase_ = midiator::RiffEngine::vary(phrase_, settings_, variationAmount_, seed_);
     phraseChangedNeedsFlush_ = true;
+}
+
+void MidiatorProcessor::transposePhraseToRoot(int newRootPitchClass) {
+    newRootPitchClass = std::clamp(newRootPitchClass, 0, 11);
+    const int oldRoot = settings_.rootPitchClass;
+    if (newRootPitchClass == oldRoot)
+        return;
+
+    int delta = newRootPitchClass - oldRoot;
+    if (delta > 6)
+        delta -= 12;
+    else if (delta < -6)
+        delta += 12;
+
+    for (int stepIndex = 0; stepIndex < phrase_.usedSteps(); ++stepIndex) {
+        auto& step = phrase_.steps[stepIndex];
+        for (int noteIndex = 0; noteIndex < step.noteCount; ++noteIndex)
+            step.notes[noteIndex].pitch = std::clamp(step.notes[noteIndex].pitch + delta, 0, 127);
+    }
+
+    settings_.rootPitchClass = newRootPitchClass;
+    phraseChangedNeedsFlush_ = true;
+}
+
+void MidiatorProcessor::applyMidiRootInput(ProcessData& data) {
+    if (!midiRootSource_ || !data.inputEvents)
+        return;
+
+    for (int32 i = 0; i < data.inputEvents->getEventCount(); ++i) {
+        Event event{};
+        if (data.inputEvents->getEvent(i, event) != kResultOk)
+            continue;
+
+        if (event.type != Event::kNoteOnEvent || event.noteOn.velocity <= 0.0f)
+            continue;
+
+        int pitchClass = static_cast<int>(event.noteOn.pitch) % 12;
+        if (pitchClass < 0)
+            pitchClass += 12;
+
+        // MIDI input is a tonal controller in MIDI-root mode. The source note
+        // itself is intentionally not copied to outputEvents.
+        transposePhraseToRoot(pitchClass);
+    }
 }
 
 void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
@@ -292,9 +362,9 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
         switch (id) {
             case kRootId: {
                 const int next = normalizedIndex(v, 12);
-                if (next != settings_.rootPitchClass) {
-                    settings_.rootPitchClass = next;
-                    tonalFrameChanged = true;
+                manualRootPitchClass_ = next;
+                if (!midiRootSource_ && next != settings_.rootPitchClass) {
+                    transposePhraseToRoot(next);
                 }
                 break;
             }
@@ -334,6 +404,15 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
             case kVariationAmountId:
                 variationAmount_ = static_cast<float>(v);
                 break;
+            case kRootSourceId: {
+                const bool nextMidi = v > 0.5;
+                if (nextMidi != midiRootSource_) {
+                    midiRootSource_ = nextMidi;
+                    if (!midiRootSource_)
+                        transposePhraseToRoot(manualRootPitchClass_);
+                }
+                break;
+            }
             case kNewRiffId:
             case kVariationId:
                 // Edge-triggered action parameters are handled point-by-point
@@ -375,6 +454,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         sampleRate_ = data.processContext->sampleRate;
 
     applyParameterChanges(data);
+    applyMidiRootInput(data);
 
     if (!data.outputEvents)
         return kResultOk;
@@ -536,6 +616,13 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     root->setNormalized(root->getInfo().defaultNormalizedValue);
     parameters.addParameter(root);
 
+    auto* rootSource = new StringListParameter(STR16("Root Source"), kRootSourceId);
+    rootSource->appendString(STR16("Manual"));
+    rootSource->appendString(STR16("MIDI"));
+    rootSource->getInfo().defaultNormalizedValue = 1.0;
+    rootSource->setNormalized(1.0);
+    parameters.addParameter(rootSource);
+
     auto* scale = new StringListParameter(STR16("Scale / Mode"), kScaleId);
     scale->appendString(STR16("Natural Minor"));
     scale->appendString(STR16("Phrygian"));
@@ -589,7 +676,10 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     midiator::GeneratorSettings restored{};
     float variationAmount = 0.35f;
     uint32_t seed = 0;
-    if (!readStateHeader(state, restored, variationAmount, seed))
+    int manualRoot = restored.rootPitchClass;
+    bool midiRootSource = true;
+    if (!readStateHeader(state, restored, variationAmount, seed,
+                         manualRoot, midiRootSource))
         return kResultFalse;
 
     auto barsIndex = [](int bars) -> double {
@@ -602,7 +692,8 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
         }
     };
 
-    setParamNormalized(kRootId, static_cast<double>(restored.rootPitchClass) / 11.0);
+    setParamNormalized(kRootId, static_cast<double>(manualRoot) / 11.0);
+    setParamNormalized(kRootSourceId, midiRootSource ? 1.0 : 0.0);
     setParamNormalized(kScaleId, static_cast<double>(static_cast<int>(restored.scale)) /
                                   static_cast<double>(static_cast<int>(midiator::ScaleId::Count) - 1));
     setParamNormalized(kBarsId, barsIndex(restored.bars));
