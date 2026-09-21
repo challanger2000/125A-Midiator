@@ -451,7 +451,8 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     };
     for (auto* s : roots)
         root->appendString(s);
-    root->setNormalized(9.0 / 11.0);
+    root->getInfo().defaultNormalizedValue = 9.0 / 11.0;
+    root->setNormalized(root->getInfo().defaultNormalizedValue);
     parameters.addParameter(root);
 
     auto* scale = new StringListParameter(STR16("Scale / Mode"), kScaleId);
@@ -462,7 +463,8 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     scale->appendString(STR16("Phrygian Dominant"));
     scale->appendString(STR16("Minor Pentatonic"));
     scale->appendString(STR16("Blues"));
-    scale->setNormalized(1.0 / 6.0);
+    scale->getInfo().defaultNormalizedValue = 1.0 / 6.0;
+    scale->setNormalized(scale->getInfo().defaultNormalizedValue);
     parameters.addParameter(scale);
 
     auto* bars = new StringListParameter(STR16("Bars"), kBarsId);
@@ -470,7 +472,8 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     bars->appendString(STR16("2"));
     bars->appendString(STR16("4"));
     bars->appendString(STR16("8"));
-    bars->setNormalized(1.0 / 3.0);
+    bars->getInfo().defaultNormalizedValue = 1.0 / 3.0;
+    bars->setNormalized(bars->getInfo().defaultNormalizedValue);
     parameters.addParameter(bars);
 
     auto addPercent = [&](const char16_t* name, ParamID id, double defaultValue) {
