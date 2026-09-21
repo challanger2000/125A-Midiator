@@ -11,6 +11,14 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
+
+namespace VSTGUI {
+class CTextLabel;
+class CView;
+class IUIDescription;
+class VST3Editor;
+}
 
 namespace Steinberg::Vst {
 
