@@ -130,10 +130,10 @@ bool shouldHit(Rng& rng, const GeneratorSettings& s, int globalStep, int archety
         {
             0x5555u, // straight eighth-note machine
             0x0D0Du, // stop/start blocks
-            0x7575u, // dense stomp with gaps
+            0x00F1u, // four-sixteenth machine burst
             0x4515u, // sparse verse-like pedal pattern
             0xD145u, // back-half push / answer
-            0x1711u  // quarter anchor with late drive
+            0x03F1u  // six-sixteenth drive after the anchor
         },
         {
             0x1111u, // broad quarter-note pulse
@@ -144,18 +144,41 @@ bool shouldHit(Rng& rng, const GeneratorSettings& s, int globalStep, int archety
             0x1053u  // long spaces with clustered response
         },
         {
-            0xCCCCu, // displaced syncopation
-            0x9CC7u, // stutter blocks
+            0xF00Fu, // two four-sixteenth attack bursts
+            0x0F07u, // three-note pickup into four-note stutter
             0x4B19u, // broken accents
-            0xB24Du, // alternating late-sixteenth attacks
+            0xF871u, // split burst / late machine-gun ending
             0x69C3u, // split-beat machine pattern
-            0xC937u  // dense attack / release contrast
+            0x0FF1u  // sustained eight-sixteenth pressure run
         }
     };
 
     const int styleIndex = std::clamp(static_cast<int>(s.style), 0,
                                       static_cast<int>(StyleId::Count) - 1);
     const bool preferred = (masks[styleIndex][archetype] & (uint16_t{1} << pos)) != 0;
+
+    // Some riff families deliberately contain contiguous sixteenth-note
+    // machine-gun bursts. At normal density these are strongly favored; at
+    // high density the burst core becomes deterministic so the generator can
+    // actually produce fast 16ths instead of only isolated syncopation.
+    bool burstCore = false;
+    if (s.style == StyleId::NDHIndustrial) {
+        burstCore = (archetype == 2 && pos >= 4 && pos <= 7) ||
+                    (archetype == 5 && pos >= 4 && pos <= 9);
+    } else if (s.style == StyleId::HeavyIndustrial) {
+        burstCore = (archetype == 0 && (pos <= 3 || pos >= 12)) ||
+                    (archetype == 1 && ((pos <= 2) || (pos >= 8 && pos <= 11))) ||
+                    (archetype == 3 && ((pos >= 4 && pos <= 6) || pos >= 11)) ||
+                    (archetype == 5 && pos >= 4 && pos <= 11);
+    }
+
+    if (burstCore && s.density >= 0.42f) {
+        if (s.density >= 0.74f)
+            return true;
+        const float burstProbability =
+            std::clamp(0.80f + 0.16f * s.complexity, 0.0f, 0.96f);
+        return rng.chance(burstProbability);
+    }
 
     float weight = preferred ? 0.92f : 0.16f;
     if (s.style == StyleId::NDHIndustrial) {

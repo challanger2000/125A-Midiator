@@ -318,6 +318,54 @@ void testDefaultVariationIsAudiblyStructural() {
             "default variation must rarely collapse into an almost inaudible change");
 }
 
+void testFastSixteenthBurstsExist() {
+    using midiator::GeneratorSettings;
+    using midiator::RiffEngine;
+    using midiator::StyleId;
+
+    auto hasRun = [](const midiator::Phrase& phrase, int minimum) {
+        int run = 0;
+        for (int i = 0; i < phrase.usedSteps(); ++i) {
+            if (phrase.steps[i].noteCount > 0) {
+                ++run;
+                if (run >= minimum)
+                    return true;
+            } else {
+                run = 0;
+            }
+        }
+        return false;
+    };
+
+    int ndhFast = 0;
+    int darkFast = 0;
+    int heavyFast = 0;
+    constexpr int samples = 256;
+
+    for (int seed = 1; seed <= samples; ++seed) {
+        GeneratorSettings s{};
+        s.bars = 2;
+        s.density = 0.56f;
+        s.complexity = 0.42f;
+
+        s.style = StyleId::NDHIndustrial;
+        ndhFast += hasRun(RiffEngine::generate(s, 120000u + seed), 4) ? 1 : 0;
+
+        s.style = StyleId::DarkRockGothic;
+        darkFast += hasRun(RiffEngine::generate(s, 120000u + seed), 4) ? 1 : 0;
+
+        s.style = StyleId::HeavyIndustrial;
+        heavyFast += hasRun(RiffEngine::generate(s, 120000u + seed), 4) ? 1 : 0;
+    }
+
+    require(ndhFast >= samples / 8,
+            "NDH/Industrial must sometimes generate audible four-sixteenth runs");
+    require(heavyFast >= samples / 4,
+            "Heavy Industrial must frequently generate audible four-sixteenth runs");
+    require(heavyFast > darkFast,
+            "Heavy Industrial must create fast sixteenth runs more often than Dark Rock/Gothic");
+}
+
 void testStyleEnginesHaveDistinctRhythmLanguages() {
     using midiator::GeneratorSettings;
     using midiator::RiffEngine;
@@ -409,6 +457,7 @@ int main() {
     testVariationDistance();
     testVelocityZonesRemainSeparated();
     testDefaultVariationIsAudiblyStructural();
+    testFastSixteenthBurstsExist();
     testStyleEnginesHaveDistinctRhythmLanguages();
     testFourBarRoleDevelopment();
 
