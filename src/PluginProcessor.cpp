@@ -562,13 +562,13 @@ VSTGUI::CView* MidiatorController::verifyView(VSTGUI::CView* view,
     if (!view)
         return nullptr;
 
-    std::string id;
-    if (attributes.getAttributeValue("midiator-id", id)) {
+    const auto* id = attributes.getAttributeValue("midiator-id");
+    if (id) {
         if (auto* label = dynamic_cast<VSTGUI::CTextLabel*>(view)) {
-            if (id == "theoryKey") theoryKey_ = label;
-            else if (id == "theoryNotes") theoryNotes_ = label;
-            else if (id == "theoryCharacter") theoryCharacter_ = label;
-            else if (id == "theoryInterval") theoryInterval_ = label;
+            if (*id == "theoryKey") theoryKey_ = label;
+            else if (*id == "theoryNotes") theoryNotes_ = label;
+            else if (*id == "theoryCharacter") theoryCharacter_ = label;
+            else if (*id == "theoryInterval") theoryInterval_ = label;
         }
     }
 
