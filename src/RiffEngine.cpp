@@ -60,8 +60,15 @@ int wrap12(int v) {
 int chooseDegree(Rng& rng, const GeneratorSettings& s, int stepInBar) {
     const auto& scale = kScales[static_cast<int>(s.scale)];
 
-    // Heavy/industrial riffs need a strong pedal tone, but not a one-note monoculture.
+    // Each style has a different relationship to the pedal root.
     float rootProbability = 0.28f + 0.30f * s.repetition;
+    if (s.style == StyleId::NDHIndustrial)
+        rootProbability += 0.10f;
+    else if (s.style == StyleId::DarkRockGothic)
+        rootProbability -= 0.09f;
+    else if (s.style == StyleId::HeavyIndustrial)
+        rootProbability += 0.04f;
+
     if ((stepInBar % 4) == 0)
         rootProbability += 0.16f;
 
@@ -108,22 +115,39 @@ int rootBaseForPitchClass(int pitchClass, int lowRootMidi) {
     return std::min(p, 120);
 }
 
-bool shouldHit(Rng& rng, const GeneratorSettings& s, int globalStep) {
+bool shouldHit(Rng& rng, const GeneratorSettings& s, int globalStep, int archetype = 0) {
     if (globalStep == 0)
         return true;
 
     const int pos = globalStep % 16;
-    float weight = 0.34f;
-    if ((pos % 4) == 0)
-        weight = 0.88f;
-    else if ((pos % 2) == 0)
-        weight = 0.61f;
+    archetype = std::clamp(archetype, 0, 2);
 
-    // Characteristic industrial syncopation on late 16ths.
-    if (pos == 3 || pos == 7 || pos == 11 || pos == 15)
-        weight += 0.10f * s.complexity;
+    // Three genuine rhythm languages, each with three internal archetypes.
+    // Bit n marks a preferred sixteenth-note onset within one 4/4 bar.
+    static constexpr uint16_t masks[static_cast<int>(StyleId::Count)][3] = {
+        {0x5555u, 0x0D0Du, 0x7575u}, // NDH: stomp / stop-start / machine drive
+        {0x1111u, 0x2449u, 0x5151u}, // Dark Rock: quarters / melodic gaps / broad eighths
+        {0xCCCCu, 0x9CC7u, 0x4B19u}  // Heavy Industrial: sync / stutter / broken accents
+    };
 
-    const float probability = std::clamp((0.20f + 0.95f * s.density) * weight, 0.0f, 0.96f);
+    const int styleIndex = std::clamp(static_cast<int>(s.style), 0,
+                                      static_cast<int>(StyleId::Count) - 1);
+    const bool preferred = (masks[styleIndex][archetype] & (uint16_t{1} << pos)) != 0;
+
+    float weight = preferred ? 0.92f : 0.16f;
+    if (s.style == StyleId::NDHIndustrial) {
+        if ((pos % 4) == 0) weight += 0.12f;
+        if ((pos % 2) == 0) weight += 0.06f;
+    } else if (s.style == StyleId::DarkRockGothic) {
+        weight *= 0.78f; // more air and longer spaces
+        if ((pos % 4) == 0) weight += 0.10f;
+    } else {
+        // Heavy Industrial deliberately favors displaced late sixteenths.
+        if (pos == 3 || pos == 7 || pos == 11 || pos == 15)
+            weight += 0.20f + 0.12f * s.complexity;
+    }
+
+    const float probability = std::clamp((0.18f + 1.02f * s.density) * weight, 0.0f, 0.97f);
     return rng.chance(probability);
 }
 
@@ -250,6 +274,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
     result.bars = s.bars;
 
     Rng rng(seed);
+    const int rhythmArchetype = rng.range(0, 2);
     const auto& scale = scaleDefinition(s.scale);
     const int base = rootBaseForPitchClass(s.rootPitchClass, s.lowRootMidi);
 
@@ -260,17 +285,31 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
         int degree = preferRoot ? 0 : chooseDegree(rng, s, stepInBar);
         int pitch = base + scale.intervals[degree];
 
-        if (!preferRoot && rng.chance(0.08f + 0.20f * s.complexity))
+        float octaveChance = 0.08f + 0.20f * s.complexity;
+        if (s.style == StyleId::DarkRockGothic)
+            octaveChance += 0.12f;
+        else if (s.style == StyleId::NDHIndustrial)
+            octaveChance *= 0.55f;
+        if (!preferRoot && rng.chance(octaveChance))
             pitch += 12;
 
         pitch = clampMusicalPitch(pitch, base);
 
-        const bool palmMute = rng.chance(s.palmMuteChance * (accent ? 0.68f : 1.0f));
+        float palmFactor = accent ? 0.68f : 1.0f;
+        if (s.style == StyleId::DarkRockGothic)
+            palmFactor *= 0.48f;
+        else if (s.style == StyleId::HeavyIndustrial)
+            palmFactor *= 1.18f;
+        const bool palmMute = rng.chance(std::clamp(s.palmMuteChance * palmFactor, 0.0f, 1.0f));
 
         // Palm-muted power chords are musically valid, so chord generation must
         // not depend on the note being "open".
-        const float chordChance = s.powerChordChance * (accent ? 1.0f : 0.30f);
-        const bool powerChord = rng.chance(chordChance);
+        float chordChance = s.powerChordChance * (accent ? 1.0f : 0.30f);
+        if (s.style == StyleId::DarkRockGothic)
+            chordChance *= 1.35f;
+        else if (s.style == StyleId::HeavyIndustrial)
+            chordChance *= 0.72f;
+        const bool powerChord = rng.chance(std::clamp(chordChance, 0.0f, 1.0f));
 
         const int length = palmMute
             ? 1
@@ -285,7 +324,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
     std::array<Step, kStepsPerBar> baseBar{};
 
     for (int i = 0; i < kStepsPerBar; ++i) {
-        if (!shouldHit(rng, s, i))
+        if (!shouldHit(rng, s, i, rhythmArchetype))
             continue;
         baseBar[i] = makeMusicalStep(i, false);
     }
@@ -360,7 +399,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
                 const float action = rng.unit();
 
                 if (current.noteCount == 0) {
-                    if (action < 0.55f && shouldHit(rng, s, i))
+                    if (action < 0.55f && shouldHit(rng, s, i, rhythmArchetype))
                         current = makeMusicalStep(i, false);
                 } else if (action < 0.18f && i != 0) {
                     current = {};

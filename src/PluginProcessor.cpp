@@ -18,7 +18,7 @@ namespace {
 constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 2048;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 2u;
+constexpr uint32_t kStateVersion = 3u;
 
 template <typename T>
 bool writeValue(IBStream* stream, const T& value) {
@@ -51,7 +51,7 @@ bool readStateHeader(IBStream* state,
     int32 bars = 0;
 
     if (!readValue(state, magic) || !readValue(state, version) ||
-        magic != kStateMagic || (version != 1u && version != kStateVersion) ||
+        magic != kStateMagic || (version < 1u || version > kStateVersion) ||
         !readValue(state, root) || !readValue(state, scale) || !readValue(state, bars) ||
         !readValue(state, settings.density) || !readValue(state, settings.complexity) ||
         !readValue(state, settings.repetition) || !readValue(state, settings.powerChordChance) ||
@@ -69,10 +69,21 @@ bool readStateHeader(IBStream* state,
             return false;
         manualRootPitchClass = std::clamp<int32>(storedManualRoot, 0, 11);
         midiRootSource = storedRootSource != 0;
+
+        if (version >= 3u) {
+            int32 storedStyle = 0;
+            if (!readValue(state, storedStyle))
+                return false;
+            settings.style = static_cast<midiator::StyleId>(
+                std::clamp<int32>(storedStyle, 0, static_cast<int32>(midiator::StyleId::Count) - 1));
+        } else {
+            settings.style = midiator::StyleId::NDHIndustrial;
+        }
     } else {
         // V1 had only one fixed root and therefore maps naturally to Manual.
         manualRootPitchClass = settings.rootPitchClass;
         midiRootSource = false;
+        settings.style = midiator::StyleId::NDHIndustrial;
     }
 
     settings.scale = static_cast<midiator::ScaleId>(
@@ -178,7 +189,8 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
 
     const int32 manualRoot = manualRootPitchClass_;
     const int32 rootSource = midiRootSource_ ? 1 : 0;
-    if (!writeValue(state, manualRoot) || !writeValue(state, rootSource))
+    const int32 style = static_cast<int32>(settings_.style);
+    if (!writeValue(state, manualRoot) || !writeValue(state, rootSource) || !writeValue(state, style))
         return kResultFalse;
 
     const int32 phraseBars = phrase_.bars;
@@ -486,6 +498,15 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
             case kVariationAmountId:
                 variationAmount_ = static_cast<float>(v);
                 break;
+            case kStyleId: {
+                const auto next = static_cast<midiator::StyleId>(
+                    normalizedIndex(v, static_cast<int>(midiator::StyleId::Count)));
+                if (next != settings_.style) {
+                    settings_.style = next;
+                    tonalFrameChanged = true;
+                }
+                break;
+            }
             case kRootSourceId: {
                 const bool nextMidi = v > 0.5;
                 if (nextMidi != midiRootSource_) {
@@ -719,6 +740,14 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     rootSource->setNormalized(1.0);
     parameters.addParameter(rootSource);
 
+    auto* style = new StringListParameter(STR16("Riff Style"), kStyleId);
+    style->appendString(STR16("NDH / Industrial"));
+    style->appendString(STR16("Dark Rock / Gothic"));
+    style->appendString(STR16("Heavy Industrial"));
+    style->getInfo().defaultNormalizedValue = 0.0;
+    style->setNormalized(0.0);
+    parameters.addParameter(style);
+
     auto* scale = new StringListParameter(STR16("Scale / Mode"), kScaleId);
     scale->appendString(STR16("Natural Minor"));
     scale->appendString(STR16("Phrygian"));
@@ -790,6 +819,8 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
 
     setParamNormalized(kRootId, static_cast<double>(manualRoot) / 11.0);
     setParamNormalized(kRootSourceId, midiRootSource ? 1.0 : 0.0);
+    setParamNormalized(kStyleId, static_cast<double>(static_cast<int>(restored.style)) /
+                                 static_cast<double>(static_cast<int>(midiator::StyleId::Count) - 1));
     setParamNormalized(kScaleId, static_cast<double>(static_cast<int>(restored.scale)) /
                                   static_cast<double>(static_cast<int>(midiator::ScaleId::Count) - 1));
     setParamNormalized(kBarsId, barsIndex(restored.bars));

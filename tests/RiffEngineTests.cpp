@@ -318,6 +318,53 @@ void testDefaultVariationIsAudiblyStructural() {
             "default variation must rarely collapse into an almost inaudible change");
 }
 
+void testStyleEnginesHaveDistinctRhythmLanguages() {
+    using midiator::GeneratorSettings;
+    using midiator::RiffEngine;
+    using midiator::StyleId;
+
+    long long ndhHits = 0, darkHits = 0, heavyHits = 0;
+    long long ndhOff16 = 0, darkOff16 = 0, heavyOff16 = 0;
+    constexpr unsigned samples = 192;
+
+    for (unsigned seed = 1; seed <= samples; ++seed) {
+        GeneratorSettings ndh{};
+        ndh.bars = 2;
+        ndh.style = StyleId::NDHIndustrial;
+        GeneratorSettings dark = ndh;
+        dark.style = StyleId::DarkRockGothic;
+        GeneratorSettings heavy = ndh;
+        heavy.style = StyleId::HeavyIndustrial;
+
+        const auto a = RiffEngine::generate(ndh, 90000u + seed);
+        const auto b = RiffEngine::generate(dark, 90000u + seed);
+        const auto c = RiffEngine::generate(heavy, 90000u + seed);
+
+        for (int i = 0; i < a.usedSteps(); ++i) {
+            const int pos = i % 16;
+            if (a.steps[i].noteCount > 0) {
+                ++ndhHits;
+                if ((pos % 2) == 1) ++ndhOff16;
+            }
+            if (b.steps[i].noteCount > 0) {
+                ++darkHits;
+                if ((pos % 2) == 1) ++darkOff16;
+            }
+            if (c.steps[i].noteCount > 0) {
+                ++heavyHits;
+                if ((pos % 2) == 1) ++heavyOff16;
+            }
+        }
+    }
+
+    require(darkHits < ndhHits,
+            "Dark Rock/Gothic must leave more rhythmic space than NDH/Industrial");
+    require(heavyOff16 > ndhOff16 && heavyOff16 > darkOff16,
+            "Heavy Industrial must create the strongest displaced sixteenth-note activity");
+    require(heavyHits > darkHits,
+            "Heavy Industrial must be materially denser than Dark Rock/Gothic at equal controls");
+}
+
 void testFourBarRoleDevelopment() {
     midiator::GeneratorSettings s{};
     s.rootPitchClass = 9;
@@ -362,6 +409,7 @@ int main() {
     testVariationDistance();
     testVelocityZonesRemainSeparated();
     testDefaultVariationIsAudiblyStructural();
+    testStyleEnginesHaveDistinctRhythmLanguages();
     testFourBarRoleDevelopment();
 
     std::cout << "Midiator core tests: PASS\n";

@@ -40,6 +40,7 @@
     <control-tag name="NewRiff" tag="109"/>
     <control-tag name="Variation" tag="110"/>
     <control-tag name="RootSource" tag="111"/>
+    <control-tag name="Style" tag="112"/>
   </control-tags>
 
   <template name="MidiatorView" class="CViewContainer" origin="0, 0" size="860, 560" minSize="645, 420" maxSize="1720, 1120" transparent="false" background-color="Bg">
@@ -67,6 +68,8 @@
 
     <view class="CViewContainer" origin="24, 222" size="812, 238" transparent="false" background-color="Panel">
       <view class="CTextLabel" origin="16, 12" size="210, 18" title="RIFF SHAPE" font="Heading" font-color="Accent" transparent="true"/>
+      <view class="CTextLabel" origin="500, 12" size="52, 18" title="STYLE" font="Small" font-color="Dim" transparent="true"/>
+      <view class="COptionMenu" control-tag="Style" origin="552, 6" size="228, 28" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
 
       <view class="CTextLabel" origin="18, 48" size="120, 18" title="DENSITY" font="Small" font-color="Muted" transparent="true"/>
       <view class="CSlider" control-tag="Density" origin="18, 70" size="76, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>

@@ -10,6 +10,13 @@ constexpr int kMaxBars = 8;
 constexpr int kMaxSteps = kStepsPerBar * kMaxBars;
 constexpr int kMaxNotesPerStep = 2;
 
+enum class StyleId : int {
+    NDHIndustrial = 0,
+    DarkRockGothic,
+    HeavyIndustrial,
+    Count
+};
+
 enum class ScaleId : int {
     NaturalMinor = 0,
     Phrygian,
@@ -32,6 +39,7 @@ struct ScaleDefinition {
 struct GeneratorSettings {
     int rootPitchClass = 9;       // A
     ScaleId scale = ScaleId::Phrygian;
+    StyleId style = StyleId::NDHIndustrial;
     int bars = 2;
     float density = 0.56f;
     float complexity = 0.42f;
