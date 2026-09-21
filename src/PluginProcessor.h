@@ -4,6 +4,9 @@
 
 #include "public.sdk/source/vst/vstaudioeffect.h"
 #include "public.sdk/source/vst/vsteditcontroller.h"
+#include "vstgui/plugin-bindings/vst3editor.h"
+#include "vstgui/lib/controls/icontrollistener.h"
+#include "vstgui/uidescription/uiattributes.h"
 #include "pluginterfaces/base/ibstream.h"
 
 #include <array>
@@ -70,7 +73,8 @@ private:
     void flushActiveNotes(IEventList* output);
 };
 
-class MidiatorController final : public EditControllerEx1 {
+class MidiatorController final : public EditControllerEx1,
+                                public VSTGUI::VST3EditorDelegate {
 public:
     static FUnknown* createInstance(void*) {
         return static_cast<IEditController*>(new MidiatorController());
@@ -78,6 +82,21 @@ public:
 
     tresult PLUGIN_API initialize(FUnknown* context) SMTG_OVERRIDE;
     tresult PLUGIN_API setComponentState(IBStream* state) SMTG_OVERRIDE;
+    tresult PLUGIN_API setParamNormalized(ParamID tag, ParamValue value) SMTG_OVERRIDE;
+    IPlugView* PLUGIN_API createView(FIDString name) SMTG_OVERRIDE;
+
+    VSTGUI::CView* verifyView(VSTGUI::CView* view,
+                              const VSTGUI::UIAttributes& attributes,
+                              const VSTGUI::IUIDescription* description,
+                              VSTGUI::VST3Editor* editor) SMTG_OVERRIDE;
+
+private:
+    void refreshTheory() noexcept;
+
+    VSTGUI::CTextLabel* theoryKey_ = nullptr;
+    VSTGUI::CTextLabel* theoryNotes_ = nullptr;
+    VSTGUI::CTextLabel* theoryCharacter_ = nullptr;
+    VSTGUI::CTextLabel* theoryInterval_ = nullptr;
 };
 
 } // namespace Steinberg::Vst

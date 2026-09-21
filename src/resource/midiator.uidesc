@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<vstgui-ui-description version="1">
+  <colors>
+    <color name="Bg" rgba="#0D1115FF"/>
+    <color name="Panel" rgba="#151C22FF"/>
+    <color name="Panel2" rgba="#1B242BFF"/>
+    <color name="Text" rgba="#E7ECEFFF"/>
+    <color name="Muted" rgba="#9AA7B0FF"/>
+    <color name="Dim" rgba="#6F7B83FF"/>
+    <color name="Accent" rgba="#62C7B3FF"/>
+    <color name="AccentDark" rgba="#20453FFF"/>
+    <color name="Button" rgba="#202A31FF"/>
+    <color name="ButtonHi" rgba="#2B5C53FF"/>
+    <color name="Line" rgba="#2B353DFF"/>
+  </colors>
+  <fonts>
+    <font name="Title" font-name="Arial" size="22" bold="true" italic="false"/>
+    <font name="Heading" font-name="Arial" size="14" bold="true" italic="false"/>
+    <font name="Normal" font-name="Arial" size="12" bold="false" italic="false"/>
+    <font name="Small" font-name="Arial" size="10" bold="false" italic="false"/>
+    <font name="ButtonFont" font-name="Arial" size="13" bold="true" italic="false"/>
+  </fonts>
+  <gradients>
+    <gradient name="ButtonIdle"><color-stop rgba="#26313AFF" start="0"/><color-stop rgba="#1A2228FF" start="1"/></gradient>
+    <gradient name="ButtonActive"><color-stop rgba="#347568FF" start="0"/><color-stop rgba="#1E4D45FF" start="1"/></gradient>
+  </gradients>
+  <control-tags>
+    <control-tag name="Root" tag="100"/>
+    <control-tag name="Scale" tag="101"/>
+    <control-tag name="Bars" tag="102"/>
+    <control-tag name="Density" tag="103"/>
+    <control-tag name="Complexity" tag="104"/>
+    <control-tag name="Repetition" tag="105"/>
+    <control-tag name="PowerChords" tag="106"/>
+    <control-tag name="PalmMute" tag="107"/>
+    <control-tag name="VariationAmount" tag="108"/>
+    <control-tag name="NewRiff" tag="109"/>
+    <control-tag name="Variation" tag="110"/>
+  </control-tags>
+
+  <template name="MidiatorView" class="CViewContainer" origin="0, 0" size="860, 560" minSize="860, 560" maxSize="860, 560" transparent="false" background-color="Bg">
+    <view class="CTextLabel" origin="24, 18" size="300, 28" title="125A  MIDIATOR" font="Title" font-color="Text" transparent="true"/>
+    <view class="CTextLabel" origin="24, 48" size="410, 18" title="RIFF IDEAS  ·  THEORY HELP  ·  MIDI OUT" font="Small" font-color="Muted" transparent="true"/>
+    <view class="CTextLabel" origin="724, 22" size="110, 24" title="V0.1 DEV" font="Small" font-color="Dim" text-alignment="right" transparent="true"/>
+
+    <view class="CViewContainer" origin="24, 82" size="812, 126" transparent="false" background-color="Panel">
+      <view class="CTextLabel" origin="16, 12" size="210, 18" title="TONAL FRAME" font="Heading" font-color="Accent" transparent="true"/>
+      <view class="CTextLabel" origin="16, 42" size="52, 16" title="ROOT" font="Small" font-color="Dim" transparent="true"/>
+      <view class="COptionMenu" control-tag="Root" origin="70, 35" size="104, 30" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CTextLabel" origin="196, 42" size="52, 16" title="SCALE" font="Small" font-color="Dim" transparent="true"/>
+      <view class="COptionMenu" control-tag="Scale" origin="250, 35" size="210, 30" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CTextLabel" origin="482, 42" size="42, 16" title="BARS" font="Small" font-color="Dim" transparent="true"/>
+      <view class="COptionMenu" control-tag="Bars" origin="526, 35" size="84, 30" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+
+      <view class="CTextLabel" midiator-id="theoryKey" origin="16, 76" size="330, 20" title="A  Phrygian" font="Heading" font-color="Text" transparent="true"/>
+      <view class="CTextLabel" midiator-id="theoryNotes" origin="350, 76" size="430, 20" title="Notes: A A# C D E F G" font="Normal" font-color="Text" transparent="true"/>
+      <view class="CTextLabel" midiator-id="theoryCharacter" origin="16, 100" size="350, 18" title="Character: dark, tense, aggressive" font="Small" font-color="Muted" transparent="true"/>
+      <view class="CTextLabel" midiator-id="theoryInterval" origin="380, 100" size="400, 18" title="Signature: minor 2nd above the root" font="Small" font-color="Muted" transparent="true"/>
+    </view>
+
+    <view class="CViewContainer" origin="24, 222" size="812, 238" transparent="false" background-color="Panel">
+      <view class="CTextLabel" origin="16, 12" size="210, 18" title="RIFF SHAPE" font="Heading" font-color="Accent" transparent="true"/>
+
+      <view class="CTextLabel" origin="18, 48" size="120, 18" title="DENSITY" font="Small" font-color="Muted" transparent="true"/>
+      <view class="CSlider" control-tag="Density" origin="18, 70" size="120, 18" mode="free click" handle-offset="0, 0" back-color="Panel2" frame-color="Line" frame-width="1"/>
+      <view class="CTextLabel" origin="156, 48" size="120, 18" title="COMPLEXITY" font="Small" font-color="Muted" transparent="true"/>
+      <view class="CSlider" control-tag="Complexity" origin="156, 70" size="120, 18" mode="free click" handle-offset="0, 0" back-color="Panel2" frame-color="Line" frame-width="1"/>
+      <view class="CTextLabel" origin="294, 48" size="120, 18" title="REPETITION" font="Small" font-color="Muted" transparent="true"/>
+      <view class="CSlider" control-tag="Repetition" origin="294, 70" size="120, 18" mode="free click" handle-offset="0, 0" back-color="Panel2" frame-color="Line" frame-width="1"/>
+      <view class="CTextLabel" origin="432, 48" size="120, 18" title="POWER CHORDS" font="Small" font-color="Muted" transparent="true"/>
+      <view class="CSlider" control-tag="PowerChords" origin="432, 70" size="120, 18" mode="free click" handle-offset="0, 0" back-color="Panel2" frame-color="Line" frame-width="1"/>
+      <view class="CTextLabel" origin="570, 48" size="120, 18" title="PALM MUTE" font="Small" font-color="Muted" transparent="true"/>
+      <view class="CSlider" control-tag="PalmMute" origin="570, 70" size="120, 18" mode="free click" handle-offset="0, 0" back-color="Panel2" frame-color="Line" frame-width="1"/>
+
+      <view class="CTextLabel" origin="18, 116" size="180, 18" title="VARIATION AMOUNT" font="Small" font-color="Muted" transparent="true"/>
+      <view class="CSlider" control-tag="VariationAmount" origin="18, 138" size="258, 18" mode="free click" handle-offset="0, 0" back-color="Panel2" frame-color="Line" frame-width="1"/>
+
+      <view class="CTextButton" control-tag="NewRiff" origin="324, 124" size="208, 54" title="NEW RIFF" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-width="0" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
+      <view class="CTextButton" control-tag="Variation" origin="550, 124" size="230, 54" title="VARIATION" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-width="0" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
+
+      <view class="CTextLabel" origin="18, 196" size="762, 20" title="VARIATION keeps root, scale and phrase length.  MIDI is generated live while the DAW transport runs." font="Small" font-color="Dim" transparent="true"/>
+    </view>
+
+    <view class="CTextLabel" origin="24, 480" size="812, 18" title="Library-neutral output · Power chords = root + fifth · Velocity 127 reserved" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
+    <view class="CTextLabel" origin="24, 510" size="812, 22" title="Generate an idea. Understand the scale. Record the MIDI. Edit what you like." font="Normal" font-color="Text" text-alignment="center" transparent="true"/>
+  </template>
+</vstgui-ui-description>

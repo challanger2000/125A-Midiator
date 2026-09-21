@@ -5,6 +5,7 @@
 #include "pluginterfaces/vst/ivstevents.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
+#include "vstgui/lib/controls/ctextlabel.h"
 
 #include <algorithm>
 #include <array>
@@ -535,6 +536,72 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     setParamNormalized(kVariationAmountId, variationAmount);
 
     return kResultOk;
+}
+
+
+tresult PLUGIN_API MidiatorController::setParamNormalized(ParamID tag, ParamValue value) {
+    const auto r = EditControllerEx1::setParamNormalized(tag, value);
+    if (tag == kRootId || tag == kScaleId)
+        refreshTheory();
+    return r;
+}
+
+IPlugView* PLUGIN_API MidiatorController::createView(FIDString name) {
+    if (name && std::strcmp(name, ViewType::kEditor) == 0) {
+        auto* editor = new VSTGUI::VST3Editor(this, "MidiatorView", "midiator.uidesc");
+        editor->setDelegate(this);
+        return editor;
+    }
+    return nullptr;
+}
+
+VSTGUI::CView* MidiatorController::verifyView(VSTGUI::CView* view,
+                                              const VSTGUI::UIAttributes& attributes,
+                                              const VSTGUI::IUIDescription*,
+                                              VSTGUI::VST3Editor*) {
+    if (!view)
+        return nullptr;
+
+    std::string id;
+    if (attributes.getAttributeValue("midiator-id", id)) {
+        if (auto* label = dynamic_cast<VSTGUI::CTextLabel*>(view)) {
+            if (id == "theoryKey") theoryKey_ = label;
+            else if (id == "theoryNotes") theoryNotes_ = label;
+            else if (id == "theoryCharacter") theoryCharacter_ = label;
+            else if (id == "theoryInterval") theoryInterval_ = label;
+        }
+    }
+
+    refreshTheory();
+    return view;
+}
+
+void MidiatorController::refreshTheory() noexcept {
+    static constexpr const char* kNoteNames[] = {
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+    };
+
+    const int root = normalizedIndex(getParamNormalized(kRootId), 12);
+    const auto scaleId = static_cast<midiator::ScaleId>(
+        normalizedIndex(getParamNormalized(kScaleId), static_cast<int>(midiator::ScaleId::Count)));
+    const auto& def = midiator::RiffEngine::scaleDefinition(scaleId);
+
+    auto set = [](VSTGUI::CTextLabel* label, const std::string& value) {
+        if (!label) return;
+        label->setText(value.c_str());
+        label->invalid();
+    };
+
+    set(theoryKey_, std::string(kNoteNames[root]) + "  " + def.name);
+
+    std::string notes = "Notes: ";
+    for (int i = 0; i < def.count; ++i) {
+        if (i) notes += "  ";
+        notes += kNoteNames[(root + def.intervals[i]) % 12];
+    }
+    set(theoryNotes_, notes);
+    set(theoryCharacter_, std::string("Character: ") + def.character);
+    set(theoryInterval_, std::string("Signature: ") + def.characteristicInterval);
 }
 
 } // namespace Steinberg::Vst
