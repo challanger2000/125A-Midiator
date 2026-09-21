@@ -583,17 +583,31 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     for (long long cycle = firstCycle; cycle <= lastCycle; ++cycle) {
         const double cycleStartQn = transportAnchorQn_ + static_cast<double>(cycle) * patternLengthQn;
 
-        for (int stepIndex = 0; stepIndex < phrase_.usedSteps(); ++stepIndex) {
+        const int usedSteps = phrase_.usedSteps();
+        constexpr double kSustainGapQn = 1.0 / 16.0; // one 1/64 note
+
+        for (int stepIndex = 0; stepIndex < usedSteps; ++stepIndex) {
             const auto& step = phrase_.steps[stepIndex];
             if (step.noteCount <= 0)
                 continue;
 
-            const double onQn = cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
+            int stepsToNextHit = usedSteps;
+            for (int delta = 1; delta <= usedSteps; ++delta) {
+                const int nextIndex = (stepIndex + delta) % usedSteps;
+                if (phrase_.steps[nextIndex].noteCount > 0) {
+                    stepsToNextHit = delta;
+                    break;
+                }
+            }
 
+            const double onQn = cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
+            const double nextOnQn = onQn + static_cast<double>(stepsToNextHit) * kStepQuarterNotes;
+            const double offQn = std::max(onQn, nextOnQn - kSustainGapQn);
+
+            // Every note of the hit, including both notes of a power chord,
+            // shares exactly the same sustain end point.
             for (int n = 0; n < step.noteCount; ++n) {
                 const auto& note = step.notes[n];
-                const double offQn = onQn + static_cast<double>(std::max(1, note.lengthSteps)) * kStepQuarterNotes * 0.90;
-
                 addScheduled(onQn, true, note.pitch, note.velocity);
                 addScheduled(offQn, false, note.pitch, 0);
             }

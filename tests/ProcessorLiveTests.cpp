@@ -151,6 +151,53 @@ ProcessData makeProcessData(ProcessContext& context,
     return data;
 }
 
+void testGeneratedNotesSustainToOne64BeforeNextHit() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "processor must start");
+
+    // One quarter note at 120 BPM/48k = 24000 samples. Process enough time to
+    // capture several generated hits and their note-offs.
+    auto context = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 48000);
+    require(processor.process(data) == kResultOk, "sustain scheduling process must succeed");
+
+    std::vector<double> ons;
+    std::vector<double> offs;
+    for (const auto& e : output.events) {
+        if (e.type == Event::kNoteOnEvent)
+            ons.push_back(e.ppqPosition);
+        else if (e.type == Event::kNoteOffEvent)
+            offs.push_back(e.ppqPosition);
+    }
+
+    require(ons.size() >= 2, "sustain fixture requires at least two generated hits");
+    require(!offs.empty(), "sustain fixture requires generated note-offs");
+
+    // Find the first distinct next onset after the first onset. Chord members
+    // may share the same onset and must therefore be ignored here.
+    const double firstOn = ons.front();
+    double nextOn = -1.0;
+    for (double on : ons) {
+        if (on > firstOn + 1e-9) {
+            nextOn = on;
+            break;
+        }
+    }
+    require(nextOn > firstOn, "fixture must contain a later distinct hit");
+
+    const double expectedOff = nextOn - (1.0 / 16.0);
+    bool foundExpectedOff = false;
+    for (double off : offs) {
+        if (std::abs(off - expectedOff) < 1e-9) {
+            foundExpectedOff = true;
+            break;
+        }
+    }
+    require(foundExpectedOff,
+            "generated note/chord must end exactly one 1/64 note before the next hit");
+}
+
 void testMidiRootSourceTransposesRiff() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
@@ -370,6 +417,7 @@ void testTransportJumpFlushesHeldNotes() {
 } // namespace
 
 int main() {
+    testGeneratedNotesSustainToOne64BeforeNextHit();
     testMidiRootSourceTransposesRiff();
     testManualRootSourceIgnoresMidiRootNotes();
     testTransportStartAtBarTwoBeginsPhraseAtStepZero();

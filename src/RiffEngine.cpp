@@ -546,6 +546,66 @@ Phrase RiffEngine::vary(const Phrase& source,
     if (result.steps[0].noteCount == 0)
         createStepNote(result.steps[0], base, false, true, true, 1, rng);
 
+    auto structurallyDifferent = [](const Step& x, const Step& y) {
+        if (x.noteCount != y.noteCount)
+            return true;
+        if (x.noteCount == 0)
+            return false;
+        return x.notes[0].pitch != y.notes[0].pitch ||
+               x.notes[0].lengthSteps != y.notes[0].lengthSteps ||
+               (x.noteCount > 1) != (y.noteCount > 1);
+    };
+
+    int structuralChanges = 0;
+    for (int i = 0; i < used; ++i)
+        structuralChanges += structurallyDifferent(result.steps[i], source.steps[i]) ? 1 : 0;
+
+    // Mid-range variation must already be clearly audible. Do not merely hope
+    // that random choices produce enough change: enforce a bounded minimum.
+    // 35% on the default 2-bar phrase => 6 structurally changed steps.
+    const int minimumStructuralChanges = std::clamp(
+        static_cast<int>(std::lround(static_cast<double>(used) * (0.08 + 0.30 * a))),
+        1, std::max(1, used - 1));
+
+    for (int pass = 0; structuralChanges < minimumStructuralChanges && pass < used * 2; ++pass) {
+        const int step = (3 + pass * 7) % used;
+        if (step == 0 || structurallyDifferent(result.steps[step], source.steps[step]))
+            continue;
+
+        auto& dst = result.steps[step];
+        const auto& src = source.steps[step];
+        const bool accent = (step % 4) == 0;
+
+        if (src.noteCount == 0) {
+            int degree = 1 + (rng.range(0, std::max(0, scale.count - 2)));
+            degree = std::clamp(degree, 1, std::max(1, scale.count - 1));
+            int pitch = clampMusicalPitch(base + scale.intervals[degree], base);
+            const bool palmMute = rng.chance(s.palmMuteChance);
+            createStepNote(dst, pitch, false, palmMute, accent, palmMute ? 1 : 2, rng);
+        } else {
+            const int oldPitch = src.notes[0].pitch;
+            int pitch = oldPitch;
+            for (int attempt = 0; attempt < scale.count && pitch == oldPitch; ++attempt) {
+                const int degree = (attempt + 1 + (step % std::max(1, scale.count - 1))) % scale.count;
+                pitch = clampMusicalPitch(base + scale.intervals[degree], base);
+            }
+
+            if (pitch != oldPitch) {
+                const bool palmMute = src.notes[0].velocity < 84;
+                const bool powerChord = src.noteCount == 2;
+                createStepNote(dst, pitch, powerChord, palmMute, accent,
+                               src.notes[0].lengthSteps, rng);
+            } else {
+                // Extremely defensive fallback: changing onset is still an
+                // audible structural change and cannot accidentally equal src.
+                dst = {};
+            }
+        }
+
+        if (structurallyDifferent(dst, src))
+            ++structuralChanges;
+    }
+
     sanitizeOverlaps(result);
     return result;
 }
