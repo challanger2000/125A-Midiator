@@ -27,6 +27,12 @@ int main() {
             "UIDesc root element must exist");
     require(xml.find("template name=\"MidiatorView\"") != std::string::npos,
             "MidiatorView template must exist");
+    require(xml.find("<bitmap name=\"BrandLogo\" path=\"125A_Logo.png\"") != std::string::npos,
+            "authoritative 125A branding derivative must be declared");
+    require(xml.find("title=\"MIDIATOR\"") != std::string::npos,
+            "centered MIDIATOR title must exist");
+    require(xml.find("title=\"125A  MIDIATOR\"") == std::string::npos,
+            "125A must not be duplicated in the Midiator title");
 
     for (int tag = 100; tag <= 110; ++tag) {
         const std::string needle = "tag=\"" + std::to_string(tag) + "\"";

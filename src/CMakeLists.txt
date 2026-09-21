@@ -10,6 +10,7 @@ target_link_libraries(Midiator PRIVATE sdk vstgui_support)
 smtg_target_add_plugin_resources(Midiator
     RESOURCES
         resource/midiator.uidesc
+        resource/125A_Logo.png
 )
 
 if(WIN32)
