@@ -120,14 +120,37 @@ bool shouldHit(Rng& rng, const GeneratorSettings& s, int globalStep, int archety
         return true;
 
     const int pos = globalStep % 16;
-    archetype = std::clamp(archetype, 0, 2);
+    archetype = std::clamp(archetype, 0, 5);
 
-    // Three genuine rhythm languages, each with three internal archetypes.
-    // Bit n marks a preferred sixteenth-note onset within one 4/4 bar.
-    static constexpr uint16_t masks[static_cast<int>(StyleId::Count)][3] = {
-        {0x5555u, 0x0D0Du, 0x7575u}, // NDH: stomp / stop-start / machine drive
-        {0x1111u, 0x2449u, 0x5151u}, // Dark Rock: quarters / melodic gaps / broad eighths
-        {0xCCCCu, 0x9CC7u, 0x4B19u}  // Heavy Industrial: sync / stutter / broken accents
+    // Three genuine rhythm languages, each with six deliberately different
+    // riff families. Bit n marks a preferred sixteenth-note onset in one bar.
+    // NEW RIFF can therefore move between genuinely different groove skeletons
+    // without changing the selected style.
+    static constexpr uint16_t masks[static_cast<int>(StyleId::Count)][6] = {
+        {
+            0x5555u, // straight eighth-note machine
+            0x0D0Du, // stop/start blocks
+            0x7575u, // dense stomp with gaps
+            0x4515u, // sparse verse-like pedal pattern
+            0xD145u, // back-half push / answer
+            0x1711u  // quarter anchor with late drive
+        },
+        {
+            0x1111u, // broad quarter-note pulse
+            0x2449u, // open melodic gaps
+            0x5151u, // wide eighth-note frame
+            0x1485u, // delayed dark-rock answer
+            0x4129u, // asymmetrical melodic pulse
+            0x1053u  // long spaces with clustered response
+        },
+        {
+            0xCCCCu, // displaced syncopation
+            0x9CC7u, // stutter blocks
+            0x4B19u, // broken accents
+            0xB24Du, // alternating late-sixteenth attacks
+            0x69C3u, // split-beat machine pattern
+            0xC937u  // dense attack / release contrast
+        }
     };
 
     const int styleIndex = std::clamp(static_cast<int>(s.style), 0,
@@ -274,7 +297,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
     result.bars = s.bars;
 
     Rng rng(seed);
-    const int rhythmArchetype = rng.range(0, 2);
+    const int rhythmArchetype = rng.range(0, 5);
     const auto& scale = scaleDefinition(s.scale);
     const int base = rootBaseForPitchClass(s.rootPitchClass, s.lowRootMidi);
 

@@ -206,8 +206,68 @@ void testNewRiffChangesRhythmMask() {
 
     const double jaccard = static_cast<double>(intersection) /
                            static_cast<double>(unionCount);
-    require(jaccard <= 0.68,
-            "NEW RIFF must create a clearly different onset/rest rhythm mask");
+    require(jaccard <= 0.52,
+            "NEW RIFF must create a strongly different onset/rest rhythm mask");
+}
+
+void testRepeatedNewRiffStaysDistinct() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "processor must start");
+
+    auto capture = [&](double startQn) {
+        auto context = makeContext(startQn, true);
+        EventList output;
+        auto data = makeProcessData(context, output, 192000);
+        require(processor.process(data) == kResultOk, "repeated NEW capture must succeed");
+        std::array<bool, 32> hits{};
+        for (const auto& e : output.events) {
+            if (e.type != Event::kNoteOnEvent)
+                continue;
+            const int step = static_cast<int>(std::lround((e.ppqPosition - startQn) / 0.25));
+            if (step >= 0 && step < 32)
+                hits[static_cast<size_t>(step)] = true;
+        }
+        return hits;
+    };
+
+    auto previous = capture(0.0);
+    double totalJaccard = 0.0;
+
+    for (int round = 0; round < 6; ++round) {
+        ParameterChanges changes;
+        int32 queueIndex = 0;
+        auto* q = changes.addParameterData(kNewRiffId, queueIndex);
+        int32 pointIndex = 0;
+        require(q && q->addPoint(0, 1.0, pointIndex) == kResultOk &&
+                    q->addPoint(1, 0.0, pointIndex) == kResultOk,
+                "repeated NEW RIFF trigger must be accepted");
+
+        auto stopped = makeContext(8.0 + round * 8.0, false);
+        EventList stoppedOutput;
+        auto stoppedData = makeProcessData(stopped, stoppedOutput, 64, &changes);
+        require(processor.process(stoppedData) == kResultOk,
+                "repeated NEW RIFF stop block must succeed");
+
+        const double nextStart = 16.0 + round * 8.0;
+        auto current = capture(nextStart);
+
+        int intersection = 0;
+        int unionCount = 0;
+        for (size_t i = 0; i < previous.size(); ++i) {
+            if (previous[i] || current[i]) ++unionCount;
+            if (previous[i] && current[i]) ++intersection;
+        }
+        require(unionCount > 0, "repeated NEW comparison needs active onsets");
+        const double jaccard = static_cast<double>(intersection) /
+                               static_cast<double>(unionCount);
+        require(jaccard <= 0.55,
+                "every consecutive NEW RIFF must move to a clearly different groove");
+        totalJaccard += jaccard;
+        previous = current;
+    }
+
+    require(totalJaccard / 6.0 <= 0.48,
+            "successive NEW RIFF clicks must have low average rhythm overlap");
 }
 
 void testGeneratedNotesSustainToOne64BeforeNextHit() {
@@ -477,6 +537,7 @@ void testTransportJumpFlushesHeldNotes() {
 
 int main() {
     testNewRiffChangesRhythmMask();
+    testRepeatedNewRiffStaysDistinct();
     testGeneratedNotesSustainToOne64BeforeNextHit();
     testMidiRootSourceTransposesRiff();
     testManualRootSourceIgnoresMidiRootNotes();

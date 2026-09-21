@@ -332,7 +332,7 @@ void MidiatorProcessor::generateNew() {
     double bestOnsetJaccard = 2.0;
     int bestStructuralDifference = -1;
 
-    for (int attempt = 0; attempt < 16; ++attempt) {
+    for (int attempt = 0; attempt < 32; ++attempt) {
         seed_ = nextSeed(seed_);
         candidate = midiator::RiffEngine::generate(settings_, seed_);
 
@@ -354,7 +354,7 @@ void MidiatorProcessor::generateNew() {
             bestStructuralDifference = difference;
         }
 
-        if (difference >= requiredDifference && jaccard <= 0.68)
+        if (difference >= requiredDifference && jaccard <= 0.48)
             break;
     }
 
