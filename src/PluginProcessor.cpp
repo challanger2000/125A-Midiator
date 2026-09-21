@@ -114,6 +114,8 @@ tresult PLUGIN_API MidiatorProcessor::setActive(TBool state) {
         wasPlaying_ = false;
         haveExpectedProjectTime_ = false;
         expectedProjectTimeQn_ = 0.0;
+        haveTransportAnchor_ = false;
+        transportAnchorQn_ = 0.0;
         phraseChangedNeedsFlush_ = false;
     }
     return AudioEffect::setActive(state);
@@ -127,6 +129,8 @@ tresult PLUGIN_API MidiatorProcessor::setProcessing(TBool state) {
     wasPlaying_ = false;
     haveExpectedProjectTime_ = false;
     expectedProjectTimeQn_ = 0.0;
+    haveTransportAnchor_ = false;
+    transportAnchorQn_ = 0.0;
     phraseChangedNeedsFlush_ = false;
     return kResultOk;
 }
@@ -226,6 +230,8 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     wasPlaying_ = false;
     haveExpectedProjectTime_ = false;
     expectedProjectTimeQn_ = 0.0;
+    haveTransportAnchor_ = false;
+    transportAnchorQn_ = 0.0;
     return kResultOk;
 }
 
@@ -389,6 +395,8 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
             flushActiveNotes(data.outputEvents, currentPpq);
         wasPlaying_ = playing;
         haveExpectedProjectTime_ = false;
+        haveTransportAnchor_ = false;
+        transportAnchorQn_ = 0.0;
         return kResultOk;
     }
 
@@ -400,10 +408,20 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     const double blockStartQn = context->projectTimeMusic;
     const double blockEndQn = blockStartQn + static_cast<double>(data.numSamples) * qnPerSample;
 
+    bool timelineJump = false;
     if (wasPlaying_ && haveExpectedProjectTime_) {
         const double tolerance = std::max(1e-6, qnPerSample * 4.0);
-        if (std::abs(blockStartQn - expectedProjectTimeQn_) > tolerance)
+        timelineJump = std::abs(blockStartQn - expectedProjectTimeQn_) > tolerance;
+        if (timelineJump)
             flushActiveNotes(data.outputEvents, blockStartQn);
+    }
+
+    // The first valid playing block defines phrase step 0, regardless of the
+    // host's absolute song position. This lets a project whose real musical
+    // start is bar 2, bar 17, etc. start Midiator from the beginning there.
+    if (!wasPlaying_ || !haveTransportAnchor_ || timelineJump) {
+        transportAnchorQn_ = blockStartQn;
+        haveTransportAnchor_ = true;
     }
 
     wasPlaying_ = true;
@@ -437,11 +455,13 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         scheduled[scheduledCount++] = e;
     };
 
-    const long long firstCycle = static_cast<long long>(std::floor(blockStartQn / patternLengthQn)) - 1;
-    const long long lastCycle = static_cast<long long>(std::floor(blockEndQn / patternLengthQn)) + 1;
+    const double localBlockStartQn = blockStartQn - transportAnchorQn_;
+    const double localBlockEndQn = blockEndQn - transportAnchorQn_;
+    const long long firstCycle = static_cast<long long>(std::floor(localBlockStartQn / patternLengthQn)) - 1;
+    const long long lastCycle = static_cast<long long>(std::floor(localBlockEndQn / patternLengthQn)) + 1;
 
     for (long long cycle = firstCycle; cycle <= lastCycle; ++cycle) {
-        const double cycleStartQn = static_cast<double>(cycle) * patternLengthQn;
+        const double cycleStartQn = transportAnchorQn_ + static_cast<double>(cycle) * patternLengthQn;
 
         for (int stepIndex = 0; stepIndex < phrase_.usedSteps(); ++stepIndex) {
             const auto& step = phrase_.steps[stepIndex];

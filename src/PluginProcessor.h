@@ -82,6 +82,8 @@ private:
     bool wasPlaying_ = false;
     bool haveExpectedProjectTime_ = false;
     double expectedProjectTimeQn_ = 0.0;
+    bool haveTransportAnchor_ = false;
+    double transportAnchorQn_ = 0.0;
     std::array<bool, 128> activePitches_{};
 
     RisingEdgeTrigger newRiffTrigger_{};

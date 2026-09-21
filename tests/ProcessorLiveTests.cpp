@@ -149,6 +149,31 @@ ProcessData makeProcessData(ProcessContext& context,
     return data;
 }
 
+void testTransportStartAtBarTwoBeginsPhraseAtStepZero() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "processor must start");
+
+    // In 4/4, bar 2 begins at QN 4 when the host timeline starts at QN 0.
+    auto context = makeContext(4.0, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 100);
+
+    require(processor.process(data) == kResultOk,
+            "bar-2 transport-start process call must succeed");
+    require(containsType(output, Event::kNoteOnEvent),
+            "starting playback at bar 2 must emit phrase step 0 immediately");
+
+    bool foundAnchoredDownbeat = false;
+    for (const auto& event : output.events) {
+        if (event.type == Event::kNoteOnEvent && std::abs(event.ppqPosition - 4.0) < 1e-9) {
+            foundAnchoredDownbeat = true;
+            break;
+        }
+    }
+    require(foundAnchoredDownbeat,
+            "phrase step 0 must be anchored exactly to the bar-2 play position");
+}
+
 void testLiveDownbeatAndStopFlush() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
@@ -264,6 +289,7 @@ void testTransportJumpFlushesHeldNotes() {
 } // namespace
 
 int main() {
+    testTransportStartAtBarTwoBeginsPhraseAtStepZero();
     testLiveDownbeatAndStopFlush();
     testNewRiffFlushesHeldNotes();
     testVariationPressReleaseFlushesHeldNotes();
