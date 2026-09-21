@@ -199,8 +199,9 @@ bool shouldHit(Rng& rng, const GeneratorSettings& s, int globalStep, int archety
 
 int velocityFor(Rng& rng, bool palmMute, bool accent) {
     if (palmMute) {
-        // Intentionally below the open-note zone. Never use 127.
-        return rng.range(accent ? 54 : 42, accent ? 72 : 62);
+        // Keep normal palm mutes in a conservative low-velocity guitar zone.
+        // Velocity 0/1 stays free for dead/chuck/noise articulations.
+        return rng.range(accent ? 34 : 30, accent ? 40 : 36);
     }
 
     return rng.range(accent ? 104 : 88, accent ? 120 : 106);
@@ -224,7 +225,7 @@ void createStepNote(Step& step,
         if (step.notes[0].velocity >= 88)
             secondVelocity = std::max(88, secondVelocity);
         else
-            secondVelocity = std::clamp(secondVelocity, 1, 72);
+            secondVelocity = std::clamp(secondVelocity, 30, 40);
 
         step.notes[1] = {pitch + 7, secondVelocity, lengthSteps};
     }
@@ -595,7 +596,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
                 step.notes[1] = step.notes[0];
                 step.notes[1].pitch = step.notes[0].pitch + 7;
                 step.notes[1].velocity = std::max(
-                    step.notes[0].velocity >= 88 ? 88 : 1,
+                    step.notes[0].velocity >= 88 ? 88 : 30,
                     step.notes[0].velocity - 3);
                 ++existingChords;
             }

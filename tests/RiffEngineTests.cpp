@@ -270,7 +270,7 @@ void testVelocityZonesRemainSeparated() {
     s.bars = 8;
     s.palmMuteChance = 0.75f;
 
-    int lowZone = 0;
+    int muteZone = 0;
     int highZone = 0;
 
     for (unsigned seed = 1; seed <= 128; ++seed) {
@@ -281,15 +281,18 @@ void testVelocityZonesRemainSeparated() {
             for (int n = 0; n < step.noteCount; ++n) {
                 const int v = step.notes[n].velocity;
                 require(v >= 1 && v <= 126, "generated velocity must stay in safe MIDI range");
-                require(!(v >= 73 && v <= 87),
-                        "V1 should keep a visible gap between mute-like and open-like velocity zones");
-                if (v <= 72) ++lowZone;
+                require(!(v >= 41 && v <= 87),
+                        "V1 should keep a visible gap between palm-mute and open-note velocity zones");
+                if (v < 88)
+                    require(v >= 30 && v <= 40,
+                            "normal palm mutes must stay between velocity 30 and 40");
+                if (v <= 40) ++muteZone;
                 if (v >= 88) ++highZone;
             }
         }
     }
 
-    require(lowZone > 0, "generator must produce mute-like velocity notes");
+    require(muteZone > 0, "generator must produce mute-like velocity notes");
     require(highZone > 0, "generator must produce open/sustain-like velocity notes");
 }
 
