@@ -111,6 +111,17 @@ tresult PLUGIN_API MidiatorProcessor::setActive(TBool state) {
     return AudioEffect::setActive(state);
 }
 
+tresult PLUGIN_API MidiatorProcessor::setProcessing(TBool state) {
+    // Midiator has no audio DSP resources to start/stop, but hosts and
+    // stress-testers legitimately expect the VST3 processing transition
+    // to be implemented instead of inheriting kNotImplemented.
+    activePitches_.fill(false);
+    wasPlaying_ = false;
+    haveExpectedProjectTime_ = false;
+    expectedProjectTimeQn_ = 0.0;
+    return kResultOk;
+}
+
 tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
     if (!state)
         return kInvalidArgument;
@@ -545,8 +556,11 @@ tresult PLUGIN_API MidiatorController::setParamNormalized(ParamID tag, ParamValu
 
 IPlugView* PLUGIN_API MidiatorController::createView(FIDString name) {
     if (name && std::strcmp(name, ViewType::kEditor) == 0) {
-        auto* editor = new VSTGUI::VST3Editor(this, "MidiatorView", "midiator.uidesc");
+        auto* editor = new VSTGUI::AspectRatioVST3Editor(
+            this, "MidiatorView", "midiator.uidesc");
         editor->setDelegate(this);
+        editor->setMinZoomFactor(0.75);
+        editor->setAllowedZoomFactors({0.75, 1.0, 1.25, 1.5, 2.0});
         return editor;
     }
     return nullptr;
@@ -571,6 +585,16 @@ VSTGUI::CView* MidiatorController::verifyView(VSTGUI::CView* view,
 
     refreshTheory();
     return view;
+}
+
+void MidiatorController::willClose(VSTGUI::VST3Editor*) {
+    // verifyView stores raw pointers into the editor's view hierarchy.
+    // They become invalid as soon as the editor closes. Clearing them here
+    // prevents a second editor instance from touching freed views.
+    theoryKey_ = nullptr;
+    theoryNotes_ = nullptr;
+    theoryCharacter_ = nullptr;
+    theoryInterval_ = nullptr;
 }
 
 void MidiatorController::refreshTheory() noexcept {

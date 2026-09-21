@@ -124,6 +124,11 @@ private:
 int main() {
     MidiatorProcessor original;
 
+    require(original.setProcessing(true) == kResultOk,
+            "setProcessing(true) must be implemented");
+    require(original.setProcessing(false) == kResultOk,
+            "setProcessing(false) must be implemented");
+
     MemoryStream first;
     require(original.getState(&first) == kResultOk,
             "processor must serialize its complete state");
