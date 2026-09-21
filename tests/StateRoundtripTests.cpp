@@ -13,6 +13,11 @@
 using namespace Steinberg;
 using namespace Steinberg::Vst;
 
+// Steinberg SDK's Windows support library expects the module handle symbol
+// normally provided by dllmain.cpp in a VST3 module. The state test is a
+// console executable, so a null stub is sufficient.
+void* moduleHandle = nullptr;
+
 namespace {
 
 void require(bool condition, const char* message) {
