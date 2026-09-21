@@ -210,6 +210,43 @@ void testNewRiffChangesRhythmMask() {
             "NEW RIFF must create a strongly different onset/rest rhythm mask");
 }
 
+void testNewRiffRestartsPhraseAtStepZeroWhilePlaying() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "processor must start");
+
+    // Establish a running transport and advance into the middle of the phrase.
+    auto firstContext = makeContext(0.0, true);
+    EventList firstOut;
+    auto firstData = makeProcessData(firstContext, firstOut, 96000); // 4 QN
+    require(processor.process(firstData) == kResultOk,
+            "initial running block must succeed");
+
+    ParameterChanges changes;
+    int32 queueIndex = 0;
+    auto* q = changes.addParameterData(kNewRiffId, queueIndex);
+    int32 pointIndex = 0;
+    require(q && q->addPoint(0, 1.0, pointIndex) == kResultOk &&
+                q->addPoint(1, 0.0, pointIndex) == kResultOk,
+            "running NEW RIFF trigger must be accepted");
+
+    // Continue playback at QN 4: without re-anchoring this would be phrase step 16.
+    auto secondContext = makeContext(4.0, true);
+    EventList secondOut;
+    auto secondData = makeProcessData(secondContext, secondOut, 512, &changes);
+    require(processor.process(secondData) == kResultOk,
+            "running NEW RIFF process block must succeed");
+
+    bool foundImmediateDownbeat = false;
+    for (const auto& e : secondOut.events) {
+        if (e.type == Event::kNoteOnEvent && std::abs(e.ppqPosition - 4.0) < 1e-9) {
+            foundImmediateDownbeat = true;
+            break;
+        }
+    }
+    require(foundImmediateDownbeat,
+            "NEW RIFF while playing must restart the new phrase at step zero immediately");
+}
+
 void testRepeatedNewRiffStaysDistinct() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
@@ -605,6 +642,7 @@ void testTransportJumpFlushesHeldNotes() {
 
 int main() {
     testNewRiffChangesRhythmMask();
+    testNewRiffRestartsPhraseAtStepZeroWhilePlaying();
     testRepeatedNewRiffStaysDistinct();
     testBarsResizePreservesExistingRiff();
     testGeneratedNotesSustainToOne64BeforeNextHit();

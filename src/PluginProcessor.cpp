@@ -379,6 +379,12 @@ void MidiatorProcessor::generateNew() {
 
     phrase_ = bestCandidate;
     phraseChangedNeedsFlush_ = true;
+
+    // NEW RIFF is a new musical idea, so start that idea from phrase step 0
+    // even if the user presses the button while transport is already running.
+    // VARIATION intentionally keeps the current phase instead.
+    haveTransportAnchor_ = false;
+    haveExpectedProjectTime_ = false;
 }
 void MidiatorProcessor::generateVariation() {
     seed_ = nextSeed(seed_);
