@@ -88,6 +88,13 @@ int normalizedIndex(ParamValue v, int count) {
 
 MidiatorProcessor::MidiatorProcessor() {
     setControllerClass(ControllerUID);
+
+    // The sequencer depends on musical timeline position, tempo and
+    // transport play/stop state for sample-accurate event scheduling.
+    processContextRequirements.needProjectTimeMusic()
+                              .needTempo()
+                              .needTransportState();
+
     generateNew();
 }
 

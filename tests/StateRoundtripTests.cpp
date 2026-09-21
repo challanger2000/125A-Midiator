@@ -129,6 +129,14 @@ int main() {
     require(original.setProcessing(false) == kResultOk,
             "setProcessing(false) must be implemented");
 
+    const auto contextFlags = original.getProcessContextRequirements();
+    require((contextFlags & IProcessContextRequirements::kNeedProjectTimeMusic) != 0,
+            "process context requirements must request musical project time");
+    require((contextFlags & IProcessContextRequirements::kNeedTempo) != 0,
+            "process context requirements must request tempo");
+    require((contextFlags & IProcessContextRequirements::kNeedTransportState) != 0,
+            "process context requirements must request transport state");
+
     MemoryStream first;
     require(original.getState(&first) == kResultOk,
             "processor must serialize its complete state");
