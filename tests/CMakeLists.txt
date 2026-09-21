@@ -30,3 +30,14 @@ target_compile_definitions(MidiatorUIContractTests PRIVATE
     MIDIATOR_UIDESC_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../src/resource/midiator.uidesc"
 )
 add_test(NAME MidiatorUIContractTests COMMAND MidiatorUIContractTests)
+
+add_executable(MidiatorStateRoundtripTests
+    StateRoundtripTests.cpp
+    ../src/PluginProcessor.cpp
+    ../src/RiffEngine.cpp
+)
+
+target_include_directories(MidiatorStateRoundtripTests PRIVATE ../src)
+target_compile_definitions(MidiatorStateRoundtripTests PRIVATE MIDIATOR_NO_FACTORY=1)
+target_link_libraries(MidiatorStateRoundtripTests PRIVATE sdk vstgui_support)
+add_test(NAME MidiatorStateRoundtripTests COMMAND MidiatorStateRoundtripTests)

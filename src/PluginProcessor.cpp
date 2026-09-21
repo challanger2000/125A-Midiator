@@ -603,6 +603,7 @@ void MidiatorController::refreshTheory() noexcept {
 using namespace Steinberg;
 using namespace Steinberg::Vst;
 
+#ifndef MIDIATOR_NO_FACTORY
 BEGIN_FACTORY_DEF("125A", "https://github.com/challanger2000/125A-Midiator", "")
 DEF_CLASS2(INLINE_UID_FROM_FUID(ProcessorUID), PClassInfo::kManyInstances, kVstAudioEffectClass,
            "125A Midiator", Vst::kDistributable, Vst::PlugType::kInstrumentSynth,
@@ -611,3 +612,4 @@ DEF_CLASS2(INLINE_UID_FROM_FUID(ControllerUID), PClassInfo::kManyInstances, kVst
            "125A Midiator Controller", 0, "", "0.1.0", kVstVersionString,
            MidiatorController::createInstance)
 END_FACTORY
+#endif
