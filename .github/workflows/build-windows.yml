@@ -40,7 +40,7 @@ jobs:
 
       - name: Build Midiator and tests
         shell: pwsh
-        run: cmake --build build --config Release --target Midiator MidiatorCoreTests MidiatorMeasure --parallel
+        run: cmake --build build --config Release --target Midiator MidiatorCoreTests MidiatorMeasure MidiatorTriggerTests MidiatorUIContractTests --parallel
 
       - name: Run core tests
         shell: pwsh
