@@ -273,20 +273,14 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
             case kVariationAmountId:
                 variationAmount_ = static_cast<float>(v);
                 break;
-            case kNewRiffId: {
-                const bool rising = v >= 0.5 && lastNewRiffValue_ < 0.5;
-                lastNewRiffValue_ = v;
-                if (rising)
+            case kNewRiffId:
+                if (newRiffTrigger_.update(v))
                     generateNew();
                 break;
-            }
-            case kVariationId: {
-                const bool rising = v >= 0.5 && lastVariationValue_ < 0.5;
-                lastVariationValue_ = v;
-                if (rising)
+            case kVariationId:
+                if (variationTrigger_.update(v))
                     generateVariation();
                 break;
-            }
             default:
                 break;
         }
