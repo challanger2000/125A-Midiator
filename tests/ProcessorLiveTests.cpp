@@ -151,6 +151,65 @@ ProcessData makeProcessData(ProcessContext& context,
     return data;
 }
 
+void testNewRiffChangesRhythmMask() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "processor must start");
+
+    auto captureOnsets = [&](double startQn, IParameterChanges* changes) {
+        auto context = makeContext(startQn, true);
+        EventList output;
+        auto data = makeProcessData(context, output, 192000, changes); // 8 QN at 120 BPM
+        require(processor.process(data) == kResultOk, "full-phrase capture must succeed");
+
+        std::array<bool, 32> hits{};
+        for (const auto& event : output.events) {
+            if (event.type != Event::kNoteOnEvent)
+                continue;
+            const double localQn = event.ppqPosition - startQn;
+            const int step = static_cast<int>(std::lround(localQn / 0.25));
+            if (step >= 0 && step < 32)
+                hits[static_cast<size_t>(step)] = true;
+        }
+        return hits;
+    };
+
+    const auto first = captureOnsets(0.0, nullptr);
+
+    ParameterChanges changes;
+    int32 queueIndex = 0;
+    auto* queue = changes.addParameterData(kNewRiffId, queueIndex);
+    require(queue != nullptr, "NEW RIFF queue must be created");
+    int32 pointIndex = 0;
+    require(queue->addPoint(0, 1.0, pointIndex) == kResultOk,
+            "NEW RIFF press must be accepted");
+    require(queue->addPoint(1, 0.0, pointIndex) == kResultOk,
+            "NEW RIFF release must be accepted");
+
+    // Start a new transport phase so the complete replacement riff is captured
+    // from step zero rather than from the middle of an old phrase.
+    auto stopped = makeContext(8.0, false);
+    EventList stoppedOutput;
+    auto stoppedData = makeProcessData(stopped, stoppedOutput, 64, &changes);
+    require(processor.process(stoppedData) == kResultOk, "NEW RIFF stop block must succeed");
+
+    const auto second = captureOnsets(8.0, nullptr);
+
+    int intersection = 0;
+    int unionCount = 0;
+    for (size_t i = 0; i < first.size(); ++i) {
+        if (first[i] || second[i])
+            ++unionCount;
+        if (first[i] && second[i])
+            ++intersection;
+    }
+    require(unionCount > 0, "NEW RIFF rhythm comparison needs active onsets");
+
+    const double jaccard = static_cast<double>(intersection) /
+                           static_cast<double>(unionCount);
+    require(jaccard <= 0.68,
+            "NEW RIFF must create a clearly different onset/rest rhythm mask");
+}
+
 void testGeneratedNotesSustainToOne64BeforeNextHit() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
@@ -417,6 +476,7 @@ void testTransportJumpFlushesHeldNotes() {
 } // namespace
 
 int main() {
+    testNewRiffChangesRhythmMask();
     testGeneratedNotesSustainToOne64BeforeNextHit();
     testMidiRootSourceTransposesRiff();
     testManualRootSourceIgnoresMidiRootNotes();

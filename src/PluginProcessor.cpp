@@ -288,25 +288,67 @@ void MidiatorProcessor::generateNew() {
         return different;
     };
 
+    auto onsetJaccard = [](const midiator::Phrase& a, const midiator::Phrase& b) {
+        const int used = std::min(a.usedSteps(), b.usedSteps());
+        int intersection = 0;
+        int unionCount = 0;
+
+        for (int i = 0; i < used; ++i) {
+            const bool hitA = a.steps[i].noteCount > 0;
+            const bool hitB = b.steps[i].noteCount > 0;
+            if (hitA || hitB)
+                ++unionCount;
+            if (hitA && hitB)
+                ++intersection;
+        }
+
+        if (unionCount == 0)
+            return 1.0;
+        return static_cast<double>(intersection) / static_cast<double>(unionCount);
+    };
+
     midiator::Phrase candidate{};
     const bool havePrevious = previous.usedSteps() > 0;
     const int requiredDifference = havePrevious
-        ? std::max(4, previous.usedSteps() / 4)
+        ? std::max(6, previous.usedSteps() / 3)
         : 0;
 
-    // Bounded retries keep NEW RIFF genuinely new without allocation or
-    // unbounded work on the realtime thread.
-    for (int attempt = 0; attempt < 8; ++attempt) {
+    // NEW RIFF must sound like a genuinely new groove, not merely a pitch
+    // variation. Keep the structurally valid candidate with the lowest onset
+    // overlap and accept immediately once both distance requirements are met.
+    midiator::Phrase bestCandidate{};
+    double bestOnsetJaccard = 2.0;
+    int bestStructuralDifference = -1;
+
+    for (int attempt = 0; attempt < 16; ++attempt) {
         seed_ = nextSeed(seed_);
         candidate = midiator::RiffEngine::generate(settings_, seed_);
-        if (!havePrevious || structuralDifference(previous, candidate) >= requiredDifference)
+
+        if (!havePrevious) {
+            bestCandidate = candidate;
+            bestStructuralDifference = candidate.usedSteps();
+            bestOnsetJaccard = 0.0;
+            break;
+        }
+
+        const int difference = structuralDifference(previous, candidate);
+        const double jaccard = onsetJaccard(previous, candidate);
+
+        if (jaccard < bestOnsetJaccard ||
+            (std::abs(jaccard - bestOnsetJaccard) < 1e-9 &&
+             difference > bestStructuralDifference)) {
+            bestCandidate = candidate;
+            bestOnsetJaccard = jaccard;
+            bestStructuralDifference = difference;
+        }
+
+        if (difference >= requiredDifference && jaccard <= 0.68)
             break;
     }
 
-    phrase_ = candidate;
+    phrase_ = bestCandidate;
     phraseChangedNeedsFlush_ = true;
 }
-
 void MidiatorProcessor::generateVariation() {
     seed_ = nextSeed(seed_);
     phrase_ = midiator::RiffEngine::vary(phrase_, settings_, variationAmount_, seed_);
