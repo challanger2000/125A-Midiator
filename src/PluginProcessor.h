@@ -60,6 +60,7 @@ public:
     tresult PLUGIN_API initialize(FUnknown* context) SMTG_OVERRIDE;
     tresult PLUGIN_API setActive(TBool state) SMTG_OVERRIDE;
     tresult PLUGIN_API setProcessing(TBool state) SMTG_OVERRIDE;
+    tresult PLUGIN_API canProcessSampleSize(int32 symbolicSampleSize) SMTG_OVERRIDE;
     tresult PLUGIN_API getState(IBStream* state) SMTG_OVERRIDE;
     tresult PLUGIN_API setState(IBStream* state) SMTG_OVERRIDE;
     tresult PLUGIN_API process(ProcessData& data) SMTG_OVERRIDE;
@@ -67,6 +68,7 @@ public:
 private:
     struct ScheduledEvent {
         int32 sampleOffset = 0;
+        double ppqPosition = 0.0;
         bool noteOn = false;
         int pitch = 0;
         int velocity = 0;
@@ -90,7 +92,7 @@ private:
     void generateNew();
     void generateVariation();
     void applyParameterChanges(ProcessData& data);
-    void flushActiveNotes(IEventList* output);
+    void flushActiveNotes(IEventList* output, double ppqPosition = 0.0);
 };
 
 class MidiatorController final : public EditControllerEx1,

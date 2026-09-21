@@ -5,6 +5,7 @@
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
 
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <utility>
@@ -164,6 +165,8 @@ void testLiveDownbeatAndStopFlush() {
         if (event.type == Event::kNoteOnEvent) {
             require(event.noteOn.velocity > 0.0f && event.noteOn.velocity < 1.0f,
                     "generated NoteOn velocity must remain below MIDI 127");
+            require(std::abs(event.ppqPosition) < 1e-9,
+                    "downbeat output event must carry the correct PPQ position");
         }
     }
 

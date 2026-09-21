@@ -129,6 +129,11 @@ int main() {
     require(original.setProcessing(false) == kResultOk,
             "setProcessing(false) must be implemented");
 
+    require(original.canProcessSampleSize(kSample32) == kResultTrue,
+            "32-bit sample mode must be supported");
+    require(original.canProcessSampleSize(kSample64) == kResultTrue,
+            "64-bit sample mode must be supported by this MIDI-only processor");
+
     const auto contextFlags = original.getProcessContextRequirements();
     require((contextFlags & IProcessContextRequirements::kNeedProjectTimeMusic) != 0,
             "process context requirements must request musical project time");

@@ -1,82 +1,35 @@
 # 125A Midiator
 
-**125A Midiator** is a VST3 MIDI riff generator and mutation tool for heavy guitar workflows.
+**125A Midiator** is a VST3 MIDI riff generator and theory helper for heavy guitar workflows.
 
-## Project goal
+## Purpose
 
-Midiator is intended to generate and transform convincing guitar-oriented MIDI riffs directly inside the DAW.
+Midiator generates musically structured guitar-oriented MIDI riffs directly inside the DAW. It is designed as an idea source and theory aid, not as an automatic finished-performance system: generated MIDI can be recorded, edited and arranged freely in the host.
 
-The focus is not on random note generation. The generator should create musically coherent riffs by combining rhythm, repetition, variation, scale knowledge, guitar-oriented pitch movement and controlled randomness.
+The V1 scope is deliberately narrow: **guitar-focused, MIDI-only, 4/4**.
 
-The first version is deliberately narrow: **guitar only, MIDI only, 4/4 only**.
+## Implemented V1 scope
 
-## V1 scope
-
-- VST3 MIDI plugin
-- 4/4 time signature
-- 1-4 bar phrases
-- DAW tempo / transport sync
+- VST3 MIDI/event processor with MIDI In and MIDI Out
+- 4/4 with an internal 16th-note grid
+- phrase lengths: 1, 2, 4 or 8 bars
+- DAW tempo, musical timeline and transport synchronization
 - selectable root note
-- selectable scale / mode
-- guitar-oriented riff generation
-- direct MIDI output to external VST instruments
-- Generate mode
-- Mutate mode
-- Lockable phrase areas / steps
-- deterministic regeneration when desired
-- project-state persistence
-- no internal audio engine
-- no samples
-- no amp / cab processing
+- selectable scale/mode
+- NEW RIFF for a completely new phrase inside the current tonal frame
+- VARIATION for controlled mutation while preserving root, scale and phrase length
+- Density, Complexity, Repetition, Power Chords, Palm Mute and Variation Amount controls
+- explicit MIDI power chords as root + perfect fifth
+- velocity-oriented articulation shaping
+- automatic velocity generation limited to 1–126; velocity 127 is intentionally reserved
+- deterministic phrase generation
+- complete generated phrase stored in project state
+- live MIDI output to external VST instruments
+- resizable VSTGUI interface
+- theory display for scale notes, tonal character and characteristic interval
+- no internal audio engine, samples, amp or cab processing
 
-## Musical design principles
-
-Midiator must not behave like a simple random MIDI generator.
-
-Generation should be hierarchical:
-
-1. rhythm / groove
-2. phrase structure
-3. repetition and variation
-4. pitch movement
-5. scale / mode constraints
-6. controlled chromatic notes
-7. optional humanization
-
-The riff should remain recognizable as a phrase instead of becoming a stream of unrelated notes.
-
-### Guitar-oriented behavior
-
-The engine should be able to favor structures such as:
-
-- pedal-note / chug riffs
-- repeated-note motifs
-- syncopation
-- rests and gaps
-- semitone tension
-- fourths and fifths
-- tritone movement
-- octave movement
-- call-and-response phrases
-- motif repetition with controlled mutation
-
-Playability and usable register must be considered. Guitar-specific articulation / keyswitch support can be added later as an instrument-profile layer.
-
-## Theory / learning layer
-
-The UI should not only expose scale names. It should also show useful musical information, for example:
-
-- notes contained in the selected scale
-- characteristic intervals
-- short tonal description
-- suitable use cases
-- quick audition of scales / modes
-
-This makes Midiator useful as both an idea generator and a practical theory aid.
-
-## Initial scale candidates
-
-The exact list is still open, but likely starting points include:
+## Initial scales
 
 - Natural Minor / Aeolian
 - Phrygian
@@ -86,40 +39,59 @@ The exact list is still open, but likely starting points include:
 - Minor Pentatonic
 - Blues
 
-## Architecture principle
+## Musical design
 
-The musical phrase engine and the guitar-specific interpretation should remain separate.
+Generation is hierarchical rather than purely random:
 
-That allows later extensions such as bass, synth or drum-derived MIDI without redesigning the core generator.
+1. rhythm and groove
+2. motif / phrase structure
+3. repetition with controlled development
+4. scale-constrained pitch movement
+5. articulation-oriented velocity shaping
 
-For V1, however, only the guitar layer is in scope.
+The engine favors pedal/chug patterns, repeated motives, syncopation, rests, characteristic scale tones and controlled bar-to-bar development. Four-bar phrases use an A / A' / answer / turnaround concept while retaining a recognizable identity.
 
-## Non-goals for V1
+## Guitar-oriented MIDI
 
-- no internal guitar sound
-- no standalone application
-- no complete song arranger
-- no automatic bass generation
-- no drum generation
-- no synth generation
-- no exotic time signatures
-- no AI / ML dependency required
+Power chords are emitted as two actual MIDI notes: root + perfect fifth. Library-specific one-key chord modes are therefore not required.
 
-## Development priority
+Velocity zones are deliberately separated so mute-like and open-like events remain easy to recognize and edit. Exact articulation thresholds are instrument-specific; Midiator does not claim one library's mapping as a universal standard.
 
-**Musical quality before feature count.**
+## VARIATION contract
 
-A small number of convincing riff engines is preferable to a large number of controls that produce generic or random-sounding results.
+VARIATION may alter notes, rhythm and articulation, but it does **not** silently change:
 
+- root
+- scale/mode
+- phrase length
 
-## Development status
+A separate transpose function may be added in a later version.
 
-Current work happens on the `development` branch.
+## Host and lifecycle safety
 
-The first prototype contains a pure C++ riff engine, live VST3 MIDI output, NEW/VARIATION controls and automated core tests. GUI work is intentionally deferred until the musical and host-integration core is stable.
+The processor explicitly requests the VST3 process context required for musical timeline position, tempo and transport state. Active generated notes are flushed on transport stop, timeline jumps and phrase replacement, and generated note lengths are constrained at the phrase loop boundary.
 
-Current prototype safety checks also prevent same-pitch retrigger overlap and use the proven VST3 MIDI event-bus layout.
+The processor accepts both VST3 32-bit and 64-bit symbolic audio sample modes even though Midiator itself does not process audio buffers.
 
-Current phrase engine now enforces role-aware four-bar development (A / A' / answer / turnaround) while preserving the selected tonal frame.
+## Automated verification
 
-Development measurements now use event-aware phrase similarity (onset Jaccard and shared-onset pitch identity) instead of treating matching rests as musical similarity.
+The development build includes automated checks for:
+
+- deterministic generation
+- 1/2/4/8-bar integrity
+- scale membership
+- velocity safety
+- explicit power-chord fifths
+- same-pitch overlap prevention
+- loop-boundary note safety
+- variation tonal-frame preservation
+- control behavior and statistical musical sanity
+- complete processor state roundtrip
+- NEW RIFF / VARIATION rising-edge behavior
+- same-block button press+release handling
+- live MIDI NoteOn/NoteOff behavior
+- transport-stop and timeline-jump note flushing
+- GUI contract and resizable editor constraints
+- Steinberg VST3 validator
+
+Current development work happens on the `development` branch.

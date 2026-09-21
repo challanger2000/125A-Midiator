@@ -131,6 +131,14 @@ tresult PLUGIN_API MidiatorProcessor::setProcessing(TBool state) {
     return kResultOk;
 }
 
+tresult PLUGIN_API MidiatorProcessor::canProcessSampleSize(int32 symbolicSampleSize) {
+    // Midiator processes only VST3 event data and never dereferences audio
+    // buffers, so both standard host sample formats are equally valid.
+    return (symbolicSampleSize == kSample32 || symbolicSampleSize == kSample64)
+        ? kResultTrue
+        : kResultFalse;
+}
+
 tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
     if (!state)
         return kInvalidArgument;
@@ -334,7 +342,7 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
         generateNew();
 }
 
-void MidiatorProcessor::flushActiveNotes(IEventList* output) {
+void MidiatorProcessor::flushActiveNotes(IEventList* output, double ppqPosition) {
     if (!output)
         return;
 
@@ -345,6 +353,7 @@ void MidiatorProcessor::flushActiveNotes(IEventList* output) {
         Event e{};
         e.busIndex = 0;
         e.sampleOffset = 0;
+        e.ppqPosition = ppqPosition;
         e.type = Event::kNoteOffEvent;
         e.noteOff.channel = 0;
         e.noteOff.pitch = static_cast<int16>(pitch);
@@ -364,19 +373,20 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     if (!data.outputEvents)
         return kResultOk;
 
-    if (phraseChangedNeedsFlush_) {
-        flushActiveNotes(data.outputEvents);
-        phraseChangedNeedsFlush_ = false;
-    }
-
     const auto* context = data.processContext;
     const bool hasTempo = context && (context->state & ProcessContext::kTempoValid) && context->tempo > 0.0;
     const bool hasProjectTime = context && (context->state & ProcessContext::kProjectTimeMusicValid);
     const bool playing = context && (context->state & ProcessContext::kPlaying);
+    const double currentPpq = hasProjectTime ? context->projectTimeMusic : 0.0;
+
+    if (phraseChangedNeedsFlush_) {
+        flushActiveNotes(data.outputEvents, currentPpq);
+        phraseChangedNeedsFlush_ = false;
+    }
 
     if (!playing || !hasTempo || !hasProjectTime || data.numSamples <= 0) {
         if (wasPlaying_)
-            flushActiveNotes(data.outputEvents);
+            flushActiveNotes(data.outputEvents, currentPpq);
         wasPlaying_ = playing;
         haveExpectedProjectTime_ = false;
         return kResultOk;
@@ -393,7 +403,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     if (wasPlaying_ && haveExpectedProjectTime_) {
         const double tolerance = std::max(1e-6, qnPerSample * 4.0);
         if (std::abs(blockStartQn - expectedProjectTimeQn_) > tolerance)
-            flushActiveNotes(data.outputEvents);
+            flushActiveNotes(data.outputEvents, blockStartQn);
     }
 
     wasPlaying_ = true;
@@ -420,6 +430,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
             static_cast<int32>(std::floor(relSamples + 1e-9)),
             0,
             std::max<int32>(0, data.numSamples - 1));
+        e.ppqPosition = eventQn;
         e.noteOn = noteOn;
         e.pitch = std::clamp(pitch, 0, 127);
         e.velocity = std::clamp(velocity, 0, 126);
@@ -463,6 +474,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         Event e{};
         e.busIndex = 0;
         e.sampleOffset = s.sampleOffset;
+        e.ppqPosition = s.ppqPosition;
 
         if (s.noteOn) {
             e.type = Event::kNoteOnEvent;
