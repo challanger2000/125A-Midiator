@@ -318,6 +318,45 @@ void testDefaultVariationIsAudiblyStructural() {
             "default variation must rarely collapse into an almost inaudible change");
 }
 
+void testPowerChordAmountIsReliable() {
+    using midiator::GeneratorSettings;
+    using midiator::RiffEngine;
+    using midiator::StyleId;
+
+    auto countChords = [](const midiator::Phrase& phrase) {
+        int count = 0;
+        for (int i = 0; i < phrase.usedSteps(); ++i)
+            count += phrase.steps[i].noteCount > 1 ? 1 : 0;
+        return count;
+    };
+
+    for (int style = 0; style < static_cast<int>(StyleId::Count); ++style) {
+        GeneratorSettings off{};
+        off.bars = 2;
+        off.style = static_cast<StyleId>(style);
+        off.powerChordChance = 0.0f;
+
+        GeneratorSettings normal = off;
+        normal.powerChordChance = 0.25f;
+
+        GeneratorSettings high = off;
+        high.powerChordChance = 0.80f;
+
+        for (unsigned seed = 1; seed <= 64; ++seed) {
+            const auto none = RiffEngine::generate(off, 150000u + seed);
+            const auto some = RiffEngine::generate(normal, 150000u + seed);
+            const auto many = RiffEngine::generate(high, 150000u + seed);
+
+            require(countChords(none) == 0,
+                    "0 percent Power Chords must generate no dyads");
+            require(countChords(some) >= 1,
+                    "default 25 percent Power Chords must produce at least one dyad");
+            require(countChords(many) >= countChords(some),
+                    "higher Power Chords amount must not produce fewer dyads");
+        }
+    }
+}
+
 void testFastSixteenthBurstsExist() {
     using midiator::GeneratorSettings;
     using midiator::RiffEngine;
@@ -457,6 +496,7 @@ int main() {
     testVariationDistance();
     testVelocityZonesRemainSeparated();
     testDefaultVariationIsAudiblyStructural();
+    testPowerChordAmountIsReliable();
     testFastSixteenthBurstsExist();
     testStyleEnginesHaveDistinctRhythmLanguages();
     testFourBarRoleDevelopment();

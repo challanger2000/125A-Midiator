@@ -350,11 +350,11 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
 
         // Palm-muted power chords are musically valid, so chord generation must
         // not depend on the note being "open".
-        float chordChance = s.powerChordChance * (accent ? 1.0f : 0.30f);
+        float chordChance = s.powerChordChance * (accent ? 1.0f : 0.62f);
         if (s.style == StyleId::DarkRockGothic)
-            chordChance *= 1.35f;
+            chordChance *= 1.15f;
         else if (s.style == StyleId::HeavyIndustrial)
-            chordChance *= 0.72f;
+            chordChance *= 0.90f;
         const bool powerChord = rng.chance(std::clamp(chordChance, 0.0f, 1.0f));
 
         const int length = palmMute
@@ -545,6 +545,58 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
 
                 if (differsFromBase(candidate))
                     ++actualChanges;
+            }
+        }
+    }
+
+    // POWER CHORDS is a user-facing musical amount, not merely a tiny
+    // per-event lottery. After phrase development, make sure the final phrase
+    // contains a representative number of dyads. This also prevents sparse
+    // riffs from accidentally containing no power chords at useful settings.
+    if (s.powerChordChance > 0.0f) {
+        int eligibleHits = 0;
+        int existingChords = 0;
+        for (int i = 0; i < result.usedSteps(); ++i) {
+            const auto& step = result.steps[i];
+            if (step.noteCount <= 0 || step.notes[0].pitch > 120)
+                continue;
+            ++eligibleHits;
+            if (step.noteCount > 1)
+                ++existingChords;
+        }
+
+        float styleFactor = 1.0f;
+        if (s.style == StyleId::DarkRockGothic)
+            styleFactor = 1.10f;
+        else if (s.style == StyleId::HeavyIndustrial)
+            styleFactor = 0.92f;
+
+        int targetChords = static_cast<int>(std::lround(
+            static_cast<float>(eligibleHits) * s.powerChordChance * styleFactor));
+        targetChords = std::clamp(targetChords, 0, eligibleHits);
+        if (s.powerChordChance >= 0.10f && eligibleHits > 0)
+            targetChords = std::max(1, targetChords);
+
+        // Prefer musically strong locations first, then fill other hits.
+        static constexpr int preferredPositions[] = {
+            0, 8, 4, 12, 6, 14, 2, 10, 3, 11, 7, 15, 5, 13, 1, 9
+        };
+
+        for (int bar = 0; bar < result.bars && existingChords < targetChords; ++bar) {
+            for (int local : preferredPositions) {
+                if (existingChords >= targetChords)
+                    break;
+                auto& step = result.steps[bar * kStepsPerBar + local];
+                if (step.noteCount != 1 || step.notes[0].pitch > 120)
+                    continue;
+
+                step.noteCount = 2;
+                step.notes[1] = step.notes[0];
+                step.notes[1].pitch = step.notes[0].pitch + 7;
+                step.notes[1].velocity = std::max(
+                    step.notes[0].velocity >= 88 ? 88 : 1,
+                    step.notes[0].velocity - 3);
+                ++existingChords;
             }
         }
     }
