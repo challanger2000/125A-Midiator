@@ -193,7 +193,9 @@ void testNewRiffFlushesHeldNotes() {
     require(queue != nullptr, "NEW RIFF parameter queue must be created");
     int32 pointIndex = 0;
     require(queue->addPoint(0, 1.0, pointIndex) == kResultOk,
-            "NEW RIFF trigger point must be accepted");
+            "NEW RIFF press point must be accepted");
+    require(queue->addPoint(1, 0.0, pointIndex) == kResultOk,
+            "NEW RIFF release point must be accepted");
 
     auto nextContext = makeContext(100.0 / 24000.0, true);
     EventList changed;
@@ -203,6 +205,37 @@ void testNewRiffFlushesHeldNotes() {
             "NEW RIFF process call must succeed");
     require(containsType(changed, Event::kNoteOffEvent),
             "NEW RIFF while playing must flush notes from the previous phrase");
+}
+
+void testVariationPressReleaseFlushesHeldNotes() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "processor must start");
+
+    auto context = makeContext(0.0, true);
+    EventList first;
+    auto firstData = makeProcessData(context, first, 100);
+    require(processor.process(firstData) == kResultOk, "initial process call must succeed");
+    require(containsType(first, Event::kNoteOnEvent),
+            "fixture must create an active note before VARIATION");
+
+    ParameterChanges changes;
+    int32 queueIndex = 0;
+    auto* queue = changes.addParameterData(kVariationId, queueIndex);
+    require(queue != nullptr, "VARIATION parameter queue must be created");
+    int32 pointIndex = 0;
+    require(queue->addPoint(0, 1.0, pointIndex) == kResultOk,
+            "VARIATION press point must be accepted");
+    require(queue->addPoint(1, 0.0, pointIndex) == kResultOk,
+            "VARIATION release point must be accepted");
+
+    auto nextContext = makeContext(100.0 / 24000.0, true);
+    EventList changed;
+    auto changedData = makeProcessData(nextContext, changed, 100, &changes);
+
+    require(processor.process(changedData) == kResultOk,
+            "VARIATION process call must succeed");
+    require(containsType(changed, Event::kNoteOffEvent),
+            "VARIATION press+release in one block must still flush the previous phrase");
 }
 
 void testTransportJumpFlushesHeldNotes() {
@@ -230,6 +263,7 @@ void testTransportJumpFlushesHeldNotes() {
 int main() {
     testLiveDownbeatAndStopFlush();
     testNewRiffFlushesHeldNotes();
+    testVariationPressReleaseFlushesHeldNotes();
     testTransportJumpFlushesHeldNotes();
 
     std::cout << "Midiator live processor tests: PASS\n";

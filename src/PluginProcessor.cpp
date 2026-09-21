@@ -244,13 +244,36 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
         if (!queue || queue->getPointCount() <= 0)
             continue;
 
+        const auto id = queue->getParameterId();
+
+        // Kick-style buttons may deliver press and release points inside the
+        // same audio block. Process every point for edge-triggered actions so
+        // a final release value (0) cannot hide the preceding press (1).
+        if (id == kNewRiffId || id == kVariationId) {
+            for (int32 point = 0; point < queue->getPointCount(); ++point) {
+                int32 sampleOffset = 0;
+                ParamValue v = 0.0;
+                if (queue->getPoint(point, sampleOffset, v) != kResultOk)
+                    continue;
+
+                v = std::clamp(v, 0.0, 1.0);
+                if (id == kNewRiffId) {
+                    if (newRiffTrigger_.update(v))
+                        generateNew();
+                } else {
+                    if (variationTrigger_.update(v))
+                        generateVariation();
+                }
+            }
+            continue;
+        }
+
         int32 sampleOffset = 0;
         ParamValue v = 0.0;
         if (queue->getPoint(queue->getPointCount() - 1, sampleOffset, v) != kResultOk)
             continue;
 
         v = std::clamp(v, 0.0, 1.0);
-        const auto id = queue->getParameterId();
 
         switch (id) {
             case kRootId: {
@@ -298,12 +321,9 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
                 variationAmount_ = static_cast<float>(v);
                 break;
             case kNewRiffId:
-                if (newRiffTrigger_.update(v))
-                    generateNew();
-                break;
             case kVariationId:
-                if (variationTrigger_.update(v))
-                    generateVariation();
+                // Edge-triggered action parameters are handled point-by-point
+                // before this switch.
                 break;
             default:
                 break;
