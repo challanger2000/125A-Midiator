@@ -334,9 +334,11 @@ void testPowerChordAmountIsReliable() {
         GeneratorSettings off{};
         off.bars = 2;
         off.style = static_cast<StyleId>(style);
-        off.powerChordChance = 0.0f;
+        off.powerChordChance = 1.0f;
+        off.powerChordsEnabled = false;
 
         GeneratorSettings normal = off;
+        normal.powerChordsEnabled = true;
         normal.powerChordChance = 0.25f;
 
         GeneratorSettings high = off;

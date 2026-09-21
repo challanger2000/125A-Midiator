@@ -45,6 +45,7 @@ struct GeneratorSettings {
     float complexity = 0.42f;
     float repetition = 0.72f;
     float powerChordChance = 0.25f;
+    bool powerChordsEnabled = true;
     float palmMuteChance = 0.70f;
     int lowRootMidi = 33;         // A1
 };

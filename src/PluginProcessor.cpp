@@ -18,7 +18,7 @@ namespace {
 constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 2048;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 3u;
+constexpr uint32_t kStateVersion = 4u;
 
 template <typename T>
 bool writeValue(IBStream* stream, const T& value) {
@@ -43,7 +43,8 @@ bool readStateHeader(IBStream* state,
                      float& variationAmount,
                      uint32_t& seed,
                      int& manualRootPitchClass,
-                     bool& midiRootSource) {
+                     bool& midiRootSource,
+                     bool& powerChordsEnabled) {
     uint32_t magic = 0;
     uint32_t version = 0;
     int32 root = 0;
@@ -79,11 +80,24 @@ bool readStateHeader(IBStream* state,
         } else {
             settings.style = midiator::StyleId::NDHIndustrial;
         }
+
+        if (version >= 4u) {
+            int32 storedPowerChordsEnabled = 1;
+            if (!readValue(state, storedPowerChordsEnabled))
+                return false;
+            powerChordsEnabled = storedPowerChordsEnabled != 0;
+            settings.powerChordsEnabled = powerChordsEnabled;
+        } else {
+            powerChordsEnabled = true;
+            settings.powerChordsEnabled = true;
+        }
     } else {
         // V1 had only one fixed root and therefore maps naturally to Manual.
         manualRootPitchClass = settings.rootPitchClass;
         midiRootSource = false;
         settings.style = midiator::StyleId::NDHIndustrial;
+        powerChordsEnabled = true;
+        settings.powerChordsEnabled = true;
     }
 
     settings.scale = static_cast<midiator::ScaleId>(
@@ -190,7 +204,9 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
     const int32 manualRoot = manualRootPitchClass_;
     const int32 rootSource = midiRootSource_ ? 1 : 0;
     const int32 style = static_cast<int32>(settings_.style);
-    if (!writeValue(state, manualRoot) || !writeValue(state, rootSource) || !writeValue(state, style))
+    const int32 powerChordsEnabled = settings_.powerChordsEnabled ? 1 : 0;
+    if (!writeValue(state, manualRoot) || !writeValue(state, rootSource) ||
+        !writeValue(state, style) || !writeValue(state, powerChordsEnabled))
         return kResultFalse;
 
     const int32 phraseBars = phrase_.bars;
@@ -224,9 +240,11 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     uint32_t restoredSeed = seed_;
     int restoredManualRoot = manualRootPitchClass_;
     bool restoredMidiRootSource = midiRootSource_;
+    bool restoredPowerChordsEnabled = settings_.powerChordsEnabled;
 
     if (!readStateHeader(state, restored, restoredVariation, restoredSeed,
-                         restoredManualRoot, restoredMidiRootSource))
+                         restoredManualRoot, restoredMidiRootSource,
+                         restoredPowerChordsEnabled))
         return kResultFalse;
 
     int32 phraseBars = 0;
@@ -261,6 +279,7 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     seed_ = restoredSeed ? restoredSeed : 0x125A2026u;
     manualRootPitchClass_ = restoredManualRoot;
     midiRootSource_ = restoredMidiRootSource;
+    settings_.powerChordsEnabled = restoredPowerChordsEnabled;
     phrase_ = restoredPhrase;
     // If state is restored while processing, preserve knowledge of currently
     // active notes so the next process call can emit proper NoteOff events.
@@ -492,6 +511,14 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
             case kPowerChordId:
                 settings_.powerChordChance = static_cast<float>(v);
                 break;
+            case kPowerChordsEnabledId: {
+                const bool next = v > 0.5;
+                if (next != settings_.powerChordsEnabled) {
+                    settings_.powerChordsEnabled = next;
+                    tonalFrameChanged = true;
+                }
+                break;
+            }
             case kPalmMuteId:
                 settings_.palmMuteChance = static_cast<float>(v);
                 break;
@@ -779,7 +806,14 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     addPercent(STR16("Density"), kDensityId, 56.0);
     addPercent(STR16("Complexity"), kComplexityId, 42.0);
     addPercent(STR16("Repetition"), kRepetitionId, 72.0);
-    addPercent(STR16("Power Chords"), kPowerChordId, 25.0);
+    auto* powerChordsEnabled = new StringListParameter(STR16("Power Chords"), kPowerChordsEnabledId);
+    powerChordsEnabled->appendString(STR16("OFF"));
+    powerChordsEnabled->appendString(STR16("ON"));
+    powerChordsEnabled->getInfo().defaultNormalizedValue = 1.0;
+    powerChordsEnabled->setNormalized(1.0);
+    parameters.addParameter(powerChordsEnabled);
+
+    addPercent(STR16("Power Chords Amount"), kPowerChordId, 25.0);
     addPercent(STR16("Palm Mute"), kPalmMuteId, 70.0);
     addPercent(STR16("Variation Amount"), kVariationAmountId, 35.0);
 
@@ -803,8 +837,9 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     uint32_t seed = 0;
     int manualRoot = restored.rootPitchClass;
     bool midiRootSource = true;
+    bool powerChordsEnabled = true;
     if (!readStateHeader(state, restored, variationAmount, seed,
-                         manualRoot, midiRootSource))
+                         manualRoot, midiRootSource, powerChordsEnabled))
         return kResultFalse;
 
     auto barsIndex = [](int bars) -> double {
@@ -819,6 +854,7 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
 
     setParamNormalized(kRootId, static_cast<double>(manualRoot) / 11.0);
     setParamNormalized(kRootSourceId, midiRootSource ? 1.0 : 0.0);
+    setParamNormalized(kPowerChordsEnabledId, powerChordsEnabled ? 1.0 : 0.0);
     setParamNormalized(kStyleId, static_cast<double>(static_cast<int>(restored.style)) /
                                  static_cast<double>(static_cast<int>(midiator::StyleId::Count) - 1));
     setParamNormalized(kScaleId, static_cast<double>(static_cast<int>(restored.scale)) /

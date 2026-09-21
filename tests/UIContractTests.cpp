@@ -37,10 +37,10 @@ int main() {
             xml.find("maxSize=\"1720, 1120\"") != std::string::npos,
             "resizable editor contract must expose non-identical min/max sizes");
 
-    for (int tag = 100; tag <= 112; ++tag) {
+    for (int tag = 100; tag <= 113; ++tag) {
         const std::string needle = "tag=\"" + std::to_string(tag) + "\"";
         require(xml.find(needle) != std::string::npos,
-                "all Midiator parameter tags 100..112 must be declared");
+                "all Midiator parameter tags 100..113 must be declared");
     }
 
     const char* theoryIds[] = {
@@ -61,6 +61,8 @@ int main() {
             "ROOT SOURCE selector must be bound");
     require(xml.find("control-tag=\"Style\"") != std::string::npos,
             "RIFF STYLE selector must be bound");
+    require(xml.find("control-tag=\"PowerChordsEnabled\"") != std::string::npos,
+            "POWER CHORDS ON/OFF selector must be bound");
 
     size_t sliderCount = 0;
     size_t pos = 0;

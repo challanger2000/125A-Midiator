@@ -41,6 +41,7 @@
     <control-tag name="Variation" tag="110"/>
     <control-tag name="RootSource" tag="111"/>
     <control-tag name="Style" tag="112"/>
+    <control-tag name="PowerChordsEnabled" tag="113"/>
   </control-tags>
 
   <template name="MidiatorView" class="CViewContainer" origin="0, 0" size="860, 560" minSize="645, 420" maxSize="1720, 1120" transparent="false" background-color="Bg">

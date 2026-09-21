@@ -355,7 +355,8 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
             chordChance *= 1.15f;
         else if (s.style == StyleId::HeavyIndustrial)
             chordChance *= 0.90f;
-        const bool powerChord = rng.chance(std::clamp(chordChance, 0.0f, 1.0f));
+        const bool powerChord = s.powerChordsEnabled &&
+            rng.chance(std::clamp(chordChance, 0.0f, 1.0f));
 
         const int length = palmMute
             ? 1
@@ -553,7 +554,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
     // per-event lottery. After phrase development, make sure the final phrase
     // contains a representative number of dyads. This also prevents sparse
     // riffs from accidentally containing no power chords at useful settings.
-    if (s.powerChordChance > 0.0f) {
+    if (s.powerChordsEnabled && s.powerChordChance > 0.0f) {
         int eligibleHits = 0;
         int existingChords = 0;
         for (int i = 0; i < result.usedSteps(); ++i) {
