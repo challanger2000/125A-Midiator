@@ -85,6 +85,7 @@ private:
     RisingEdgeTrigger newRiffTrigger_{};
     RisingEdgeTrigger variationTrigger_{};
     float variationAmount_ = 0.35f;
+    bool phraseChangedNeedsFlush_ = false;
 
     void generateNew();
     void generateVariation();

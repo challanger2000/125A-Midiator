@@ -111,6 +111,8 @@ void testNoSamePitchOverlap() {
         const auto& step = phrase.steps[stepIndex];
         for (int noteIndex = 0; noteIndex < step.noteCount; ++noteIndex) {
             const auto& note = step.notes[noteIndex];
+            require(stepIndex + note.lengthSteps <= phrase.usedSteps(),
+                    "note must not extend beyond the looping phrase boundary");
             for (int futureStep = stepIndex + 1;
                  futureStep < std::min(phrase.usedSteps(), stepIndex + note.lengthSteps);
                  ++futureStep) {

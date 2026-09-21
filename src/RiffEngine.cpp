@@ -179,7 +179,12 @@ void sanitizeOverlaps(Phrase& phrase) {
         for (int noteIndex = 0; noteIndex < step.noteCount; ++noteIndex) {
             auto& note = step.notes[noteIndex];
             const int requestedLength = std::max(1, note.lengthSteps);
-            const int endStep = std::min(used, stepIndex + requestedLength);
+
+            // Do not let a note extend beyond the phrase boundary. The phrase
+            // loops, so a tail crossing the end could overlap the next cycle's
+            // downbeat (especially the repeated root/power-chord tones).
+            note.lengthSteps = std::min(requestedLength, std::max(1, used - stepIndex));
+            const int endStep = stepIndex + note.lengthSteps;
 
             for (int futureStep = stepIndex + 1; futureStep < endStep; ++futureStep) {
                 const auto& future = phrase.steps[futureStep];

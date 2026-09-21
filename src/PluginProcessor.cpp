@@ -114,6 +114,7 @@ tresult PLUGIN_API MidiatorProcessor::setActive(TBool state) {
         wasPlaying_ = false;
         haveExpectedProjectTime_ = false;
         expectedProjectTimeQn_ = 0.0;
+        phraseChangedNeedsFlush_ = false;
     }
     return AudioEffect::setActive(state);
 }
@@ -126,6 +127,7 @@ tresult PLUGIN_API MidiatorProcessor::setProcessing(TBool state) {
     wasPlaying_ = false;
     haveExpectedProjectTime_ = false;
     expectedProjectTimeQn_ = 0.0;
+    phraseChangedNeedsFlush_ = false;
     return kResultOk;
 }
 
@@ -210,7 +212,9 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     variationAmount_ = restoredVariation;
     seed_ = restoredSeed ? restoredSeed : 0x125A2026u;
     phrase_ = restoredPhrase;
-    activePitches_.fill(false);
+    // If state is restored while processing, preserve knowledge of currently
+    // active notes so the next process call can emit proper NoteOff events.
+    phraseChangedNeedsFlush_ = true;
     wasPlaying_ = false;
     haveExpectedProjectTime_ = false;
     expectedProjectTimeQn_ = 0.0;
@@ -220,11 +224,13 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
 void MidiatorProcessor::generateNew() {
     seed_ = nextSeed(seed_);
     phrase_ = midiator::RiffEngine::generate(settings_, seed_);
+    phraseChangedNeedsFlush_ = true;
 }
 
 void MidiatorProcessor::generateVariation() {
     seed_ = nextSeed(seed_);
     phrase_ = midiator::RiffEngine::vary(phrase_, settings_, variationAmount_, seed_);
+    phraseChangedNeedsFlush_ = true;
 }
 
 void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
@@ -337,6 +343,11 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
 
     if (!data.outputEvents)
         return kResultOk;
+
+    if (phraseChangedNeedsFlush_) {
+        flushActiveNotes(data.outputEvents);
+        phraseChangedNeedsFlush_ = false;
+    }
 
     const auto* context = data.processContext;
     const bool hasTempo = context && (context->state & ProcessContext::kTempoValid) && context->tempo > 0.0;

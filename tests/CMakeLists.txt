@@ -41,3 +41,15 @@ target_include_directories(MidiatorStateRoundtripTests PRIVATE ../src)
 target_compile_definitions(MidiatorStateRoundtripTests PRIVATE MIDIATOR_NO_FACTORY=1)
 target_link_libraries(MidiatorStateRoundtripTests PRIVATE sdk vstgui_support)
 add_test(NAME MidiatorStateRoundtripTests COMMAND MidiatorStateRoundtripTests)
+
+
+add_executable(MidiatorProcessorLiveTests
+    ProcessorLiveTests.cpp
+    ../src/PluginProcessor.cpp
+    ../src/RiffEngine.cpp
+)
+
+target_include_directories(MidiatorProcessorLiveTests PRIVATE ../src)
+target_compile_definitions(MidiatorProcessorLiveTests PRIVATE MIDIATOR_NO_FACTORY=1)
+target_link_libraries(MidiatorProcessorLiveTests PRIVATE sdk vstgui_support)
+add_test(NAME MidiatorProcessorLiveTests COMMAND MidiatorProcessorLiveTests)
