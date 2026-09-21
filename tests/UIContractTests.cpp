@@ -49,6 +49,22 @@ int main() {
     require(xml.find("control-tag=\"Variation\"") != std::string::npos,
             "VARIATION button must be bound");
 
+    size_t sliderCount = 0;
+    size_t pos = 0;
+    while ((pos = xml.find("class=\"CSlider\"", pos)) != std::string::npos) {
+        ++sliderCount;
+        const auto end = xml.find("/>", pos);
+        require(end != std::string::npos, "slider XML element must close");
+        const auto slider = xml.substr(pos, end - pos);
+        require(slider.find("draw-back=\"true\"") != std::string::npos &&
+                slider.find("draw-frame=\"true\"") != std::string::npos &&
+                slider.find("draw-value=\"true\"") != std::string::npos &&
+                slider.find("draw-value-color=\"Accent\"") != std::string::npos,
+                "every slider must use the visible native slider drawing");
+        pos = end + 2;
+    }
+    require(sliderCount == 6, "exactly six visible native sliders are required");
+
     std::cout << "Midiator UI contract test: PASS\n";
     return 0;
 }
