@@ -486,7 +486,9 @@ Phrase RiffEngine::vary(const Phrase& source,
     const int used = result.usedSteps();
 
     for (int step = 0; step < used; ++step) {
-        if (!rng.chance(0.08f + 0.62f * a))
+        // Variation must be musically audible at useful mid settings. The old
+        // curve selected too few steps and often changed only articulation.
+        if (!rng.chance(0.10f + 0.82f * a))
             continue;
 
         auto& dst = result.steps[step];
@@ -495,7 +497,7 @@ Phrase RiffEngine::vary(const Phrase& source,
         const float action = rng.unit();
 
         if (dst.noteCount == 0) {
-            if (action < 0.35f * a && shouldHit(rng, s, step)) {
+            if (action < (0.18f + 0.52f * a) && shouldHit(rng, s, step)) {
                 const int degree = chooseDegree(rng, s, step % 16);
                 int pitch = clampMusicalPitch(base + scale.intervals[degree], base);
                 const bool palmMute = rng.chance(s.palmMuteChance);
@@ -504,7 +506,7 @@ Phrase RiffEngine::vary(const Phrase& source,
             continue;
         }
 
-        if (action < 0.18f * a && step != 0) {
+        if (action < (0.08f + 0.26f * a) && step != 0) {
             dst = {};
             continue;
         }
@@ -515,8 +517,16 @@ Phrase RiffEngine::vary(const Phrase& source,
             int pitch = clampMusicalPitch(base + scale.intervals[degree], base);
 
             // Keep strong identity by often retaining the pedal root.
-            if (rng.chance(0.38f + 0.40f * s.repetition))
+            if (rng.chance(0.16f + 0.28f * s.repetition))
                 pitch = base;
+
+            const int oldPitch = dst.notes[0].pitch;
+            if (pitch == oldPitch && scale.count > 1) {
+                int fallbackDegree = rng.range(1, scale.count - 1);
+                pitch = clampMusicalPitch(base + scale.intervals[fallbackDegree], base);
+                if (pitch == oldPitch)
+                    pitch = clampMusicalPitch(base + scale.intervals[(fallbackDegree + 1) % scale.count], base);
+            }
 
             const bool palmMute = dst.notes[0].velocity < 84;
             const bool powerChord = dst.noteCount == 2;

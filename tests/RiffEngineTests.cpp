@@ -12,6 +12,26 @@ void require(bool condition, const char* message) {
     }
 }
 
+int structuralDifference(const midiator::Phrase& a, const midiator::Phrase& b) {
+    const int used = std::min(a.usedSteps(), b.usedSteps());
+    int different = std::abs(a.usedSteps() - b.usedSteps());
+    for (int i = 0; i < used; ++i) {
+        const auto& x = a.steps[i];
+        const auto& y = b.steps[i];
+        if (x.noteCount != y.noteCount) {
+            ++different;
+            continue;
+        }
+        if (x.noteCount == 0)
+            continue;
+        if (x.notes[0].pitch != y.notes[0].pitch ||
+            x.notes[0].lengthSteps != y.notes[0].lengthSteps ||
+            (x.noteCount > 1) != (y.noteCount > 1))
+            ++different;
+    }
+    return different;
+}
+
 void testBarsAndScaleSafety() {
     midiator::GeneratorSettings s{};
     s.rootPitchClass = 9; // A
@@ -274,6 +294,30 @@ void testVelocityZonesRemainSeparated() {
 }
 
 
+void testDefaultVariationIsAudiblyStructural() {
+    midiator::GeneratorSettings s{};
+    s.bars = 2;
+
+    long long totalDiff = 0;
+    int weakCases = 0;
+    constexpr int samples = 128;
+
+    for (unsigned seed = 1; seed <= samples; ++seed) {
+        const auto source = midiator::RiffEngine::generate(s, 70000u + seed);
+        const auto varied = midiator::RiffEngine::vary(source, s, 0.35f, 80000u + seed);
+        const int diff = structuralDifference(source, varied);
+        totalDiff += diff;
+        if (diff < 4)
+            ++weakCases;
+    }
+
+    const double averageDiff = static_cast<double>(totalDiff) / samples;
+    require(averageDiff >= 6.0,
+            "default 35 percent variation must change an audible number of structural steps");
+    require(weakCases <= samples / 8,
+            "default variation must rarely collapse into an almost inaudible change");
+}
+
 void testFourBarRoleDevelopment() {
     midiator::GeneratorSettings s{};
     s.rootPitchClass = 9;
@@ -317,6 +361,7 @@ int main() {
     testControlMonotonicity();
     testVariationDistance();
     testVelocityZonesRemainSeparated();
+    testDefaultVariationIsAudiblyStructural();
     testFourBarRoleDevelopment();
 
     std::cout << "Midiator core tests: PASS\n";

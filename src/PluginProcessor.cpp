@@ -262,8 +262,48 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
 }
 
 void MidiatorProcessor::generateNew() {
-    seed_ = nextSeed(seed_);
-    phrase_ = midiator::RiffEngine::generate(settings_, seed_);
+    const auto previous = phrase_;
+
+    auto structuralDifference = [](const midiator::Phrase& a, const midiator::Phrase& b) {
+        const int used = std::min(a.usedSteps(), b.usedSteps());
+        int different = std::abs(a.usedSteps() - b.usedSteps());
+
+        for (int i = 0; i < used; ++i) {
+            const auto& x = a.steps[i];
+            const auto& y = b.steps[i];
+
+            if (x.noteCount != y.noteCount) {
+                ++different;
+                continue;
+            }
+            if (x.noteCount == 0)
+                continue;
+
+            if (x.notes[0].pitch != y.notes[0].pitch ||
+                x.notes[0].lengthSteps != y.notes[0].lengthSteps ||
+                (x.noteCount > 1) != (y.noteCount > 1)) {
+                ++different;
+            }
+        }
+        return different;
+    };
+
+    midiator::Phrase candidate{};
+    const bool havePrevious = previous.usedSteps() > 0;
+    const int requiredDifference = havePrevious
+        ? std::max(4, previous.usedSteps() / 4)
+        : 0;
+
+    // Bounded retries keep NEW RIFF genuinely new without allocation or
+    // unbounded work on the realtime thread.
+    for (int attempt = 0; attempt < 8; ++attempt) {
+        seed_ = nextSeed(seed_);
+        candidate = midiator::RiffEngine::generate(settings_, seed_);
+        if (!havePrevious || structuralDifference(previous, candidate) >= requiredDifference)
+            break;
+    }
+
+    phrase_ = candidate;
     phraseChangedNeedsFlush_ = true;
 }
 
