@@ -31,7 +31,7 @@ static void printPhraseGrid(const Phrase& p, const char* title) {
             const auto& n = step.notes[0];
             const int octave = (n.pitch / 12) - 1;
             std::cout << "[" << pitchClassName(n.pitch) << octave
-                      << (n.velocity <= 72 ? "P" : "O")
+                      << (n.velocity <= 40 ? "P" : "O")
                       << (step.noteCount == 2 ? "5" : " ")
                       << "]";
         }
@@ -53,6 +53,35 @@ static int countDiffSteps(const Phrase& a, const Phrase& b) {
         if (!(a.steps[i] == b.steps[i]))
             ++d;
     return d + std::abs(a.usedSteps() - b.usedSteps());
+}
+
+static double onsetJaccard(const Phrase& a, const Phrase& b) {
+    const int n = std::min(a.usedSteps(), b.usedSteps());
+    int intersection = 0;
+    int unionCount = 0;
+    for (int i = 0; i < n; ++i) {
+        const bool ha = a.steps[i].noteCount > 0;
+        const bool hb = b.steps[i].noteCount > 0;
+        if (ha || hb) ++unionCount;
+        if (ha && hb) ++intersection;
+    }
+    return unionCount > 0
+        ? static_cast<double>(intersection) / static_cast<double>(unionCount)
+        : 1.0;
+}
+
+static int longestHitRun(const Phrase& p) {
+    int longest = 0;
+    int current = 0;
+    for (int i = 0; i < p.usedSteps(); ++i) {
+        if (p.steps[i].noteCount > 0) {
+            ++current;
+            longest = std::max(longest, current);
+        } else {
+            current = 0;
+        }
+    }
+    return longest;
 }
 
 int main() {
@@ -112,7 +141,7 @@ int main() {
             ++primaryNotes;
             pcs[(n.pitch % 12 + 12) % 12] = true;
             if ((n.pitch % 12 + 12) % 12 == s.rootPitchClass) ++rootNotes;
-            if (n.velocity <= 72) ++muteLike;
+            if (n.velocity <= 40) ++muteLike;
             if (n.velocity >= 88) ++openLike;
             if (n.velocity == 127) ++vel127;
         }
@@ -162,13 +191,55 @@ int main() {
         }
     }
 
+
+    auto pct = [](double x) { return x * 100.0; };
+
+    std::cout << "\nStyle / NEW-RIFF diversity diagnostics\n";
+    std::cout << "--------------------------------------\n";
+    const char* styleNames[] = {"NDH / Industrial", "Dark Rock / Gothic", "Heavy Industrial"};
+    for (int style = 0; style < static_cast<int>(StyleId::Count); ++style) {
+        GeneratorSettings ds = s;
+        ds.bars = 2;
+        ds.style = static_cast<StyleId>(style);
+
+        double rawJaccard = 0.0;
+        double rawDiff = 0.0;
+        int fast4 = 0;
+        int fast6 = 0;
+        int chordless = 0;
+        constexpr int pairs = 512;
+
+        for (int i = 0; i < pairs; ++i) {
+            const auto a = RiffEngine::generate(ds, 200000u + static_cast<unsigned>(i * 2));
+            const auto b = RiffEngine::generate(ds, 200001u + static_cast<unsigned>(i * 2));
+            rawJaccard += onsetJaccard(a, b);
+            rawDiff += countDiffSteps(a, b);
+
+            const int run = longestHitRun(a);
+            if (run >= 4) ++fast4;
+            if (run >= 6) ++fast6;
+
+            bool hasChord = false;
+            for (int step = 0; step < a.usedSteps(); ++step)
+                hasChord = hasChord || a.steps[step].noteCount > 1;
+            if (!hasChord) ++chordless;
+        }
+
+        std::cout << styleNames[style] << ": avg independent-riff onset Jaccard "
+                  << pct(rawJaccard / pairs)
+                  << "%, avg changed steps "
+                  << (rawDiff / pairs) << "/32"
+                  << ", >=4x16 run " << pct(static_cast<double>(fast4) / pairs)
+                  << "%, >=6x16 run " << pct(static_cast<double>(fast6) / pairs)
+                  << "%, chordless " << pct(static_cast<double>(chordless) / pairs)
+                  << "%\n";
+    }
+
     GeneratorSettings lowVarSettings = s;
     const auto base = RiffEngine::generate(lowVarSettings, 123456u);
     const auto var20 = RiffEngine::vary(base, lowVarSettings, 0.20f, 123457u);
     const auto var50 = RiffEngine::vary(base, lowVarSettings, 0.50f, 123458u);
     const auto var80 = RiffEngine::vary(base, lowVarSettings, 0.80f, 123459u);
-
-    auto pct = [](double x) { return x * 100.0; };
 
     std::cout << std::fixed << std::setprecision(1);
     std::cout << "Phrases sampled: " << phrases << "\n";
@@ -199,6 +270,24 @@ int main() {
     std::cout << "Variation changed steps (20%): " << countDiffSteps(base, var20) << "/" << base.usedSteps() << "\n";
     std::cout << "Variation changed steps (50%): " << countDiffSteps(base, var50) << "/" << base.usedSteps() << "\n";
     std::cout << "Variation changed steps (80%): " << countDiffSteps(base, var80) << "/" << base.usedSteps() << "\n";
+
+
+    std::cout << "\nVariation diagnostics over 512 phrases\n";
+    std::cout << "--------------------------------------\n";
+    for (float amount : {0.20f, 0.35f, 0.50f, 0.80f}) {
+        double diffSum = 0.0;
+        double jacSum = 0.0;
+        constexpr int samples = 512;
+        for (int i = 0; i < samples; ++i) {
+            const auto src = RiffEngine::generate(s, 300000u + static_cast<unsigned>(i));
+            const auto dst = RiffEngine::vary(src, s, amount, 400000u + static_cast<unsigned>(i));
+            diffSum += countDiffSteps(src, dst);
+            jacSum += onsetJaccard(src, dst);
+        }
+        std::cout << "Variation " << pct(amount) << "%: avg changed steps "
+                  << diffSum / samples << "/" << s.bars * 16
+                  << ", onset Jaccard " << pct(jacSum / samples) << "%\n";
+    }
 
     GeneratorSettings exampleSettings = s;
     exampleSettings.bars = 4;

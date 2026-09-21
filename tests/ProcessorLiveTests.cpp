@@ -346,7 +346,7 @@ void testGeneratedNotesSustainToOne64BeforeNextHit() {
     // capture several generated hits and their note-offs.
     auto context = makeContext(0.0, true);
     EventList output;
-    auto data = makeProcessData(context, output, 48000);
+    auto data = makeProcessData(context, output, 192000);
     require(processor.process(data) == kResultOk, "sustain scheduling process must succeed");
 
     std::vector<double> ons;

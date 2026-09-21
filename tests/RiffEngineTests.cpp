@@ -345,6 +345,7 @@ void testPowerChordAmountIsReliable() {
         normal.powerChordChance = 0.25f;
 
         GeneratorSettings high = off;
+        high.powerChordsEnabled = true;
         high.powerChordChance = 0.80f;
 
         for (unsigned seed = 1; seed <= 64; ++seed) {
