@@ -98,6 +98,7 @@ private:
 
     void generateNew();
     void generateVariation();
+    void resizePhraseBars(int newBars);
     void transposePhraseToRoot(int newRootPitchClass);
     void applyParameterChanges(ProcessData& data);
     void applyMidiRootInput(ProcessData& data);

@@ -386,6 +386,33 @@ void MidiatorProcessor::generateVariation() {
     phraseChangedNeedsFlush_ = true;
 }
 
+void MidiatorProcessor::resizePhraseBars(int newBars) {
+    if (newBars != 1 && newBars != 2 && newBars != 4 && newBars != 8)
+        return;
+
+    const int oldBars = std::clamp(phrase_.bars, 1, midiator::kMaxBars);
+    if (newBars == oldBars) {
+        settings_.bars = newBars;
+        return;
+    }
+
+    midiator::Phrase resized{};
+    resized.bars = newBars;
+
+    const int oldSteps = oldBars * midiator::kStepsPerBar;
+    const int newSteps = newBars * midiator::kStepsPerBar;
+
+    // Changing phrase length is not a composition command. Preserve the exact
+    // existing riff and tile it when extending; truncate it when shortening.
+    // NEW RIFF remains the only control that deliberately replaces the idea.
+    for (int i = 0; i < newSteps; ++i)
+        resized.steps[i] = phrase_.steps[i % oldSteps];
+
+    phrase_ = resized;
+    settings_.bars = newBars;
+    phraseChangedNeedsFlush_ = true;
+}
+
 void MidiatorProcessor::transposePhraseToRoot(int newRootPitchClass) {
     newRootPitchClass = std::clamp(newRootPitchClass, 0, 11);
     const int oldRoot = settings_.rootPitchClass;
@@ -493,10 +520,8 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
             case kBarsId: {
                 static constexpr int bars[] = {1, 2, 4, 8};
                 const int next = bars[normalizedIndex(v, 4)];
-                if (next != settings_.bars) {
-                    settings_.bars = next;
-                    tonalFrameChanged = true;
-                }
+                if (next != settings_.bars)
+                    resizePhraseBars(next);
                 break;
             }
             case kDensityId:

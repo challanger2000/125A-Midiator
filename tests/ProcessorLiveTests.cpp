@@ -270,6 +270,74 @@ void testRepeatedNewRiffStaysDistinct() {
             "successive NEW RIFF clicks must have low average rhythm overlap");
 }
 
+void testBarsResizePreservesExistingRiff() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "processor must start");
+
+    auto capture = [&](double startQn, int samples, IParameterChanges* changes = nullptr) {
+        auto context = makeContext(startQn, true);
+        EventList output;
+        auto data = makeProcessData(context, output, samples, changes);
+        require(processor.process(data) == kResultOk, "bars resize capture must succeed");
+
+        std::vector<std::pair<int, int>> notes;
+        for (const auto& e : output.events) {
+            if (e.type != Event::kNoteOnEvent)
+                continue;
+            const int step = static_cast<int>(std::lround((e.ppqPosition - startQn) / 0.25));
+            notes.emplace_back(step, e.noteOn.pitch);
+        }
+        return notes;
+    };
+
+    const auto original = capture(0.0, 192000); // default 2 bars
+
+    ParameterChanges grow;
+    int32 qi = 0;
+    auto* q = grow.addParameterData(kBarsId, qi);
+    int32 pi = 0;
+    require(q && q->addPoint(0, 2.0 / 3.0, pi) == kResultOk,
+            "4-bar value must be accepted");
+
+    auto stopped = makeContext(8.0, false);
+    EventList stoppedOut;
+    auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &grow);
+    require(processor.process(stoppedData) == kResultOk, "4-bar resize must succeed");
+
+    const auto extended = capture(8.0, 384000); // 4 bars
+    require(!original.empty() && !extended.empty(), "bars resize fixture needs generated notes");
+
+    // First two bars must be bit-for-bit the same note-on pattern.
+    std::vector<std::pair<int, int>> extendedFirstHalf;
+    std::vector<std::pair<int, int>> extendedSecondHalf;
+    for (const auto& n : extended) {
+        if (n.first < 32)
+            extendedFirstHalf.push_back(n);
+        else
+            extendedSecondHalf.emplace_back(n.first - 32, n.second);
+    }
+    require(original == extendedFirstHalf,
+            "extending 2 to 4 bars must preserve the existing riff exactly");
+    require(original == extendedSecondHalf,
+            "extending 2 to 4 bars must tile the existing riff instead of composing a new one");
+
+    ParameterChanges shrink;
+    qi = 0;
+    q = shrink.addParameterData(kBarsId, qi);
+    pi = 0;
+    require(q && q->addPoint(0, 1.0 / 3.0, pi) == kResultOk,
+            "2-bar value must be accepted");
+
+    auto stopped2 = makeContext(24.0, false);
+    EventList stoppedOut2;
+    auto stoppedData2 = makeProcessData(stopped2, stoppedOut2, 64, &shrink);
+    require(processor.process(stoppedData2) == kResultOk, "2-bar shrink must succeed");
+
+    const auto shortened = capture(24.0, 192000);
+    require(shortened == original,
+            "shrinking back to 2 bars must restore the unchanged original riff span");
+}
+
 void testGeneratedNotesSustainToOne64BeforeNextHit() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
@@ -538,6 +606,7 @@ void testTransportJumpFlushesHeldNotes() {
 int main() {
     testNewRiffChangesRhythmMask();
     testRepeatedNewRiffStaysDistinct();
+    testBarsResizePreservesExistingRiff();
     testGeneratedNotesSustainToOne64BeforeNextHit();
     testMidiRootSourceTransposesRiff();
     testManualRootSourceIgnoresMidiRootNotes();
