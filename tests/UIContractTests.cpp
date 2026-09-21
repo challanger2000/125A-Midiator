@@ -71,6 +71,15 @@ int main() {
     }
     require(sliderCount == 6, "exactly six visible native sliders are required");
 
+    size_t textEditCount = 0;
+    pos = 0;
+    while ((pos = xml.find("class=\"CTextEdit\"", pos)) != std::string::npos) {
+        ++textEditCount;
+        pos += 10;
+    }
+    require(textEditCount == 6,
+            "six editable percentage value fields must accompany the six sliders");
+
     std::cout << "Midiator UI contract test: PASS\n";
     return 0;
 }
