@@ -14,6 +14,8 @@
     <color name="AccentDark" rgba="#20453FFF"/>
     <color name="Button" rgba="#202A31FF"/>
     <color name="ButtonHi" rgba="#2B5C53FF"/>
+    <color name="ButtonEdge" rgba="#35434CFF"/>
+    <color name="PanelEdge" rgba="#24313AFF"/>
     <color name="Line" rgba="#2B353DFF"/>
   </colors>
   <fonts>
@@ -24,8 +26,10 @@
     <font name="ButtonFont" font-name="Arial" size="13" bold="true" italic="false"/>
   </fonts>
   <gradients>
-    <gradient name="ButtonIdle"><color-stop rgba="#26313AFF" start="0"/><color-stop rgba="#1A2228FF" start="1"/></gradient>
-    <gradient name="ButtonActive"><color-stop rgba="#347568FF" start="0"/><color-stop rgba="#1E4D45FF" start="1"/></gradient>
+    <gradient name="ButtonIdle"><color-stop rgba="#2A353EFF" start="0"/><color-stop rgba="#1B242BFF" start="1"/></gradient>
+    <gradient name="ButtonActive"><color-stop rgba="#3E897AFF" start="0"/><color-stop rgba="#21564DFF" start="1"/></gradient>
+    <gradient name="ButtonPrimary"><color-stop rgba="#327466FF" start="0"/><color-stop rgba="#214B44FF" start="1"/></gradient>
+    <gradient name="ButtonPrimaryActive"><color-stop rgba="#58B6A3FF" start="0"/><color-stop rgba="#2D6B60FF" start="1"/></gradient>
   </gradients>
   <control-tags>
     <control-tag name="Root" tag="100"/>
@@ -45,61 +49,78 @@
   </control-tags>
 
   <template name="MidiatorView" class="CViewContainer" origin="0, 0" size="860, 560" minSize="645, 420" maxSize="1720, 1120" transparent="false" background-color="Bg">
-    <view class="CView" origin="24, 8" size="128, 64" bitmap="BrandLogo" transparent="true"/>
-    <view class="CTextLabel" origin="280, 18" size="300, 28" title="MIDIATOR" font="Title" font-color="Text" text-alignment="center" transparent="true"/>
-    <view class="CTextLabel" origin="250, 48" size="360, 18" title="RIFF IDEAS  ·  THEORY HELP  ·  MIDI OUT" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
-    <view class="CTextLabel" origin="724, 22" size="110, 24" title="V0.1 DEV" font="Small" font-color="Dim" text-alignment="right" transparent="true"/>
+    <!-- Header -->
+    <view class="CView" origin="24, 10" size="118, 59" bitmap="BrandLogo" transparent="true"/>
+    <view class="CTextLabel" origin="280, 14" size="300, 30" title="MIDIATOR" font="Title" font-color="Text" text-alignment="center" transparent="true"/>
+    <view class="CTextLabel" origin="250, 45" size="360, 18" title="RIFF IDEAS  ·  THEORY HELP  ·  MIDI OUT" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
+    <view class="CTextLabel" origin="738, 18" size="96, 18" title="V0.1 DEV" font="Small" font-color="Dim" text-alignment="right" transparent="true"/>
 
-    <view class="CViewContainer" origin="24, 82" size="812, 126" transparent="false" background-color="Panel">
-      <view class="CTextLabel" origin="16, 12" size="210, 18" title="TONAL FRAME" font="Heading" font-color="Accent" transparent="true"/>
-      <view class="CTextLabel" origin="16, 42" size="52, 16" title="ROOT" font="Small" font-color="Dim" transparent="true"/>
-      <view class="COptionMenu" control-tag="Root" origin="70, 35" size="104, 30" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
-      <view class="CTextLabel" origin="196, 42" size="52, 16" title="SCALE" font="Small" font-color="Dim" transparent="true"/>
-      <view class="COptionMenu" control-tag="Scale" origin="250, 35" size="210, 30" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
-      <view class="CTextLabel" origin="482, 42" size="42, 16" title="BARS" font="Small" font-color="Dim" transparent="true"/>
-      <view class="COptionMenu" control-tag="Bars" origin="526, 35" size="84, 30" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
-      <view class="CTextLabel" origin="628, 42" size="76, 16" title="ROOT SOURCE" font="Small" font-color="Dim" transparent="true"/>
-      <view class="COptionMenu" control-tag="RootSource" origin="706, 35" size="90, 30" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+    <!-- Tonal frame -->
+    <view class="CViewContainer" origin="24, 82" size="812, 130" transparent="false" background-color="Panel">
+      <view class="CTextLabel" origin="18, 12" size="210, 18" title="TONAL FRAME" font="Heading" font-color="Accent" transparent="true"/>
+      <view class="CView" origin="18, 34" size="776, 1" transparent="false" background-color="PanelEdge"/>
 
-      <view class="CTextLabel" midiator-id="theoryKey" origin="16, 76" size="330, 20" title="A  Phrygian" font="Heading" font-color="Text" transparent="true"/>
-      <view class="CTextLabel" midiator-id="theoryNotes" origin="350, 76" size="430, 20" title="Notes: A A# C D E F G" font="Normal" font-color="Text" transparent="true"/>
-      <view class="CTextLabel" midiator-id="theoryCharacter" origin="16, 100" size="350, 18" title="Character: dark, tense, aggressive" font="Small" font-color="Muted" transparent="true"/>
-      <view class="CTextLabel" midiator-id="theoryInterval" origin="380, 100" size="400, 18" title="Signature: minor 2nd above the root" font="Small" font-color="Muted" transparent="true"/>
+      <view class="CTextLabel" origin="18, 47" size="48, 16" title="ROOT" font="Small" font-color="Dim" transparent="true"/>
+      <view class="COptionMenu" control-tag="Root" origin="68, 41" size="104, 30" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+
+      <view class="CTextLabel" origin="194, 47" size="48, 16" title="SCALE" font="Small" font-color="Dim" transparent="true"/>
+      <view class="COptionMenu" control-tag="Scale" origin="244, 41" size="218, 30" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+
+      <view class="CTextLabel" origin="484, 47" size="40, 16" title="BARS" font="Small" font-color="Dim" transparent="true"/>
+      <view class="COptionMenu" control-tag="Bars" origin="526, 41" size="82, 30" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+
+      <view class="CTextLabel" origin="626, 47" size="78, 16" title="ROOT SOURCE" font="Small" font-color="Dim" transparent="true"/>
+      <view class="COptionMenu" control-tag="RootSource" origin="706, 41" size="88, 30" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+
+      <view class="CTextLabel" midiator-id="theoryKey" origin="18, 82" size="270, 20" title="A  Phrygian" font="Heading" font-color="Text" transparent="true"/>
+      <view class="CTextLabel" midiator-id="theoryNotes" origin="306, 82" size="488, 20" title="Notes: A A# C D E F G" font="Normal" font-color="Text" transparent="true"/>
+      <view class="CTextLabel" midiator-id="theoryCharacter" origin="18, 106" size="340, 18" title="Character: dark, tense, aggressive" font="Small" font-color="Muted" transparent="true"/>
+      <view class="CTextLabel" midiator-id="theoryInterval" origin="404, 106" size="390, 18" title="Signature: minor 2nd above the root" font="Small" font-color="Muted" transparent="true"/>
     </view>
 
-    <view class="CViewContainer" origin="24, 222" size="812, 238" transparent="false" background-color="Panel">
-      <view class="CTextLabel" origin="16, 12" size="210, 18" title="RIFF SHAPE" font="Heading" font-color="Accent" transparent="true"/>
-      <view class="CTextLabel" origin="500, 12" size="52, 18" title="STYLE" font="Small" font-color="Dim" transparent="true"/>
-      <view class="COptionMenu" control-tag="Style" origin="552, 6" size="228, 28" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+    <!-- Riff shape -->
+    <view class="CViewContainer" origin="24, 226" size="812, 248" transparent="false" background-color="Panel">
+      <view class="CTextLabel" origin="18, 12" size="210, 18" title="RIFF SHAPE" font="Heading" font-color="Accent" transparent="true"/>
+      <view class="CTextLabel" origin="492, 13" size="50, 16" title="STYLE" font="Small" font-color="Dim" transparent="true"/>
+      <view class="COptionMenu" control-tag="Style" origin="544, 7" size="250, 28" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CView" origin="18, 42" size="776, 1" transparent="false" background-color="PanelEdge"/>
 
-      <view class="CTextLabel" origin="18, 48" size="120, 18" title="DENSITY" font="Small" font-color="Muted" transparent="true"/>
-      <view class="CSlider" control-tag="Density" origin="18, 70" size="76, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
-      <view class="CTextEdit" control-tag="Density" origin="98, 69" size="40, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
-      <view class="CTextLabel" origin="156, 48" size="120, 18" title="COMPLEXITY" font="Small" font-color="Muted" transparent="true"/>
-      <view class="CSlider" control-tag="Complexity" origin="156, 70" size="76, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
-      <view class="CTextEdit" control-tag="Complexity" origin="236, 69" size="40, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
-      <view class="CTextLabel" origin="294, 48" size="120, 18" title="REPETITION" font="Small" font-color="Muted" transparent="true"/>
-      <view class="CSlider" control-tag="Repetition" origin="294, 70" size="76, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
-      <view class="CTextEdit" control-tag="Repetition" origin="374, 69" size="40, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
-      <view class="CTextLabel" origin="432, 48" size="92, 18" title="POWER CHORDS" font="Small" font-color="Muted" transparent="true"/>
-      <view class="COptionMenu" control-tag="PowerChordsEnabled" origin="524, 44" size="66, 24" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
-      <view class="CSlider" control-tag="PowerChords" origin="432, 70" size="76, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
-      <view class="CTextEdit" control-tag="PowerChords" origin="512, 69" size="40, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
-      <view class="CTextLabel" origin="570, 48" size="120, 18" title="PALM MUTE" font="Small" font-color="Muted" transparent="true"/>
-      <view class="CSlider" control-tag="PalmMute" origin="570, 70" size="76, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
-      <view class="CTextEdit" control-tag="PalmMute" origin="650, 69" size="40, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
+      <!-- Main shaping controls on a strict five-column grid -->
+      <view class="CTextLabel" origin="18, 54" size="134, 18" title="DENSITY" font="Small" font-color="Muted" transparent="true"/>
+      <view class="CSlider" control-tag="Density" origin="18, 78" size="92, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
+      <view class="CTextEdit" control-tag="Density" origin="114, 77" size="38, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
 
-      <view class="CTextLabel" origin="18, 116" size="180, 18" title="VARIATION AMOUNT" font="Small" font-color="Muted" transparent="true"/>
-      <view class="CSlider" control-tag="VariationAmount" origin="18, 138" size="210, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
-      <view class="CTextEdit" control-tag="VariationAmount" origin="236, 137" size="40, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
+      <view class="CTextLabel" origin="170, 54" size="134, 18" title="COMPLEXITY" font="Small" font-color="Muted" transparent="true"/>
+      <view class="CSlider" control-tag="Complexity" origin="170, 78" size="92, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
+      <view class="CTextEdit" control-tag="Complexity" origin="266, 77" size="38, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
 
-      <view class="CTextButton" control-tag="NewRiff" origin="324, 124" size="208, 54" title="NEW RIFF" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-width="0" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
-      <view class="CTextButton" control-tag="Variation" origin="550, 124" size="230, 54" title="VARIATION" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-width="0" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
+      <view class="CTextLabel" origin="322, 54" size="134, 18" title="REPETITION" font="Small" font-color="Muted" transparent="true"/>
+      <view class="CSlider" control-tag="Repetition" origin="322, 78" size="92, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
+      <view class="CTextEdit" control-tag="Repetition" origin="418, 77" size="38, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
 
-      <view class="CTextLabel" origin="18, 196" size="762, 20" title="VARIATION keeps root, scale and phrase length.  MIDI is generated live while the DAW transport runs." font="Small" font-color="Dim" transparent="true"/>
+      <view class="CTextLabel" origin="474, 54" size="90, 18" title="POWER CHORDS" font="Small" font-color="Muted" transparent="true"/>
+      <view class="COptionMenu" control-tag="PowerChordsEnabled" origin="568, 50" size="58, 24" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CSlider" control-tag="PowerChords" origin="474, 78" size="92, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
+      <view class="CTextEdit" control-tag="PowerChords" origin="570, 77" size="38, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
+
+      <view class="CTextLabel" origin="644, 54" size="134, 18" title="PALM MUTE" font="Small" font-color="Muted" transparent="true"/>
+      <view class="CSlider" control-tag="PalmMute" origin="644, 78" size="92, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
+      <view class="CTextEdit" control-tag="PalmMute" origin="740, 77" size="38, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
+
+      <!-- Variation control and actions -->
+      <view class="CTextLabel" origin="18, 124" size="180, 18" title="VARIATION AMOUNT" font="Small" font-color="Muted" transparent="true"/>
+      <view class="CSlider" control-tag="VariationAmount" origin="18, 150" size="226, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
+      <view class="CTextEdit" control-tag="VariationAmount" origin="250, 149" size="42, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
+
+      <view class="CTextButton" control-tag="NewRiff" origin="322, 126" size="222, 58" title="NEW RIFF" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-color="AccentDark" frame-color-highlighted="Accent" frame-width="1" round-radius="5" gradient="ButtonPrimary" gradient-highlighted="ButtonPrimaryActive" kick-style="true"/>
+      <view class="CTextButton" control-tag="Variation" origin="562, 126" size="216, 58" title="VARIATION" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-color="ButtonEdge" frame-color-highlighted="AccentDark" frame-width="1" round-radius="5" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
+
+      <view class="CView" origin="18, 200" size="776, 1" transparent="false" background-color="PanelEdge"/>
+      <view class="CTextLabel" origin="18, 212" size="776, 18" title="VARIATION preserves root, scale and phrase length.  NEW RIFF generates a fresh idea from the current settings." font="Small" font-color="Dim" text-alignment="center" transparent="true"/>
     </view>
 
-    <view class="CTextLabel" origin="24, 480" size="812, 18" title="Library-neutral output · Power chords = root + fifth · Velocity 127 reserved" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
-    <view class="CTextLabel" origin="24, 510" size="812, 22" title="Generate an idea. Understand the scale. Record the MIDI. Edit what you like." font="Normal" font-color="Text" text-alignment="center" transparent="true"/>
+    <!-- Footer -->
+    <view class="CTextLabel" origin="24, 492" size="812, 16" title="Library-neutral MIDI · Power chords = root + fifth · Velocity 127 reserved" font="Small" font-color="Dim" text-alignment="center" transparent="true"/>
+    <view class="CTextLabel" origin="24, 520" size="812, 22" title="Generate an idea. Understand the scale. Record the MIDI. Edit what you like." font="Normal" font-color="Text" text-alignment="center" transparent="true"/>
   </template>
 </vstgui-ui-description>
