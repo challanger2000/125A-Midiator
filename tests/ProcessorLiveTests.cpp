@@ -440,51 +440,66 @@ void testBarsResizePreservesExistingRiff() {
             "shrinking back to 2 bars must restore the unchanged original riff span");
 }
 
-void testGeneratedNotesSustainToOne64BeforeNextHit() {
+void testGeneratedNoteLengthsAreActuallyEmitted() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
 
-    // One quarter note at 120 BPM/48k = 24000 samples. Process enough time to
-    // capture several generated hits and their note-offs.
     auto context = makeContext(0.0, true);
     EventList output;
     auto data = makeProcessData(context, output, 192000);
-    require(processor.process(data) == kResultOk, "sustain scheduling process must succeed");
+    require(processor.process(data) == kResultOk, "note-length capture must succeed");
 
-    std::vector<double> ons;
-    std::vector<double> offs;
+    // At least one generated note must have a positive duration and every
+    // NoteOff must occur after its corresponding NoteOn.
+    bool foundPositiveDuration = false;
+    for (const auto& on : output.events) {
+        if (on.type != Event::kNoteOnEvent)
+            continue;
+        for (const auto& off : output.events) {
+            if (off.type == Event::kNoteOffEvent &&
+                off.noteOff.pitch == on.noteOn.pitch &&
+                off.ppqPosition > on.ppqPosition + 1e-9) {
+                foundPositiveDuration = true;
+                break;
+            }
+        }
+        if (foundPositiveDuration)
+            break;
+    }
+    require(foundPositiveDuration,
+            "generated MIDI must contain real note durations, not zero-length events");
+}
+
+void testGeneratedNotesNeverRunIntoNextHit() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "processor must start");
+
+    auto context = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 192000);
+    require(processor.process(data) == kResultOk, "sustain safety capture must succeed");
+
+    std::vector<double> distinctOns;
     for (const auto& e : output.events) {
-        if (e.type == Event::kNoteOnEvent)
-            ons.push_back(e.ppqPosition);
-        else if (e.type == Event::kNoteOffEvent)
-            offs.push_back(e.ppqPosition);
+        if (e.type != Event::kNoteOnEvent)
+            continue;
+        if (distinctOns.empty() || std::abs(e.ppqPosition - distinctOns.back()) > 1e-9)
+            distinctOns.push_back(e.ppqPosition);
     }
+    require(distinctOns.size() >= 2, "sustain safety fixture needs at least two distinct hits");
 
-    require(ons.size() >= 2, "sustain fixture requires at least two generated hits");
-    require(!offs.empty(), "sustain fixture requires generated note-offs");
-
-    // Find the first distinct next onset after the first onset. Chord members
-    // may share the same onset and must therefore be ignored here.
-    const double firstOn = ons.front();
-    double nextOn = -1.0;
-    for (double on : ons) {
-        if (on > firstOn + 1e-9) {
-            nextOn = on;
-            break;
+    for (size_t i = 0; i + 1 < distinctOns.size(); ++i) {
+        const double latestAllowedOff = distinctOns[i + 1] - (1.0 / 16.0);
+        for (const auto& e : output.events) {
+            if (e.type != Event::kNoteOffEvent)
+                continue;
+            if (e.ppqPosition + 1e-9 < distinctOns[i] ||
+                e.ppqPosition >= distinctOns[i + 1] - 1e-9)
+                continue;
+            require(e.ppqPosition <= latestAllowedOff + 1e-9,
+                    "generated note must end at least one 1/64 before the next hit");
         }
     }
-    require(nextOn > firstOn, "fixture must contain a later distinct hit");
-
-    const double expectedOff = nextOn - (1.0 / 16.0);
-    bool foundExpectedOff = false;
-    for (double off : offs) {
-        if (std::abs(off - expectedOff) < 1e-9) {
-            foundExpectedOff = true;
-            break;
-        }
-    }
-    require(foundExpectedOff,
-            "generated note/chord must end exactly one 1/64 note before the next hit");
 }
 
 void testMidiRootSourceTransposesRiff() {
@@ -711,7 +726,8 @@ int main() {
     testHeavyIndustrialStaysLockedToHostGrid();
     testRepeatedNewRiffStaysDistinct();
     testBarsResizePreservesExistingRiff();
-    testGeneratedNotesSustainToOne64BeforeNextHit();
+    testGeneratedNoteLengthsAreActuallyEmitted();
+    testGeneratedNotesNeverRunIntoNextHit();
     testMidiRootSourceTransposesRiff();
     testManualRootSourceIgnoresMidiRootNotes();
     testTransportStartAtBarTwoBeginsPhraseAtStepZero();

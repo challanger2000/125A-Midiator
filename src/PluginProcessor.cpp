@@ -741,12 +741,16 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
 
             const double onQn = cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
             const double nextOnQn = onQn + static_cast<double>(stepsToNextHit) * kStepQuarterNotes;
-            const double offQn = std::max(onQn, nextOnQn - kSustainGapQn);
+            const double safeLatestOffQn = std::max(onQn, nextOnQn - kSustainGapQn);
 
-            // Every note of the hit, including both notes of a power chord,
-            // shares exactly the same sustain end point.
+            // lengthSteps is part of Midiator's actual MIDI result. Respect the
+            // generated duration, but never let a note run into the next hit.
+            // Power-chord members normally share the same generated length.
             for (int n = 0; n < step.noteCount; ++n) {
                 const auto& note = step.notes[n];
+                const double requestedOffQn =
+                    onQn + static_cast<double>(std::max(1, note.lengthSteps)) * kStepQuarterNotes;
+                const double offQn = std::min(requestedOffQn, safeLatestOffQn);
                 addScheduled(onQn, true, note.pitch, note.velocity);
                 addScheduled(offQn, false, note.pitch, 0);
             }
