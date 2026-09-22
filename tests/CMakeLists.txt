@@ -14,13 +14,6 @@ add_executable(MidiatorMeasure
 
 target_include_directories(MidiatorMeasure PRIVATE ../src)
 
-add_executable(MidiatorTriggerTests
-    TriggerEdgeTests.cpp
-)
-
-target_include_directories(MidiatorTriggerTests PRIVATE ../src)
-target_link_libraries(MidiatorTriggerTests PRIVATE sdk vstgui_support)
-add_test(NAME MidiatorTriggerTests COMMAND MidiatorTriggerTests)
 
 add_executable(MidiatorUIContractTests
     UIContractTests.cpp

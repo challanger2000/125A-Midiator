@@ -363,6 +363,22 @@ void testPowerChordAmountIsReliable() {
     }
 }
 
+void testVariationRespectsPowerChordsOff() {
+    midiator::GeneratorSettings s{};
+    s.bars = 4;
+    s.powerChordsEnabled = false;
+    s.powerChordChance = 1.0f;
+
+    for (unsigned seed = 1; seed <= 128; ++seed) {
+        const auto source = midiator::RiffEngine::generate(s, 210000u + seed);
+        const auto varied = midiator::RiffEngine::vary(source, s, 0.80f, 220000u + seed);
+
+        for (int i = 0; i < varied.usedSteps(); ++i)
+            require(varied.steps[i].noteCount <= 1,
+                    "VARIATION must never create power-chord dyads while Power Chords is OFF");
+    }
+}
+
 void testFastSixteenthBurstsExist() {
     using midiator::GeneratorSettings;
     using midiator::RiffEngine;
@@ -503,6 +519,7 @@ int main() {
     testVelocityZonesRemainSeparated();
     testDefaultVariationIsAudiblyStructural();
     testPowerChordAmountIsReliable();
+    testVariationRespectsPowerChordsOff();
     testFastSixteenthBurstsExist();
     testStyleEnginesHaveDistinctRhythmLanguages();
     testFourBarRoleDevelopment();

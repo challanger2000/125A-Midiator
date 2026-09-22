@@ -453,7 +453,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
                     current = {};
                 } else if (action < 0.76f) {
                     const bool oldPowerChord = current.noteCount == 2;
-                    const bool oldPalmMute = current.notes[0].velocity <= 72;
+                    const bool oldPalmMute = current.notes[0].velocity < 84;
                     const int oldLength = current.notes[0].lengthSteps;
 
                     int degree = chooseDegree(rng, s, i);
@@ -523,7 +523,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
                         target = {};
                     } else {
                         const bool oldPowerChord = seedStep.noteCount == 2;
-                        const bool oldPalmMute = seedStep.notes[0].velocity <= 72;
+                        const bool oldPalmMute = seedStep.notes[0].velocity < 84;
                         const int oldLength = seedStep.notes[0].lengthSteps;
 
                         int degree = chooseDegree(rng, s, candidate);
@@ -668,13 +668,14 @@ Phrase RiffEngine::vary(const Phrase& source,
             }
 
             const bool palmMute = dst.notes[0].velocity < 84;
-            const bool powerChord = dst.noteCount == 2;
+            const bool powerChord = s.powerChordsEnabled && dst.noteCount == 2;
             const int length = dst.notes[0].lengthSteps;
             createStepNote(dst, pitch, powerChord, palmMute, accent, length, rng);
         } else {
             // Articulation/rhythm variation without changing tonal center.
             const bool palmMute = rng.chance(s.palmMuteChance);
-            const bool powerChord = accent && !palmMute && rng.chance(s.powerChordChance);
+            const bool powerChord = s.powerChordsEnabled &&
+                rng.chance(std::clamp(s.powerChordChance * (accent ? 1.0f : 0.62f), 0.0f, 1.0f));
             const int length = palmMute ? 1 : rng.range(1, 2);
             const int pitch = dst.notes[0].pitch;
             createStepNote(dst, pitch, powerChord, palmMute, accent, length, rng);
@@ -731,7 +732,7 @@ Phrase RiffEngine::vary(const Phrase& source,
 
             if (pitch != oldPitch) {
                 const bool palmMute = src.notes[0].velocity < 84;
-                const bool powerChord = src.noteCount == 2;
+                const bool powerChord = s.powerChordsEnabled && src.noteCount == 2;
                 createStepNote(dst, pitch, powerChord, palmMute, accent,
                                src.notes[0].lengthSteps, rng);
             } else {

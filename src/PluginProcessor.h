@@ -24,16 +24,6 @@ class VST3Editor;
 
 namespace Steinberg::Vst {
 
-struct RisingEdgeTrigger {
-    double last = 0.0;
-
-    bool update(double value) noexcept {
-        const double previous = last;
-        last = value;
-        return previous <= 0.5 && value > 0.5;
-    }
-};
-
 enum : ParamID {
     kRootId = 100,
     kScaleId = 101,
@@ -92,8 +82,6 @@ private:
     double transportAnchorQn_ = 0.0;
     std::array<bool, 128> activePitches_{};
 
-    RisingEdgeTrigger newRiffTrigger_{};
-    RisingEdgeTrigger variationTrigger_{};
     float variationAmount_ = 0.35f;
     bool phraseChangedNeedsFlush_ = false;
     bool midiRootSource_ = true;

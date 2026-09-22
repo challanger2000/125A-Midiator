@@ -477,10 +477,9 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
 
         const auto id = queue->getParameterId();
 
-        // NEW RIFF and VARIATION use toggle-command parameters.
-        // The GUI alternates their final value (0 <-> 1) on every click.
-        // Therefore even hosts that coalesce edits to a single final value
-        // still deliver a distinct parameter change for every action.
+        // Fallback action-parameter path. The normal GUI path uses explicit
+        // controller->processor messages; if a host cannot connect the two
+        // peers, each delivered fallback parameter change is one command.
         if (id == kNewRiffId || id == kVariationId) {
             if (id == kNewRiffId)
                 generateNew();
@@ -621,18 +620,20 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     if (data.processContext && data.processContext->sampleRate > 0.0)
         sampleRate_ = data.processContext->sampleRate;
 
-    // GUI commands arrive through IConnectionPoint. They are only queued in
-    // notify() and consumed here on the processing thread, so phrase state is
-    // never mutated concurrently from the UI thread.
+    // First consume musical parameter/root changes for this block. A subsequent
+    // NEW RIFF command must use the newest Style/Scale/Density/etc., not the
+    // settings from the previous block.
+    applyParameterChanges(data);
+    applyMidiRootInput(data);
+
+    // GUI commands arrive through IConnectionPoint. notify() only increments
+    // atomics; phrase state is mutated here on the processing thread.
     const uint32_t newCount = pendingNewRiffCommands_.exchange(0, std::memory_order_acq_rel);
     const uint32_t variationCount = pendingVariationCommands_.exchange(0, std::memory_order_acq_rel);
     for (uint32_t i = 0; i < std::min<uint32_t>(newCount, 32u); ++i)
         generateNew();
     for (uint32_t i = 0; i < std::min<uint32_t>(variationCount, 32u); ++i)
         generateVariation();
-
-    applyParameterChanges(data);
-    applyMidiRootInput(data);
 
     if (!data.outputEvents)
         return kResultOk;
