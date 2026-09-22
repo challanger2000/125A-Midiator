@@ -136,7 +136,9 @@ MidiatorProcessor::MidiatorProcessor() {
     // The sequencer depends on musical timeline position, tempo and
     // transport play/stop state for sample-accurate event scheduling.
     processContextRequirements.needProjectTimeMusic()
+                              .needBarPositionMusic()
                               .needTempo()
+                              .needTimeSignature()
                               .needTransportState();
 
     generateNew();
@@ -675,11 +677,13 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
             flushActiveNotes(data.outputEvents, blockStartQn);
     }
 
-    // The first valid playing block defines phrase step 0, regardless of the
-    // host's absolute song position. This lets a project whose real musical
-    // start is bar 2, bar 17, etc. start Midiator from the beginning there.
+    // Lock phrase phase to the host's musical bar grid, not to whichever
+    // audio buffer happens to be the first one we process. This preserves
+    // sequencer sync when playback starts mid-bar and after timeline jumps.
     if (!wasPlaying_ || !haveTransportAnchor_ || timelineJump) {
-        transportAnchorQn_ = blockStartQn;
+        const bool hasBarPosition =
+            context && (context->state & ProcessContext::kBarPositionValid);
+        transportAnchorQn_ = hasBarPosition ? context->barPositionMusic : blockStartQn;
         haveTransportAnchor_ = true;
     }
 

@@ -121,8 +121,13 @@ ProcessContext makeContext(double projectTimeQn, bool playing) {
     context.sampleRate = 48000.0;
     context.tempo = 120.0;
     context.projectTimeMusic = projectTimeQn;
+    context.timeSigNumerator = 4;
+    context.timeSigDenominator = 4;
+    context.barPositionMusic = std::floor(projectTimeQn / 4.0) * 4.0;
     context.state = ProcessContext::kTempoValid |
-                    ProcessContext::kProjectTimeMusicValid;
+                    ProcessContext::kProjectTimeMusicValid |
+                    ProcessContext::kBarPositionValid |
+                    ProcessContext::kTimeSigValid;
     if (playing)
         context.state |= ProcessContext::kPlaying;
     return context;
@@ -562,29 +567,47 @@ void testManualRootSourceIgnoresMidiRootNotes() {
             "Manual root mode must keep the configured A root despite incoming C");
 }
 
-void testTransportStartAtBarTwoBeginsPhraseAtStepZero() {
+void testTransportUsesHostBarGrid() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
 
-    // In 4/4, bar 2 begins at QN 4 when the host timeline starts at QN 0.
-    auto context = makeContext(4.0, true);
-    EventList output;
-    auto data = makeProcessData(context, output, 100);
+    // Bar 2 starts at QN 4 in 4/4. Starting exactly there must begin at step 0.
+    auto barContext = makeContext(4.0, true);
+    EventList barOutput;
+    auto barData = makeProcessData(barContext, barOutput, 100);
+    require(processor.process(barData) == kResultOk,
+            "bar-boundary transport start must succeed");
 
-    require(processor.process(data) == kResultOk,
-            "bar-2 transport-start process call must succeed");
-    require(containsType(output, Event::kNoteOnEvent),
-            "starting playback at bar 2 must emit phrase step 0 immediately");
-
-    bool foundAnchoredDownbeat = false;
-    for (const auto& event : output.events) {
-        if (event.type == Event::kNoteOnEvent && std::abs(event.ppqPosition - 4.0) < 1e-9) {
-            foundAnchoredDownbeat = true;
+    bool foundBarDownbeat = false;
+    for (const auto& event : barOutput.events) {
+        if (event.type == Event::kNoteOnEvent &&
+            std::abs(event.ppqPosition - 4.0) < 1e-9) {
+            foundBarDownbeat = true;
             break;
         }
     }
-    require(foundAnchoredDownbeat,
-            "phrase step 0 must be anchored exactly to the bar-2 play position");
+    require(foundBarDownbeat,
+            "starting exactly on a host bar boundary must emit phrase step zero");
+
+    // Restart mid-bar at QN 5.25 (one quarter + one 16th into bar 2).
+    // The phrase must preserve that host-grid phase instead of treating 5.25
+    // as a new arbitrary step zero.
+    require(processor.setProcessing(false) == kResultOk, "processor must stop");
+    require(processor.setProcessing(true) == kResultOk, "processor must restart");
+
+    auto midContext = makeContext(5.25, true);
+    EventList midOutput;
+    auto midData = makeProcessData(midContext, midOutput, 12000); // half a quarter note
+    require(processor.process(midData) == kResultOk,
+            "mid-bar transport start must succeed");
+
+    for (const auto& event : midOutput.events) {
+        if (event.type != Event::kNoteOnEvent)
+            continue;
+        const double hostSteps = (event.ppqPosition - 4.0) / 0.25;
+        require(std::abs(hostSteps - std::round(hostSteps)) < 1e-8,
+                "mid-bar start must remain locked to the host 16th-note grid");
+    }
 }
 
 void testLiveDownbeatAndStopFlush() {
@@ -710,7 +733,7 @@ int main() {
     testGeneratedNotesSustainToOne64BeforeNextHit();
     testMidiRootSourceTransposesRiff();
     testManualRootSourceIgnoresMidiRootNotes();
-    testTransportStartAtBarTwoBeginsPhraseAtStepZero();
+    testTransportUsesHostBarGrid();
     testLiveDownbeatAndStopFlush();
     testNewRiffFlushesHeldNotes();
     testVariationPressReleaseFlushesHeldNotes();

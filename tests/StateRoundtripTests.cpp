@@ -166,6 +166,10 @@ int main() {
     const auto contextFlags = original.getProcessContextRequirements();
     require((contextFlags & IProcessContextRequirements::kNeedProjectTimeMusic) != 0,
             "process context requirements must request musical project time");
+    require((contextFlags & IProcessContextRequirements::kNeedBarPositionMusic) != 0,
+            "process context requirements must request host bar position");
+    require((contextFlags & IProcessContextRequirements::kNeedTimeSignature) != 0,
+            "process context requirements must request host time signature");
     require((contextFlags & IProcessContextRequirements::kNeedTempo) != 0,
             "process context requirements must request tempo");
     require((contextFlags & IProcessContextRequirements::kNeedTransportState) != 0,
