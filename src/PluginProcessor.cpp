@@ -852,11 +852,11 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     addPercent(STR16("Variation Amount"), kVariationAmountId, 35.0);
 
     auto* newRiff = new RangeParameter(STR16("NEW Riff"), kNewRiffId, STR16(""),
-                                       0.0, 1.0, 0.0, 1, 0);
+                                       0.0, 1.0, 0.0, 1, ParameterInfo::kCanAutomate);
     parameters.addParameter(newRiff);
 
     auto* variation = new RangeParameter(STR16("VARIATION"), kVariationId, STR16(""),
-                                         0.0, 1.0, 0.0, 1, 0);
+                                         0.0, 1.0, 0.0, 1, ParameterInfo::kCanAutomate);
     parameters.addParameter(variation);
 
     return kResultOk;

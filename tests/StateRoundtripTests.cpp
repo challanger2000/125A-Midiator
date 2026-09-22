@@ -122,6 +122,35 @@ private:
 } // namespace
 
 int main() {
+    MidiatorController controller;
+    require(controller.initialize(nullptr) == kResultOk,
+            "controller must initialize for parameter-contract test");
+
+    bool foundNewRiff = false;
+    bool foundVariation = false;
+    for (int32 i = 0; i < controller.getParameterCount(); ++i) {
+        ParameterInfo info{};
+        require(controller.getParameterInfo(i, info) == kResultOk,
+                "controller parameter info must be readable");
+
+        if (info.id == kNewRiffId) {
+            foundNewRiff = true;
+            require(info.stepCount == 1,
+                    "NEW RIFF must be a two-state momentary parameter");
+            require((info.flags & ParameterInfo::kCanAutomate) != 0,
+                    "NEW RIFF must be host-visible so GUI edits reach the processor");
+        }
+        if (info.id == kVariationId) {
+            foundVariation = true;
+            require(info.stepCount == 1,
+                    "VARIATION must be a two-state momentary parameter");
+            require((info.flags & ParameterInfo::kCanAutomate) != 0,
+                    "VARIATION must be host-visible so GUI edits reach the processor");
+        }
+    }
+    require(foundNewRiff && foundVariation,
+            "controller must expose both action parameters");
+
     MidiatorProcessor original;
 
     require(original.setProcessing(true) == kResultOk,
