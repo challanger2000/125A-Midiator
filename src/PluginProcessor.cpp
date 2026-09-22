@@ -474,30 +474,15 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
 
         const auto id = queue->getParameterId();
 
-        // Action buttons are momentary commands, not persistent states.
-        // Some hosts deliver a kick button as 1->0 in one block; others only
-        // deliver the high point. Treat any high point in the queue as one
-        // command for this process block. This makes repeated clicks reliable
-        // even when the host never forwards a separate release value.
+        // NEW RIFF and VARIATION use toggle-command parameters.
+        // The GUI alternates their final value (0 <-> 1) on every click.
+        // Therefore even hosts that coalesce edits to a single final value
+        // still deliver a distinct parameter change for every action.
         if (id == kNewRiffId || id == kVariationId) {
-            bool pressed = false;
-            for (int32 point = 0; point < queue->getPointCount(); ++point) {
-                int32 sampleOffset = 0;
-                ParamValue v = 0.0;
-                if (queue->getPoint(point, sampleOffset, v) != kResultOk)
-                    continue;
-                if (std::clamp(v, 0.0, 1.0) > 0.5) {
-                    pressed = true;
-                    break;
-                }
-            }
-
-            if (pressed) {
-                if (id == kNewRiffId)
-                    generateNew();
-                else
-                    generateVariation();
-            }
+            if (id == kNewRiffId)
+                generateNew();
+            else
+                generateVariation();
             continue;
         }
 

@@ -181,7 +181,7 @@ void testNewRiffChangesRhythmMask() {
     require(queue != nullptr, "NEW RIFF queue must be created");
     int32 pointIndex = 0;
     require(queue->addPoint(0, 1.0, pointIndex) == kResultOk,
-            "high-only NEW RIFF press must be accepted");
+            "NEW RIFF toggle value must be accepted");
 
     // Start a new transport phase so the complete replacement riff is captured
     // from step zero rather than from the middle of an old phrase.
@@ -206,6 +206,47 @@ void testNewRiffChangesRhythmMask() {
                            static_cast<double>(unionCount);
     require(jaccard <= 0.52,
             "NEW RIFF must create a strongly different onset/rest rhythm mask");
+}
+
+void testNewRiffToggleZeroValueStillCommands() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "processor must start");
+
+    auto capture = [&](double startQn) {
+        auto context = makeContext(startQn, true);
+        EventList output;
+        auto data = makeProcessData(context, output, 192000);
+        require(processor.process(data) == kResultOk, "toggle command capture must succeed");
+        std::array<bool, 32> hits{};
+        for (const auto& e : output.events) {
+            if (e.type != Event::kNoteOnEvent)
+                continue;
+            const int step = static_cast<int>(std::lround((e.ppqPosition - startQn) / 0.25));
+            if (step >= 0 && step < 32)
+                hits[static_cast<size_t>(step)] = true;
+        }
+        return hits;
+    };
+
+    const auto first = capture(0.0);
+
+    // Simulate a coalescing host's second toggle click: only final value 0 arrives.
+    ParameterChanges changes;
+    int32 qi = 0;
+    auto* q = changes.addParameterData(kNewRiffId, qi);
+    int32 pi = 0;
+    require(q && q->addPoint(0, 0.0, pi) == kResultOk,
+            "zero-valued NEW RIFF toggle must be accepted");
+
+    auto stopped = makeContext(8.0, false);
+    EventList stoppedOut;
+    auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &changes);
+    require(processor.process(stoppedData) == kResultOk,
+            "zero-valued NEW RIFF command must process");
+
+    const auto second = capture(8.0);
+    require(first != second,
+            "zero-valued toggle transition must still generate a new riff");
 }
 
 void testHeavyIndustrialStaysLockedToHostGrid() {
@@ -246,7 +287,7 @@ void testHeavyIndustrialStaysLockedToHostGrid() {
     auto* newQueue = newChanges.addParameterData(kNewRiffId, qi);
     pi = 0;
     require(newQueue && newQueue->addPoint(0, 1.0, pi) == kResultOk,
-            "high-only NEW RIFF trigger must be accepted");
+            "NEW RIFF toggle value must be accepted");
 
     auto secondContext = makeContext(12.0, true);
     EventList secondOut;
@@ -299,8 +340,9 @@ void testRepeatedNewRiffStaysDistinct() {
         int32 queueIndex = 0;
         auto* q = changes.addParameterData(kNewRiffId, queueIndex);
         int32 pointIndex = 0;
-        require(q && q->addPoint(0, 1.0, pointIndex) == kResultOk,
-                "high-only repeated NEW RIFF trigger must be accepted");
+        const double toggleValue = (round % 2 == 0) ? 1.0 : 0.0;
+        require(q && q->addPoint(0, toggleValue, pointIndex) == kResultOk,
+                "repeated NEW RIFF toggle must be accepted");
 
         auto stopped = makeContext(8.0 + round * 8.0, false);
         EventList stoppedOutput;
@@ -665,6 +707,7 @@ void testTransportJumpFlushesHeldNotes() {
 
 int main() {
     testNewRiffChangesRhythmMask();
+    testNewRiffToggleZeroValueStillCommands();
     testHeavyIndustrialStaysLockedToHostGrid();
     testRepeatedNewRiffStaysDistinct();
     testBarsResizePreservesExistingRiff();

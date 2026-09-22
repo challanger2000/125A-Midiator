@@ -93,8 +93,8 @@
       <view class="CSlider" control-tag="VariationAmount" origin="18, 138" size="210, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
       <view class="CTextEdit" control-tag="VariationAmount" origin="236, 137" size="40, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
 
-      <view class="CTextButton" control-tag="NewRiff" origin="324, 124" size="208, 54" title="NEW RIFF" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-width="0" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
-      <view class="CTextButton" control-tag="Variation" origin="550, 124" size="230, 54" title="VARIATION" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-width="0" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
+      <view class="CTextButton" control-tag="NewRiff" origin="324, 124" size="208, 54" title="NEW RIFF" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-width="0" gradient="ButtonIdle" gradient-highlighted="ButtonIdle" kick-style="false"/>
+      <view class="CTextButton" control-tag="Variation" origin="550, 124" size="230, 54" title="VARIATION" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-width="0" gradient="ButtonIdle" gradient-highlighted="ButtonIdle" kick-style="false"/>
 
       <view class="CTextLabel" origin="18, 196" size="762, 20" title="VARIATION keeps root, scale and phrase length.  MIDI is generated live while the DAW transport runs." font="Small" font-color="Dim" transparent="true"/>
     </view>
