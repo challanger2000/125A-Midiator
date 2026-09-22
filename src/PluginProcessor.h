@@ -10,11 +10,13 @@
 #include "pluginterfaces/base/ibstream.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <string>
 
 namespace VSTGUI {
 class CTextLabel;
+class CControl;
 class CView;
 class IUIDescription;
 class VST3Editor;
@@ -67,6 +69,7 @@ public:
     tresult PLUGIN_API getState(IBStream* state) SMTG_OVERRIDE;
     tresult PLUGIN_API setState(IBStream* state) SMTG_OVERRIDE;
     tresult PLUGIN_API process(ProcessData& data) SMTG_OVERRIDE;
+    tresult PLUGIN_API notify(IMessage* message) SMTG_OVERRIDE;
 
 private:
     struct ScheduledEvent {
@@ -95,6 +98,8 @@ private:
     bool phraseChangedNeedsFlush_ = false;
     bool midiRootSource_ = true;
     int manualRootPitchClass_ = 9;
+    std::atomic<uint32_t> pendingNewRiffCommands_{0};
+    std::atomic<uint32_t> pendingVariationCommands_{0};
 
     void generateNew();
     void generateVariation();
@@ -106,7 +111,8 @@ private:
 };
 
 class MidiatorController final : public EditControllerEx1,
-                                public VSTGUI::VST3EditorDelegate {
+                                public VSTGUI::VST3EditorDelegate,
+                                public VSTGUI::IControlListener {
 public:
     static FUnknown* createInstance(void*) {
         return static_cast<IEditController*>(new MidiatorController());
@@ -116,6 +122,8 @@ public:
     tresult PLUGIN_API setComponentState(IBStream* state) SMTG_OVERRIDE;
     tresult PLUGIN_API setParamNormalized(ParamID tag, ParamValue value) SMTG_OVERRIDE;
     IPlugView* PLUGIN_API createView(FIDString name) SMTG_OVERRIDE;
+
+    void valueChanged(VSTGUI::CControl* control) SMTG_OVERRIDE;
 
     VSTGUI::CView* verifyView(VSTGUI::CView* view,
                               const VSTGUI::UIAttributes& attributes,
@@ -130,6 +138,10 @@ private:
     VSTGUI::CTextLabel* theoryNotes_ = nullptr;
     VSTGUI::CTextLabel* theoryCharacter_ = nullptr;
     VSTGUI::CTextLabel* theoryInterval_ = nullptr;
+    VSTGUI::CControl* newRiffButton_ = nullptr;
+    VSTGUI::CControl* variationButton_ = nullptr;
+    double fallbackNewRiffState_ = 0.0;
+    double fallbackVariationState_ = 0.0;
 };
 
 } // namespace Steinberg::Vst

@@ -6,6 +6,7 @@
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
 #include "vstgui/lib/controls/ctextlabel.h"
+#include "vstgui/lib/controls/ccontrol.h"
 
 #include <algorithm>
 #include <array>
@@ -19,6 +20,8 @@ constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 2048;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
 constexpr uint32_t kStateVersion = 4u;
+constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
+constexpr const char* kMsgVariation = "125A.Midiator.Variation";
 
 template <typename T>
 bool writeValue(IBStream* stream, const T& value) {
@@ -598,9 +601,35 @@ void MidiatorProcessor::flushActiveNotes(IEventList* output, double ppqPosition)
     }
 }
 
+tresult PLUGIN_API MidiatorProcessor::notify(IMessage* message) {
+    if (!message || !message->getMessageID())
+        return kInvalidArgument;
+
+    if (std::strcmp(message->getMessageID(), kMsgNewRiff) == 0) {
+        pendingNewRiffCommands_.fetch_add(1, std::memory_order_release);
+        return kResultOk;
+    }
+    if (std::strcmp(message->getMessageID(), kMsgVariation) == 0) {
+        pendingVariationCommands_.fetch_add(1, std::memory_order_release);
+        return kResultOk;
+    }
+
+    return AudioEffect::notify(message);
+}
+
 tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     if (data.processContext && data.processContext->sampleRate > 0.0)
         sampleRate_ = data.processContext->sampleRate;
+
+    // GUI commands arrive through IConnectionPoint. They are only queued in
+    // notify() and consumed here on the processing thread, so phrase state is
+    // never mutated concurrently from the UI thread.
+    const uint32_t newCount = pendingNewRiffCommands_.exchange(0, std::memory_order_acq_rel);
+    const uint32_t variationCount = pendingVariationCommands_.exchange(0, std::memory_order_acq_rel);
+    for (uint32_t i = 0; i < std::min<uint32_t>(newCount, 32u); ++i)
+        generateNew();
+    for (uint32_t i = 0; i < std::min<uint32_t>(variationCount, 32u); ++i)
+        generateVariation();
 
     applyParameterChanges(data);
     applyMidiRootInput(data);
@@ -847,6 +876,37 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     return kResultOk;
 }
 
+void MidiatorController::valueChanged(VSTGUI::CControl* control) {
+    if (!control || control->getValueNormalized() <= 0.5f)
+        return;
+
+    const auto tag = static_cast<ParamID>(control->getTag());
+    const char* messageId = nullptr;
+    double* fallbackState = nullptr;
+
+    if (tag == kNewRiffId) {
+        messageId = kMsgNewRiff;
+        fallbackState = &fallbackNewRiffState_;
+    } else if (tag == kVariationId) {
+        messageId = kMsgVariation;
+        fallbackState = &fallbackVariationState_;
+    } else {
+        return;
+    }
+
+    // Primary path: explicit controller -> processor command message.
+    if (sendMessageID(messageId) == kResultOk)
+        return;
+
+    // Fallback for a host that does not connect the two VST3 connection
+    // points: alternate the action parameter so the processor still receives
+    // a real changed final value.
+    *fallbackState = (*fallbackState > 0.5) ? 0.0 : 1.0;
+    beginEdit(tag);
+    performEdit(tag, *fallbackState);
+    endEdit(tag);
+}
+
 tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     if (!state)
         return kInvalidArgument;
@@ -916,6 +976,16 @@ VSTGUI::CView* MidiatorController::verifyView(VSTGUI::CView* view,
     if (!view)
         return nullptr;
 
+    if (auto* control = dynamic_cast<VSTGUI::CControl*>(view)) {
+        if (control->getTag() == static_cast<int32_t>(kNewRiffId)) {
+            control->setListener(this);
+            newRiffButton_ = control;
+        } else if (control->getTag() == static_cast<int32_t>(kVariationId)) {
+            control->setListener(this);
+            variationButton_ = control;
+        }
+    }
+
     const auto* id = attributes.getAttributeValue("midiator-id");
     if (id) {
         if (auto* label = dynamic_cast<VSTGUI::CTextLabel*>(view)) {
@@ -938,6 +1008,8 @@ void MidiatorController::willClose(VSTGUI::VST3Editor*) {
     theoryNotes_ = nullptr;
     theoryCharacter_ = nullptr;
     theoryInterval_ = nullptr;
+    newRiffButton_ = nullptr;
+    variationButton_ = nullptr;
 }
 
 void MidiatorController::refreshTheory() noexcept {

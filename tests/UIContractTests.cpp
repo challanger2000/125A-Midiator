@@ -62,9 +62,9 @@ int main() {
         const auto varPos = xml.find("control-tag=\"Variation\"");
         require(newPos != std::string::npos && varPos != std::string::npos,
                 "action button definitions must exist");
-        require(xml.substr(newPos, 500).find("kick-style=\"false\"") != std::string::npos &&
-                xml.substr(varPos, 500).find("kick-style=\"false\"") != std::string::npos,
-                "action buttons must use toggle-command semantics so hosts cannot coalesce 1->0 into no command");
+        require(xml.substr(newPos, 500).find("kick-style=\"true\"") != std::string::npos &&
+                xml.substr(varPos, 500).find("kick-style=\"true\"") != std::string::npos,
+                "action buttons must remain momentary GUI commands");
     }
     require(xml.find("control-tag=\"RootSource\"") != std::string::npos,
             "ROOT SOURCE selector must be bound");
