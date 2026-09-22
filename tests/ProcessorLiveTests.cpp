@@ -210,41 +210,68 @@ void testNewRiffChangesRhythmMask() {
             "NEW RIFF must create a strongly different onset/rest rhythm mask");
 }
 
-void testNewRiffRestartsPhraseAtStepZeroWhilePlaying() {
+void testHeavyIndustrialStaysLockedToHostGrid() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
 
-    // Establish a running transport and advance into the middle of the phrase.
-    auto firstContext = makeContext(0.0, true);
+    // Begin at a real bar boundary that is not song zero: QN 4 = bar 2 in 4/4.
+    ParameterChanges styleChanges;
+    int32 qi = 0;
+    auto* styleQueue = styleChanges.addParameterData(kStyleId, qi);
+    int32 pi = 0;
+    require(styleQueue && styleQueue->addPoint(0, 1.0, pi) == kResultOk,
+            "Heavy Industrial style must be accepted");
+
+    auto firstContext = makeContext(4.0, true);
     EventList firstOut;
-    auto firstData = makeProcessData(firstContext, firstOut, 96000); // 4 QN
+    auto firstData = makeProcessData(firstContext, firstOut, 192000, &styleChanges);
     require(processor.process(firstData) == kResultOk,
-            "initial running block must succeed");
+            "Heavy Industrial full phrase capture must succeed");
 
-    ParameterChanges changes;
-    int32 queueIndex = 0;
-    auto* q = changes.addParameterData(kNewRiffId, queueIndex);
-    int32 pointIndex = 0;
-    require(q && q->addPoint(0, 1.0, pointIndex) == kResultOk &&
-                q->addPoint(1, 0.0, pointIndex) == kResultOk,
-            "running NEW RIFF trigger must be accepted");
-
-    // Continue playback at QN 4: without re-anchoring this would be phrase step 16.
-    auto secondContext = makeContext(4.0, true);
-    EventList secondOut;
-    auto secondData = makeProcessData(secondContext, secondOut, 512, &changes);
-    require(processor.process(secondData) == kResultOk,
-            "running NEW RIFF process block must succeed");
-
-    bool foundImmediateDownbeat = false;
-    for (const auto& e : secondOut.events) {
-        if (e.type == Event::kNoteOnEvent && std::abs(e.ppqPosition - 4.0) < 1e-9) {
-            foundImmediateDownbeat = true;
-            break;
+    auto assertGrid = [](const EventList& out, double anchorQn) {
+        int noteOns = 0;
+        for (const auto& e : out.events) {
+            if (e.type != Event::kNoteOnEvent)
+                continue;
+            ++noteOns;
+            const double steps = (e.ppqPosition - anchorQn) / 0.25;
+            require(std::abs(steps - std::round(steps)) < 1e-8,
+                    "every generated Heavy Industrial note-on must stay on the host 16th grid");
         }
-    }
-    require(foundImmediateDownbeat,
-            "NEW RIFF while playing must restart the new phrase at step zero immediately");
+        require(noteOns > 0, "grid test needs generated note-ons");
+    };
+    assertGrid(firstOut, 4.0);
+
+    // Trigger NEW RIFF while transport continues at QN 12 (same 2-bar phrase boundary).
+    ParameterChanges newChanges;
+    qi = 0;
+    auto* newQueue = newChanges.addParameterData(kNewRiffId, qi);
+    pi = 0;
+    require(newQueue && newQueue->addPoint(0, 1.0, pi) == kResultOk &&
+                newQueue->addPoint(1, 0.0, pi) == kResultOk,
+            "NEW RIFF trigger must be accepted");
+
+    auto secondContext = makeContext(12.0, true);
+    EventList secondOut;
+    auto secondData = makeProcessData(secondContext, secondOut, 192000, &newChanges);
+    require(processor.process(secondData) == kResultOk,
+            "running NEW RIFF capture must succeed");
+    assertGrid(secondOut, 4.0);
+
+    // A style change mid-run must also preserve the original host phase.
+    ParameterChanges styleAgain;
+    qi = 0;
+    styleQueue = styleAgain.addParameterData(kStyleId, qi);
+    pi = 0;
+    require(styleQueue && styleQueue->addPoint(0, 0.0, pi) == kResultOk,
+            "NDH style change must be accepted");
+
+    auto thirdContext = makeContext(20.0, true);
+    EventList thirdOut;
+    auto thirdData = makeProcessData(thirdContext, thirdOut, 192000, &styleAgain);
+    require(processor.process(thirdData) == kResultOk,
+            "running style-change capture must succeed");
+    assertGrid(thirdOut, 4.0);
 }
 
 void testRepeatedNewRiffStaysDistinct() {
@@ -642,7 +669,7 @@ void testTransportJumpFlushesHeldNotes() {
 
 int main() {
     testNewRiffChangesRhythmMask();
-    testNewRiffRestartsPhraseAtStepZeroWhilePlaying();
+    testHeavyIndustrialStaysLockedToHostGrid();
     testRepeatedNewRiffStaysDistinct();
     testBarsResizePreservesExistingRiff();
     testGeneratedNotesSustainToOne64BeforeNextHit();
