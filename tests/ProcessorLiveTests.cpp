@@ -181,9 +181,7 @@ void testNewRiffChangesRhythmMask() {
     require(queue != nullptr, "NEW RIFF queue must be created");
     int32 pointIndex = 0;
     require(queue->addPoint(0, 1.0, pointIndex) == kResultOk,
-            "NEW RIFF press must be accepted");
-    require(queue->addPoint(1, 0.0, pointIndex) == kResultOk,
-            "NEW RIFF release must be accepted");
+            "high-only NEW RIFF press must be accepted");
 
     // Start a new transport phase so the complete replacement riff is captured
     // from step zero rather than from the middle of an old phrase.
@@ -247,9 +245,8 @@ void testHeavyIndustrialStaysLockedToHostGrid() {
     qi = 0;
     auto* newQueue = newChanges.addParameterData(kNewRiffId, qi);
     pi = 0;
-    require(newQueue && newQueue->addPoint(0, 1.0, pi) == kResultOk &&
-                newQueue->addPoint(1, 0.0, pi) == kResultOk,
-            "NEW RIFF trigger must be accepted");
+    require(newQueue && newQueue->addPoint(0, 1.0, pi) == kResultOk,
+            "high-only NEW RIFF trigger must be accepted");
 
     auto secondContext = makeContext(12.0, true);
     EventList secondOut;
@@ -302,9 +299,8 @@ void testRepeatedNewRiffStaysDistinct() {
         int32 queueIndex = 0;
         auto* q = changes.addParameterData(kNewRiffId, queueIndex);
         int32 pointIndex = 0;
-        require(q && q->addPoint(0, 1.0, pointIndex) == kResultOk &&
-                    q->addPoint(1, 0.0, pointIndex) == kResultOk,
-                "repeated NEW RIFF trigger must be accepted");
+        require(q && q->addPoint(0, 1.0, pointIndex) == kResultOk,
+                "high-only repeated NEW RIFF trigger must be accepted");
 
         auto stopped = makeContext(8.0 + round * 8.0, false);
         EventList stoppedOutput;

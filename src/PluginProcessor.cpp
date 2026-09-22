@@ -474,24 +474,29 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
 
         const auto id = queue->getParameterId();
 
-        // Kick-style buttons may deliver press and release points inside the
-        // same audio block. Process every point for edge-triggered actions so
-        // a final release value (0) cannot hide the preceding press (1).
+        // Action buttons are momentary commands, not persistent states.
+        // Some hosts deliver a kick button as 1->0 in one block; others only
+        // deliver the high point. Treat any high point in the queue as one
+        // command for this process block. This makes repeated clicks reliable
+        // even when the host never forwards a separate release value.
         if (id == kNewRiffId || id == kVariationId) {
+            bool pressed = false;
             for (int32 point = 0; point < queue->getPointCount(); ++point) {
                 int32 sampleOffset = 0;
                 ParamValue v = 0.0;
                 if (queue->getPoint(point, sampleOffset, v) != kResultOk)
                     continue;
-
-                v = std::clamp(v, 0.0, 1.0);
-                if (id == kNewRiffId) {
-                    if (newRiffTrigger_.update(v))
-                        generateNew();
-                } else {
-                    if (variationTrigger_.update(v))
-                        generateVariation();
+                if (std::clamp(v, 0.0, 1.0) > 0.5) {
+                    pressed = true;
+                    break;
                 }
+            }
+
+            if (pressed) {
+                if (id == kNewRiffId)
+                    generateNew();
+                else
+                    generateVariation();
             }
             continue;
         }
