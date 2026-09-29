@@ -445,47 +445,125 @@ void testBarsResizePreservesExistingRiff() {
             "shrinking back to 2 bars must restore the unchanged original riff span");
 }
 
-void testGeneratedNotesSustainToOne64BeforeNextHit() {
+void testPowerChordTogglePreservesRiffOnsetsAndPitches() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "processor must start");
+
+    auto capturePrimary = [&](double startQn, IParameterChanges* changes = nullptr) {
+        auto context = makeContext(startQn, true);
+        EventList output;
+        auto data = makeProcessData(context, output, 192000, changes);
+        require(processor.process(data) == kResultOk, "power-chord capture must succeed");
+
+        std::vector<std::pair<int, int>> primary;
+        std::vector<double> seenTimes;
+        for (const auto& e : output.events) {
+            if (e.type != Event::kNoteOnEvent)
+                continue;
+            const int step = static_cast<int>(std::lround((e.ppqPosition - startQn) / 0.25));
+            bool already = false;
+            for (double t : seenTimes)
+                if (std::abs(t - e.ppqPosition) < 1e-9) { already = true; break; }
+            if (!already) {
+                primary.emplace_back(step, e.noteOn.pitch);
+                seenTimes.push_back(e.ppqPosition);
+            }
+        }
+        return primary;
+    };
+
+    const auto before = capturePrimary(0.0);
+
+    ParameterChanges off;
+    int32 qi = 0, pi = 0;
+    auto* q = off.addParameterData(kPowerChordsEnabledId, qi);
+    require(q && q->addPoint(0, 0.0, pi) == kResultOk, "Power Chords OFF must be accepted");
+    auto stopped = makeContext(8.0, false);
+    EventList stoppedOut;
+    auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &off);
+    require(processor.process(stoppedData) == kResultOk, "Power Chords OFF process must succeed");
+
+    const auto afterOff = capturePrimary(8.0);
+    require(before == afterOff,
+            "Power Chords OFF must preserve the existing riff's primary onset/pitch pattern");
+
+    ParameterChanges on;
+    qi = 0; pi = 0;
+    q = on.addParameterData(kPowerChordsEnabledId, qi);
+    require(q && q->addPoint(0, 1.0, pi) == kResultOk, "Power Chords ON must be accepted");
+    auto stopped2 = makeContext(16.0, false);
+    EventList stoppedOut2;
+    auto stoppedData2 = makeProcessData(stopped2, stoppedOut2, 64, &on);
+    require(processor.process(stoppedData2) == kResultOk, "Power Chords ON process must succeed");
+
+    const auto afterOn = capturePrimary(16.0);
+    require(before == afterOn,
+            "Power Chords ON must preserve the existing riff's primary onset/pitch pattern");
+}
+
+void testLargeOfflineBlockKeepsNoteEventsBalanced() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "processor must start");
+
+    auto context = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 1000000);
+    data.processMode = kOffline;
+    require(processor.process(data) == kResultOk, "large offline block must process");
+
+    std::array<int, 128> balance{};
+    int noteOns = 0;
+    int noteOffs = 0;
+    for (const auto& e : output.events) {
+        if (e.type == Event::kNoteOnEvent) {
+            ++balance[static_cast<size_t>(e.noteOn.pitch)];
+            ++noteOns;
+        } else if (e.type == Event::kNoteOffEvent) {
+            --balance[static_cast<size_t>(e.noteOff.pitch)];
+            ++noteOffs;
+        }
+    }
+
+    require(noteOns > 100, "large offline fixture must exercise many generated events");
+    require(noteOffs > 100, "large offline fixture must contain many note-offs");
+    for (int v : balance)
+        require(std::abs(v) <= 1,
+                "large offline scheduling must not silently lose note-on/off pairs");
+}
+
+void testGeneratedNoteLengthsAffectMidiOutput() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
 
     auto context = makeContext(0.0, true);
     EventList output;
     auto data = makeProcessData(context, output, 192000);
-    require(processor.process(data) == kResultOk, "sustain scheduling process must succeed");
+    require(processor.process(data) == kResultOk, "note-length scheduling process must succeed");
 
-    std::vector<double> ons;
-    std::vector<double> offs;
-    for (const auto& e : output.events) {
-        if (e.type == Event::kNoteOnEvent)
-            ons.push_back(e.ppqPosition);
-        else if (e.type == Event::kNoteOffEvent)
-            offs.push_back(e.ppqPosition);
-    }
+    bool foundShort = false;
+    bool foundLong = false;
 
-    require(ons.size() >= 2, "sustain fixture requires at least two generated hits");
-    require(!offs.empty(), "sustain fixture requires generated note-offs");
+    for (const auto& on : output.events) {
+        if (on.type != Event::kNoteOnEvent)
+            continue;
 
-    const double firstOn = ons.front();
-    double nextOn = -1.0;
-    for (double on : ons) {
-        if (on > firstOn + 1e-9) {
-            nextOn = on;
+        for (const auto& off : output.events) {
+            if (off.type != Event::kNoteOffEvent || off.noteOff.pitch != on.noteOn.pitch)
+                continue;
+            if (off.ppqPosition + 1e-9 < on.ppqPosition)
+                continue;
+
+            const double duration = off.ppqPosition - on.ppqPosition;
+            if (std::abs(duration - (0.25 - 1.0 / 16.0)) < 1e-8)
+                foundShort = true;
+            if (duration > (0.25 - 1.0 / 16.0) + 1e-8)
+                foundLong = true;
             break;
         }
     }
-    require(nextOn > firstOn, "fixture must contain a later distinct hit");
 
-    const double expectedOff = nextOn - (1.0 / 16.0);
-    bool foundExpectedOff = false;
-    for (double off : offs) {
-        if (std::abs(off - expectedOff) < 1e-9) {
-            foundExpectedOff = true;
-            break;
-        }
-    }
-    require(foundExpectedOff,
-            "generated note/chord must end exactly one 1/64 note before the next hit");
+    require(foundShort, "generated one-step notes must produce short MIDI durations");
+    require(foundLong, "generated longer notes must produce audibly longer MIDI durations");
 }
 
 void testMidiRootSourceTransposesRiff() {
@@ -730,7 +808,9 @@ int main() {
     testHeavyIndustrialStaysLockedToHostGrid();
     testRepeatedNewRiffStaysDistinct();
     testBarsResizePreservesExistingRiff();
-    testGeneratedNotesSustainToOne64BeforeNextHit();
+    testPowerChordTogglePreservesRiffOnsetsAndPitches();
+    testLargeOfflineBlockKeepsNoteEventsBalanced();
+    testGeneratedNoteLengthsAffectMidiOutput();
     testMidiRootSourceTransposesRiff();
     testManualRootSourceIgnoresMidiRootNotes();
     testTransportUsesHostBarGrid();
