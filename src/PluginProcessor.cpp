@@ -17,7 +17,7 @@ namespace Steinberg::Vst {
 namespace {
 
 constexpr double kStepQuarterNotes = 0.25;
-constexpr int kMaxScheduledEvents = 2048;
+constexpr int kMaxScheduledEvents = 8192;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
 constexpr uint32_t kStateVersion = 4u;
 constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
@@ -422,6 +422,65 @@ void MidiatorProcessor::resizePhraseBars(int newBars) {
     phraseChangedNeedsFlush_ = true;
 }
 
+void MidiatorProcessor::applyPowerChordMode(bool enabled) {
+    settings_.powerChordsEnabled = enabled;
+
+    if (!enabled) {
+        for (int i = 0; i < phrase_.usedSteps(); ++i)
+            if (phrase_.steps[i].noteCount > 1)
+                phrase_.steps[i].noteCount = 1;
+        phraseChangedNeedsFlush_ = true;
+        return;
+    }
+
+    int eligibleHits = 0;
+    int existingChords = 0;
+    for (int i = 0; i < phrase_.usedSteps(); ++i) {
+        const auto& step = phrase_.steps[i];
+        if (step.noteCount <= 0 || step.notes[0].pitch > 120)
+            continue;
+        ++eligibleHits;
+        if (step.noteCount > 1)
+            ++existingChords;
+    }
+
+    float styleFactor = 1.0f;
+    if (settings_.style == midiator::StyleId::DarkRockGothic)
+        styleFactor = 1.10f;
+    else if (settings_.style == midiator::StyleId::HeavyIndustrial)
+        styleFactor = 0.92f;
+
+    int targetChords = static_cast<int>(std::lround(
+        static_cast<float>(eligibleHits) * settings_.powerChordChance * styleFactor));
+    targetChords = std::clamp(targetChords, 0, eligibleHits);
+    if (settings_.powerChordChance >= 0.10f && eligibleHits > 0)
+        targetChords = std::max(1, targetChords);
+
+    static constexpr int preferredPositions[] = {
+        0, 8, 4, 12, 6, 14, 2, 10, 3, 11, 7, 15, 5, 13, 1, 9
+    };
+
+    for (int bar = 0; bar < phrase_.bars && existingChords < targetChords; ++bar) {
+        for (int local : preferredPositions) {
+            if (existingChords >= targetChords)
+                break;
+            auto& step = phrase_.steps[bar * midiator::kStepsPerBar + local];
+            if (step.noteCount != 1 || step.notes[0].pitch > 120)
+                continue;
+
+            step.noteCount = 2;
+            step.notes[1] = step.notes[0];
+            step.notes[1].pitch = step.notes[0].pitch + 7;
+            step.notes[1].velocity = std::max(
+                step.notes[0].velocity >= 88 ? 88 : 30,
+                step.notes[0].velocity - 3);
+            ++existingChords;
+        }
+    }
+
+    phraseChangedNeedsFlush_ = true;
+}
+
 void MidiatorProcessor::transposePhraseToRoot(int newRootPitchClass) {
     newRootPitchClass = std::clamp(newRootPitchClass, 0, 11);
     const int oldRoot = settings_.rootPitchClass;
@@ -536,10 +595,8 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
                 break;
             case kPowerChordsEnabledId: {
                 const bool next = v > 0.5;
-                if (next != settings_.powerChordsEnabled) {
-                    settings_.powerChordsEnabled = next;
-                    tonalFrameChanged = true;
-                }
+                if (next != settings_.powerChordsEnabled)
+                    applyPowerChordMode(next);
                 break;
             }
             case kPalmMuteId:
@@ -745,14 +802,16 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
 
             const double onQn = cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
             const double nextOnQn = onQn + static_cast<double>(stepsToNextHit) * kStepQuarterNotes;
-            const double offQn = std::max(onQn, nextOnQn - kSustainGapQn);
+            const double latestOffQn = std::max(onQn, nextOnQn - kSustainGapQn);
 
-            // Midiator is a riff sequencer: let each generated hit sustain up
-            // to one 1/64 before the next occupied onset. The generator's
-            // lengthSteps values are structural hints and are intentionally
-            // not used to shorten live MIDI to one-step staccato notes.
+            // Generated note length is musically meaningful. Respect lengthSteps,
+            // but never let a note overlap the next occupied onset.
             for (int n = 0; n < step.noteCount; ++n) {
                 const auto& note = step.notes[n];
+                const double requestedOffQn =
+                    onQn + static_cast<double>(std::max(1, note.lengthSteps)) *
+                               kStepQuarterNotes - kSustainGapQn;
+                const double offQn = std::max(onQn, std::min(latestOffQn, requestedOffQn));
                 addScheduled(onQn, true, note.pitch, note.velocity);
                 addScheduled(offQn, false, note.pitch, 0);
             }
