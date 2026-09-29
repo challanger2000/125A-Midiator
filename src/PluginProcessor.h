@@ -92,6 +92,7 @@ private:
     void generateNew();
     void generateVariation();
     void resizePhraseBars(int newBars);
+    void applyPowerChordMode(bool enabled);
     void transposePhraseToRoot(int newRootPitchClass);
     void applyParameterChanges(ProcessData& data);
     void applyMidiRootInput(ProcessData& data);
