@@ -579,26 +579,79 @@ void testLargeOfflineBlockKeepsNoteEventsBalanced() {
     data.processMode = kOffline;
     require(processor.process(data) == kResultOk, "large offline block must process");
 
-    std::array<int, 128> balance{};
-    int noteOns = 0;
-    int noteOffs = 0;
+    std::array<std::array<int, 128>, kEventOutputBusCount> balance{};
+    std::array<int, kEventOutputBusCount> noteOns{};
+    std::array<int, kEventOutputBusCount> noteOffs{};
+
     for (const auto& e : output.events) {
-        if (e.busIndex != kGuitarOutBus)
-            continue;
+        require(e.busIndex >= 0 && e.busIndex < kEventOutputBusCount,
+                "offline scheduler must never emit an invalid bus index");
+
+        const auto bus = static_cast<size_t>(e.busIndex);
         if (e.type == Event::kNoteOnEvent) {
-            ++balance[static_cast<size_t>(e.noteOn.pitch)];
-            ++noteOns;
+            ++balance[bus][static_cast<size_t>(e.noteOn.pitch)];
+            ++noteOns[bus];
         } else if (e.type == Event::kNoteOffEvent) {
-            --balance[static_cast<size_t>(e.noteOff.pitch)];
-            ++noteOffs;
+            --balance[bus][static_cast<size_t>(e.noteOff.pitch)];
+            ++noteOffs[bus];
         }
     }
 
-    require(noteOns > 20, "large offline fixture must exercise many generated events");
-    require(noteOffs > 20, "large offline fixture must contain many note-offs");
-    for (int v : balance)
-        require(std::abs(v) <= 1,
-                "large offline scheduling must not silently lose note-on/off pairs");
+    for (int bus : {kGuitarOutBus, kBassOutBus, kDrumsOutBus}) {
+        require(noteOns[static_cast<size_t>(bus)] > 20,
+                "large offline fixture must exercise every active instrument bus");
+        require(noteOffs[static_cast<size_t>(bus)] > 20,
+                "large offline fixture must emit note-offs on every active instrument bus");
+        for (int v : balance[static_cast<size_t>(bus)])
+            require(std::abs(v) <= 1,
+                    "large offline scheduling must not silently lose per-bus note-on/off pairs");
+    }
+
+    require(noteOns[kPadOutBus] == 0 && noteOffs[kPadOutBus] == 0,
+            "Pad Out must remain silent until a Pad Brain exists");
+    require(noteOns[kSynthOutBus] == 0 && noteOffs[kSynthOutBus] == 0,
+            "Synth Out must remain silent until a Synth Brain exists");
+}
+
+void testStopFlushesEveryActiveInstrumentBus() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "processor must start");
+
+    // Use a tiny running block at the downbeat so Guitar, Bass and Drums all
+    // have active notes whose scheduled NoteOff lies outside this block.
+    auto runningContext = makeContext(0.0, true);
+    EventList running;
+    auto runningData = makeProcessData(runningContext, running, 64);
+    require(processor.process(runningData) == kResultOk,
+            "active-bus flush setup must process");
+
+    std::array<bool, kEventOutputBusCount> hadOn{};
+    for (const auto& e : running.events)
+        if (e.type == Event::kNoteOnEvent &&
+            e.busIndex >= 0 && e.busIndex < kEventOutputBusCount)
+            hadOn[static_cast<size_t>(e.busIndex)] = true;
+
+    require(hadOn[kGuitarOutBus], "flush fixture must hold a Guitar note");
+    require(hadOn[kBassOutBus], "flush fixture must hold a Bass note");
+    require(hadOn[kDrumsOutBus], "flush fixture must hold a Drum note");
+
+    auto stoppedContext = makeContext(64.0 / 24000.0, false);
+    EventList stopped;
+    auto stoppedData = makeProcessData(stoppedContext, stopped, 64);
+    require(processor.process(stoppedData) == kResultOk,
+            "transport stop must flush active buses");
+
+    std::array<bool, kEventOutputBusCount> flushed{};
+    for (const auto& e : stopped.events)
+        if (e.type == Event::kNoteOffEvent &&
+            e.busIndex >= 0 && e.busIndex < kEventOutputBusCount)
+            flushed[static_cast<size_t>(e.busIndex)] = true;
+
+    require(flushed[kGuitarOutBus], "transport stop must flush Guitar Out");
+    require(flushed[kBassOutBus], "transport stop must flush Bass Out");
+    require(flushed[kDrumsOutBus], "transport stop must flush Drums Out");
+    require(!flushed[kPadOutBus] && !flushed[kSynthOutBus],
+            "transport stop must not fabricate flushes on inactive buses");
 }
 
 void testGeneratedNoteLengthsAffectMidiOutput() {
@@ -919,6 +972,7 @@ int main() {
     testBarsResizePreservesExistingRiff();
     testPowerChordTogglePreservesRiffOnsetsAndPitches();
     testLargeOfflineBlockKeepsNoteEventsBalanced();
+    testStopFlushesEveryActiveInstrumentBus();
     testGeneratedNoteLengthsAffectMidiOutput();
     testMidiRootSourceTransposesRiff();
     testManualRootSourceIgnoresMidiRootNotes();
