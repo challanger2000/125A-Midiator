@@ -784,7 +784,7 @@ int main() {
     std::cout << "----------------------------------------------\n";
     for(int style=0;style<static_cast<int>(StyleId::Count);++style){
         BassSettings bs{}; bs.style=static_cast<StyleId>(style); bs.movement=0.45f; bs.sustain=0.55f;
-        printBassSweepLine(styleNames[style],1.0,measureBass(bassGuitar,bs,760000u+style*10000u,512));
+        printBassSweepLine(styleNames[style],1.0,measureBass(bassGuitarSettings.bars ? bassGuitar : bassGuitar,bs,760000u+style*10000u,512));
     }
     std::cout<<"\n";
 
