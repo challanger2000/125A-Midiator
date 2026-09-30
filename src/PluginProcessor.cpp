@@ -639,7 +639,7 @@ void MidiatorProcessor::regenerateSynth() {
         phrase_, bassPhrase_, padPhrase_, synthSettings_, seed_ ^ 0x53594E26u);
 }
 
-void MidiatorProcessor::resizePhraseBars(int newBars) {
+void MidiatorProcessor::resizePhraseBars(int newBars, bool regenerateCompanions) {
     if (newBars != 1 && newBars != 2 && newBars != 4 && newBars != 8)
         return;
 
@@ -663,18 +663,20 @@ void MidiatorProcessor::resizePhraseBars(int newBars) {
 
     phrase_ = resized;
     settings_.bars = newBars;
-    regenerateBass();
+    if (regenerateCompanions)
+        regenerateBass();
     phraseChangedNeedsFlush_ = true;
 }
 
-void MidiatorProcessor::applyPowerChordMode(bool enabled) {
+void MidiatorProcessor::applyPowerChordMode(bool enabled, bool regenerateCompanions) {
     settings_.powerChordsEnabled = enabled;
 
     if (!enabled) {
         for (int i = 0; i < phrase_.usedSteps(); ++i)
             if (phrase_.steps[i].noteCount > 1)
                 phrase_.steps[i].noteCount = 1;
-        regenerateBass();
+        if (regenerateCompanions)
+            regenerateBass();
         phraseChangedNeedsFlush_ = true;
         return;
     }
@@ -724,11 +726,12 @@ void MidiatorProcessor::applyPowerChordMode(bool enabled) {
         }
     }
 
-    regenerateBass();
+    if (regenerateCompanions)
+        regenerateBass();
     phraseChangedNeedsFlush_ = true;
 }
 
-void MidiatorProcessor::transposePhraseToRoot(int newRootPitchClass) {
+void MidiatorProcessor::transposePhraseToRoot(int newRootPitchClass, bool regenerateCompanions) {
     newRootPitchClass = std::clamp(newRootPitchClass, 0, 11);
     const int oldRoot = settings_.rootPitchClass;
     if (newRootPitchClass == oldRoot)
@@ -747,7 +750,8 @@ void MidiatorProcessor::transposePhraseToRoot(int newRootPitchClass) {
     }
 
     settings_.rootPitchClass = newRootPitchClass;
-    regenerateBass();
+    if (regenerateCompanions)
+        regenerateBass();
     phraseChangedNeedsFlush_ = true;
 }
 
@@ -787,27 +791,49 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
     if (!data.inputParameterChanges)
         return;
 
-    bool tonalFrameChanged = false;
-    bool fallbackNewRiff = false;
-    bool fallbackVariation = false;
+    struct Pending {
+        bool hasRoot = false;
+        int root = 0;
+        bool hasScale = false;
+        midiator::ScaleId scale = midiator::ScaleId::Phrygian;
+        bool hasBars = false;
+        int bars = 2;
+        bool hasDensity = false;
+        float density = 0.0f;
+        bool hasComplexity = false;
+        float complexity = 0.0f;
+        bool hasRepetition = false;
+        float repetition = 0.0f;
+        bool hasPowerChordAmount = false;
+        float powerChordAmount = 0.0f;
+        bool hasPowerChordsEnabled = false;
+        bool powerChordsEnabled = true;
+        bool hasPalmMute = false;
+        float palmMute = 0.0f;
+        bool hasVariationAmount = false;
+        float variationAmount = 0.0f;
+        bool hasStyle = false;
+        midiator::StyleId style = midiator::StyleId::NDHIndustrial;
+        bool hasRootSource = false;
+        bool midiRootSource = true;
+        bool newRiff = false;
+        bool variation = false;
+    } pending;
 
+    // Phase 1: collect only the final point from every queue. VST3 does not
+    // guarantee a semantically meaningful queue order, so no musical state is
+    // mutated while queues are being enumerated.
     for (int32 i = 0; i < data.inputParameterChanges->getParameterCount(); ++i) {
         auto* queue = data.inputParameterChanges->getParameterData(i);
         if (!queue || queue->getPointCount() <= 0)
             continue;
 
         const auto id = queue->getParameterId();
-
-        // Defer action parameters until every normal parameter queue in this
-        // block has been consumed. VST3 hosts are not required to present
-        // parameter queues in a musically meaningful order; NEW RIFF and
-        // VARIATION must therefore see the complete final settings for the
-        // block rather than whichever queues happened to precede them.
         if (id == kNewRiffId || id == kVariationId) {
             if (id == kNewRiffId)
-                fallbackNewRiff = true;
+                pending.newRiff = true;
             else
-                fallbackVariation = true;
+                pending.variation = true;
             continue;
         }
 
@@ -815,96 +841,148 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
         ParamValue v = 0.0;
         if (queue->getPoint(queue->getPointCount() - 1, sampleOffset, v) != kResultOk)
             continue;
-
         v = std::clamp(v, 0.0, 1.0);
 
         switch (id) {
-            case kRootId: {
-                const int next = normalizedIndex(v, 12);
-                manualRootPitchClass_ = next;
-                if (!midiRootSource_ && next != settings_.rootPitchClass) {
-                    transposePhraseToRoot(next);
-                }
+            case kRootId:
+                pending.hasRoot = true;
+                pending.root = normalizedIndex(v, 12);
                 break;
-            }
-            case kScaleId: {
-                const auto next = static_cast<midiator::ScaleId>(
+            case kScaleId:
+                pending.hasScale = true;
+                pending.scale = static_cast<midiator::ScaleId>(
                     normalizedIndex(v, static_cast<int>(midiator::ScaleId::Count)));
-                if (next != settings_.scale) {
-                    settings_.scale = next;
-                    tonalFrameChanged = true;
-                }
                 break;
-            }
             case kBarsId: {
                 static constexpr int bars[] = {1, 2, 4, 8};
-                const int next = bars[normalizedIndex(v, 4)];
-                if (next != settings_.bars)
-                    resizePhraseBars(next);
+                pending.hasBars = true;
+                pending.bars = bars[normalizedIndex(v, 4)];
                 break;
             }
             case kDensityId:
-                settings_.density = static_cast<float>(v);
+                pending.hasDensity = true;
+                pending.density = static_cast<float>(v);
                 break;
             case kComplexityId:
-                settings_.complexity = static_cast<float>(v);
+                pending.hasComplexity = true;
+                pending.complexity = static_cast<float>(v);
                 break;
             case kRepetitionId:
-                settings_.repetition = static_cast<float>(v);
+                pending.hasRepetition = true;
+                pending.repetition = static_cast<float>(v);
                 break;
             case kPowerChordId:
-                settings_.powerChordChance = static_cast<float>(v);
+                pending.hasPowerChordAmount = true;
+                pending.powerChordAmount = static_cast<float>(v);
                 break;
-            case kPowerChordsEnabledId: {
-                const bool next = v > 0.5;
-                if (next != settings_.powerChordsEnabled)
-                    applyPowerChordMode(next);
+            case kPowerChordsEnabledId:
+                pending.hasPowerChordsEnabled = true;
+                pending.powerChordsEnabled = v > 0.5;
                 break;
-            }
             case kPalmMuteId:
-                settings_.palmMuteChance = static_cast<float>(v);
+                pending.hasPalmMute = true;
+                pending.palmMute = static_cast<float>(v);
                 break;
             case kVariationAmountId:
-                variationAmount_ = static_cast<float>(v);
+                pending.hasVariationAmount = true;
+                pending.variationAmount = static_cast<float>(v);
                 break;
-            case kStyleId: {
-                const auto next = static_cast<midiator::StyleId>(
+            case kStyleId:
+                pending.hasStyle = true;
+                pending.style = static_cast<midiator::StyleId>(
                     normalizedIndex(v, static_cast<int>(midiator::StyleId::Count)));
-                if (next != settings_.style) {
-                    settings_.style = next;
-                    tonalFrameChanged = true;
-                }
                 break;
-            }
-            case kRootSourceId: {
-                const bool nextMidi = v > 0.5;
-                if (nextMidi != midiRootSource_) {
-                    midiRootSource_ = nextMidi;
-                    if (!midiRootSource_)
-                        transposePhraseToRoot(manualRootPitchClass_);
-                }
-                break;
-            }
-            case kNewRiffId:
-            case kVariationId:
-                // Edge-triggered action parameters are handled point-by-point
-                // before this switch.
+            case kRootSourceId:
+                pending.hasRootSource = true;
+                pending.midiRootSource = v > 0.5;
                 break;
             default:
                 break;
         }
     }
 
-    // A tonal-frame change already requires a fresh composition. Coalesce
-    // an accompanying NEW RIFF fallback into that same generation so queue
-    // order cannot cause double work or a discarded intermediate phrase.
-    if (tonalFrameChanged || fallbackNewRiff)
-        generateNew();
+    // Phase 2: establish the final block settings before any phrase operation.
+    // This makes Style + Power-Chord Amount + Toggle deterministic regardless
+    // of the host's queue ordering.
+    if (pending.hasDensity)
+        settings_.density = pending.density;
+    if (pending.hasComplexity)
+        settings_.complexity = pending.complexity;
+    if (pending.hasRepetition)
+        settings_.repetition = pending.repetition;
+    if (pending.hasPowerChordAmount)
+        settings_.powerChordChance = pending.powerChordAmount;
+    if (pending.hasPalmMute)
+        settings_.palmMuteChance = pending.palmMute;
+    if (pending.hasVariationAmount)
+        variationAmount_ = pending.variationAmount;
 
-    // VARIATION is deliberately applied after any required fresh generation,
-    // so a same-block Style/Scale + VARIATION request has deterministic
-    // semantics independent of host queue ordering.
-    if (fallbackVariation)
+    const auto oldScale = settings_.scale;
+    const auto oldStyle = settings_.style;
+    if (pending.hasScale)
+        settings_.scale = pending.scale;
+    if (pending.hasStyle)
+        settings_.style = pending.style;
+
+    if (pending.hasRoot)
+        manualRootPitchClass_ = pending.root;
+
+    const bool finalMidiRootSource =
+        pending.hasRootSource ? pending.midiRootSource : midiRootSource_;
+
+    const bool tonalFrameChanged =
+        settings_.scale != oldScale || settings_.style != oldStyle;
+    const bool freshGeneration = tonalFrameChanged || pending.newRiff;
+
+    bool guitarEdited = false;
+
+    // Root Source and manual Root are applied from their final combined state.
+    // Switching to MIDI deliberately keeps the current root until a MIDI NoteOn
+    // arrives; switching to Manual immediately adopts the final manual root.
+    midiRootSource_ = finalMidiRootSource;
+    if (!midiRootSource_ && manualRootPitchClass_ != settings_.rootPitchClass) {
+        if (freshGeneration) {
+            settings_.rootPitchClass = manualRootPitchClass_;
+        } else {
+            transposePhraseToRoot(manualRootPitchClass_, false);
+            guitarEdited = true;
+        }
+    }
+
+    // Phrase length is a structural edit only when no fresh composition is
+    // already required. Otherwise the generator creates the requested length
+    // directly, avoiding an intermediate companion-role cascade.
+    if (pending.hasBars && pending.bars != settings_.bars) {
+        if (freshGeneration) {
+            settings_.bars = pending.bars;
+        } else {
+            resizePhraseBars(pending.bars, false);
+            guitarEdited = true;
+        }
+    }
+
+    // Apply the chord toggle after final Style/Amount/Bars/Root are known.
+    if (pending.hasPowerChordsEnabled &&
+        pending.powerChordsEnabled != settings_.powerChordsEnabled) {
+        if (freshGeneration) {
+            settings_.powerChordsEnabled = pending.powerChordsEnabled;
+        } else {
+            applyPowerChordMode(pending.powerChordsEnabled, false);
+            guitarEdited = true;
+        }
+    }
+
+    if (freshGeneration) {
+        generateNew();
+    } else if (guitarEdited) {
+        // Root/Bars/Power-Chord edits may all occur in one host block. Refresh
+        // Bass -> Drums -> Pad -> Synth once from the final Guitar state.
+        regenerateBass();
+    }
+
+    // Variation is always last so Style/Scale/New-Riff and structural edits
+    // have deterministic semantics independent of VST3 queue ordering.
+    if (pending.variation)
         generateVariation();
 }
 

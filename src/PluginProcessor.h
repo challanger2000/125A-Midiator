@@ -118,9 +118,9 @@ private:
     void regenerateDrums();
     void regeneratePads();
     void regenerateSynth();
-    void resizePhraseBars(int newBars);
-    void applyPowerChordMode(bool enabled);
-    void transposePhraseToRoot(int newRootPitchClass);
+    void resizePhraseBars(int newBars, bool regenerateCompanions = true);
+    void applyPowerChordMode(bool enabled, bool regenerateCompanions = true);
+    void transposePhraseToRoot(int newRootPitchClass, bool regenerateCompanions = true);
     void applyParameterChanges(ProcessData& data);
     void applyMidiRootInput(ProcessData& data);
     void flushActiveNotes(IEventList* output, double ppqPosition = 0.0);

@@ -1371,6 +1371,98 @@ void testRoleSpecificGateRules() {
             "Synth must demonstrate independent legato-capable scheduling");
 }
 
+
+void testNormalParameterQueueOrderIsDeterministic() {
+    auto runCase = [](bool reverseOrder) {
+        MidiatorProcessor processor;
+        require(processor.setProcessing(true) == kResultOk,
+                "normal queue-order fixture must start");
+
+        // Force a known OFF baseline so the same-block ON transition must use
+        // the final Power-Chord Amount and final 4-bar phrase length.
+        ParameterChanges off;
+        int32 qi = 0, pi = 0;
+        auto* offQueue = off.addParameterData(kPowerChordsEnabledId, qi);
+        require(offQueue && offQueue->addPoint(0, 0.0, pi) == kResultOk,
+                "queue-order Power Chords OFF baseline must be accepted");
+        auto stopped0 = makeContext(0.0, false);
+        EventList stoppedOut0;
+        auto stoppedData0 = makeProcessData(stopped0, stoppedOut0, 64, &off);
+        require(processor.process(stoppedData0) == kResultOk,
+                "queue-order OFF baseline must process");
+
+        ParameterChanges changes;
+        qi = 0; pi = 0;
+
+        auto addRootSource = [&]() {
+            auto* q = changes.addParameterData(kRootSourceId, qi);
+            require(q && q->addPoint(0, 0.0, pi) == kResultOk,
+                    "queue-order Manual Root Source must be accepted");
+        };
+        auto addRoot = [&]() {
+            auto* q = changes.addParameterData(kRootId, qi);
+            // E = pitch-class index 4 of 12.
+            require(q && q->addPoint(0, 4.0 / 11.0, pi) == kResultOk,
+                    "queue-order manual E root must be accepted");
+        };
+        auto addBars = [&]() {
+            auto* q = changes.addParameterData(kBarsId, qi);
+            // 4 bars = index 2 of {1,2,4,8}.
+            require(q && q->addPoint(0, 2.0 / 3.0, pi) == kResultOk,
+                    "queue-order 4-bar value must be accepted");
+        };
+        auto addAmount = [&]() {
+            auto* q = changes.addParameterData(kPowerChordId, qi);
+            require(q && q->addPoint(0, 1.0, pi) == kResultOk,
+                    "queue-order Power-Chord Amount must be accepted");
+        };
+        auto addEnabled = [&]() {
+            auto* q = changes.addParameterData(kPowerChordsEnabledId, qi);
+            require(q && q->addPoint(0, 1.0, pi) == kResultOk,
+                    "queue-order Power Chords ON must be accepted");
+        };
+
+        if (!reverseOrder) {
+            addEnabled();
+            addBars();
+            addAmount();
+            addRoot();
+            addRootSource();
+        } else {
+            addRootSource();
+            addRoot();
+            addAmount();
+            addBars();
+            addEnabled();
+        }
+
+        auto stopped = makeContext(8.0, false);
+        EventList stoppedOut;
+        auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &changes);
+        require(processor.process(stoppedData) == kResultOk,
+                "normal queue-order command block must succeed");
+
+        auto context = makeContext(8.0, true);
+        EventList output;
+        auto data = makeProcessData(context, output, 384000);
+        require(processor.process(data) == kResultOk,
+                "normal queue-order capture must succeed");
+
+        std::vector<std::tuple<int32,int32,int16,int>> events;
+        for (const auto& e : output.events) {
+            if (e.type == Event::kNoteOnEvent) {
+                events.emplace_back(
+                    e.busIndex, e.sampleOffset, e.noteOn.pitch,
+                    static_cast<int>(std::lround(e.noteOn.velocity * 127.0f)));
+            }
+        }
+        return events;
+    };
+
+    require(runCase(false) == runCase(true),
+            "final normal-parameter state must not depend on VST3 queue ordering");
+}
+
 } // namespace
 
 int main() {
@@ -1386,6 +1478,7 @@ int main() {
     testStopFlushesEveryActiveInstrumentBus();
     testHugeOfflineBlockChunksSchedulerSafely();
     testGeneratedNoteLengthsAffectMidiOutput();
+    testNormalParameterQueueOrderIsDeterministic();
     testRoleSpecificGateRules();
     testMidiRootSourceTransposesRiff();
     testMidiRootBurstUsesFinalNote();
