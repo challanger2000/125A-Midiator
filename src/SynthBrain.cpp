@@ -168,14 +168,29 @@ Phrase SynthBrain::generate(const Phrase& guitar,
     for(int step=0;step<out.usedSteps();++step){
         const int local=step%16;
         const int motifIndex=(step/2)%8;
-        bool hit=motifHit[motifIndex]!=0;
-
         const bool offbeat=(local%2)!=0;
-        if(offbeat && rhythmRng.chance(0.05f+0.45f*s.syncopation))
+
+        // The base motif lives on the straight 8th-note skeleton. Syncopation
+        // has a real job: it introduces the in-between 16ths instead of
+        // starting from an already ~50% offbeat pattern.
+        bool hit=!offbeat && motifHit[motifIndex]!=0;
+
+        if(offbeat) {
+            float syncChance=0.02f+0.68f*s.syncopation;
+            if(s.style==StyleId::HeavyIndustrial)
+                syncChance+=0.08f;
+            else if(s.style==StyleId::DarkRockGothic)
+                syncChance+=0.03f;
+
+            if(motifHit[motifIndex]!=0 && rhythmRng.chance(syncChance))
+                hit=true;
+            else if(rhythmRng.chance(0.02f+0.16f*s.activity*s.syncopation))
+                hit=true;
+        } else if(!hit && rhythmRng.chance(0.04f+0.24f*s.activity)) {
             hit=true;
-        if(!hit && rhythmRng.chance(0.06f+0.30f*s.activity))
-            hit=true;
-        if(hit && !rhythmRng.chance(0.50f+0.45f*s.activity))
+        }
+
+        if(hit && !rhythmRng.chance(0.62f+0.33f*s.activity))
             hit=false;
 
         if(step%16==0)

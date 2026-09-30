@@ -61,6 +61,29 @@ void testActivityRaisesHitCount(){
     require(avg(1.0f)>avg(0.0f)+6.0,"Synth Activity must materially increase hit count");
 }
 
+void testSyncopationRaisesOffbeatShare(){
+    Phrase g{},b{}; PadPhrase p{}; makeContext(g,b,p);
+
+    auto offbeatShare=[&](float syncopation){
+        long long hits=0,offbeats=0;
+        for(unsigned seed=1;seed<=256;++seed){
+            SynthSettings s{}; s.syncopation=syncopation;
+            const auto q=SynthBrain::generate(g,b,p,s,25000u+seed);
+            for(int i=0;i<q.usedSteps();++i){
+                if(q.steps[i].noteCount<=0) continue;
+                ++hits;
+                if((i%2)!=0) ++offbeats;
+            }
+        }
+        return hits?static_cast<double>(offbeats)/hits:0.0;
+    };
+
+    const double low=offbeatShare(0.0f);
+    const double high=offbeatShare(1.0f);
+    require(high>low+0.20,
+            "Synth Syncopation must materially increase offbeat 16th-note activity");
+}
+
 void testSustainRaisesLongNoteShare(){
     Phrase g{},b{}; PadPhrase p{}; makeContext(g,b,p);
     auto share=[&](float sustain){
@@ -217,6 +240,7 @@ void testStylesDiffer(){
 int main(){
     testDeterministicCompactGestureScaleSafe();
     testActivityRaisesHitCount();
+    testSyncopationRaisesOffbeatShare();
     testSustainRaisesLongNoteShare();
     testPitchAndLengthControlsDoNotRewriteRhythm();
     testRepetitionPreservesMotifPitchIdentity();
