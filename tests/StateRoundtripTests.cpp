@@ -364,6 +364,30 @@ int main() {
     require(companionPatched.bytes() == exactReserialized.bytes(),
             "V5 must preserve exact Bass/Drums/Pad/Synth payload bytes without regeneration");
 
+    auto expectRejectedPatch = [&](size_t offset, int32 value, const char* message) {
+        MemoryStream damaged;
+        damaged.bytes() = first.bytes();
+        patchFixtureValue(damaged, offset, value);
+        damaged.rewind();
+        MidiatorProcessor target;
+        require(target.setState(&damaged) != kResultOk, message);
+    };
+
+    // Current V5 states are exact payloads. Structural corruption must be
+    // rejected instead of silently clamped into a different arrangement.
+    expectRejectedPatch(bassOffset, 3,
+                        "V5 invalid Bass bars must be rejected");
+    expectRejectedPatch(bassOffset + sizeof(int32), 99,
+                        "V5 invalid Bass noteCount must be rejected");
+    expectRejectedPatch(drumOffset + sizeof(int32), 99,
+                        "V5 invalid Drum hitCount must be rejected");
+    expectRejectedPatch(drumOffset + sizeof(int32) + sizeof(int32), 99,
+                        "V5 invalid Drum voice must be rejected");
+    expectRejectedPatch(padOffset + sizeof(int32), 99,
+                        "V5 invalid Pad noteCount must be rejected");
+    expectRejectedPatch(synthOffset + sizeof(int32) + sizeof(int32), 200,
+                        "V5 invalid Synth pitch must be rejected");
+
     MemoryStream corrupted;
     corrupted.bytes() = first.bytes();
     require(!corrupted.bytes().empty(), "corruption fixture must contain state bytes");
