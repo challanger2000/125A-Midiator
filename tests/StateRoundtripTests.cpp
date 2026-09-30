@@ -121,6 +121,13 @@ private:
 
 
 template <typename T>
+void patchFixtureValue(MemoryStream& stream, size_t offset, const T& value) {
+    require(offset + sizeof(T) <= stream.bytes().size(),
+            "state patch offset must stay inside serialized state");
+    std::memcpy(stream.bytes().data() + offset, &value, sizeof(T));
+}
+
+template <typename T>
 void appendFixtureValue(MemoryStream& stream, const T& value) {
     const auto oldSize = stream.bytes().size();
     stream.bytes().resize(oldSize + sizeof(T));
@@ -228,7 +235,7 @@ void verifyLegacyControllerMigration(uint32_t version,
     require(processor.getState(&migrated) == kResultOk,
             "migrated legacy state must serialize as current state");
     require(migrated.bytes().size() > fixture.bytes().size(),
-            "current V4 state must include fields absent from legacy fixture");
+            "current V5 state must include fields absent from legacy fixture");
 }
 
 } // namespace
@@ -303,6 +310,59 @@ int main() {
             "restored processor must serialize again");
     require(first.bytes() == second.bytes(),
             "state roundtrip must be byte-identical, including generated phrase data");
+
+    // V5 must restore the exact companion-role payload, not regenerate it.
+    // Layout is fixed-width: 64-byte header, then Guitar/Bass/Drums/Pad/Synth.
+    MemoryStream companionPatched;
+    companionPatched.bytes() = first.bytes();
+
+    constexpr size_t kHeaderBytes = 64;
+    constexpr size_t kPhraseBytes =
+        sizeof(int32) + midiator::kMaxSteps *
+        (sizeof(int32) + midiator::kMaxNotesPerStep * 3 * sizeof(int32));
+    constexpr size_t kDrumPhraseBytes =
+        sizeof(int32) + midiator::kMaxSteps *
+        (sizeof(int32) + midiator::kMaxDrumHitsPerStep * 2 * sizeof(int32));
+    constexpr size_t kPadPhraseBytes =
+        sizeof(int32) + midiator::kMaxSteps *
+        (sizeof(int32) + midiator::kMaxPadVoices * 3 * sizeof(int32));
+
+    const size_t guitarOffset = kHeaderBytes;
+    const size_t bassOffset = guitarOffset + kPhraseBytes;
+    const size_t drumOffset = bassOffset + kPhraseBytes;
+    const size_t padOffset = drumOffset + kDrumPhraseBytes;
+    const size_t synthOffset = padOffset + kPadPhraseBytes;
+
+    // Patch valid data fields in every non-Guitar role. Even if a particular
+    // step is currently unused, V5 promises exact payload recall.
+    const int32 bassPitch = 59;
+    const int32 drumVelocity = 77;
+    const int32 padPitch = 83;
+    const int32 synthPitch = 91;
+
+    patchFixtureValue(companionPatched,
+                      bassOffset + sizeof(int32) + sizeof(int32),
+                      bassPitch);
+    patchFixtureValue(companionPatched,
+                      drumOffset + sizeof(int32) + sizeof(int32) + sizeof(int32),
+                      drumVelocity);
+    patchFixtureValue(companionPatched,
+                      padOffset + sizeof(int32) + sizeof(int32),
+                      padPitch);
+    patchFixtureValue(companionPatched,
+                      synthOffset + sizeof(int32) + sizeof(int32),
+                      synthPitch);
+
+    companionPatched.rewind();
+    MidiatorProcessor exactRestore;
+    require(exactRestore.setState(&companionPatched) == kResultOk,
+            "V5 companion-payload fixture must restore");
+
+    MemoryStream exactReserialized;
+    require(exactRestore.getState(&exactReserialized) == kResultOk,
+            "V5 companion-payload fixture must serialize again");
+    require(companionPatched.bytes() == exactReserialized.bytes(),
+            "V5 must preserve exact Bass/Drums/Pad/Synth payload bytes without regeneration");
 
     MemoryStream corrupted;
     corrupted.bytes() = first.bytes();
