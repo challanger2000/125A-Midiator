@@ -412,6 +412,7 @@ void MidiatorProcessor::generateVariation() {
 void MidiatorProcessor::regenerateBass() {
     bassSettings_.rootPitchClass = settings_.rootPitchClass;
     bassSettings_.scale = settings_.scale;
+    bassSettings_.style = settings_.style;
     bassPhrase_ = midiator::BassBrain::generate(
         phrase_, bassSettings_, seed_ ^ 0xB4552026u);
     regenerateDrums();

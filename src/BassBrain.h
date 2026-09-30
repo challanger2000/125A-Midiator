@@ -9,6 +9,7 @@ namespace midiator {
 struct BassSettings {
     int rootPitchClass = 9;          // A
     ScaleId scale = ScaleId::Phrygian;
+    StyleId style = StyleId::NDHIndustrial;
     int lowRootMidi = 28;            // E1 reference region; root is aligned upward
     float follow = 0.72f;            // rhythmic lock to the guitar phrase
     float movement = 0.34f;          // chord/scale movement away from the pedal root

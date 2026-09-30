@@ -109,6 +109,43 @@ void testMovementReducesRootDominance() {
             "Bass Movement must reduce pedal-root dominance");
 }
 
+void testStylesHaveDistinctBassRoles() {
+    const auto guitar = makeGuitarFixture();
+
+    struct Stats { double root=0.0, lock=0.0, longs=0.0, upper=0.0, hits=0.0; };
+    auto measure=[&](StyleId style){
+        long long hits=0,roots=0,locked=0,longs=0,upper=0;
+        for(unsigned seed=1;seed<=256;++seed){
+            BassSettings s{}; s.style=style; s.movement=0.45f; s.sustain=0.55f;
+            const auto b=BassBrain::generate(guitar,s,80000u+seed);
+            for(int i=0;i<b.usedSteps();++i){
+                if(b.steps[i].noteCount<=0) continue;
+                ++hits; const auto& n=b.steps[i].notes[0];
+                if(((n.pitch%12)+12)%12==s.rootPitchClass) ++roots;
+                if(guitar.steps[i].noteCount>0) ++locked;
+                if(n.lengthSteps>1) ++longs;
+                if(n.pitch>=40) ++upper;
+            }
+        }
+        Stats st{}; const double hc=std::max(1.0,static_cast<double>(hits));
+        st.hits=hits/256.0; st.root=roots/hc; st.lock=locked/hc;
+        st.longs=longs/hc; st.upper=upper/hc; return st;
+    };
+
+    const auto ndh=measure(StyleId::NDHIndustrial);
+    const auto dark=measure(StyleId::DarkRockGothic);
+    const auto heavy=measure(StyleId::HeavyIndustrial);
+
+    require(ndh.root > dark.root + 0.05,
+            "NDH bass must remain more pedal-root focused than Dark Rock/Gothic");
+    require(dark.longs > heavy.longs + 0.05,
+            "Dark Rock/Gothic bass must sustain more than Heavy Industrial");
+    require(heavy.lock > dark.lock + 0.05,
+            "Heavy Industrial bass must lock to the riff more strongly than Dark Rock/Gothic");
+    require(heavy.upper > ndh.upper + 0.02,
+            "Heavy Industrial bass must use selective upper-octave reinforcement more than NDH");
+}
+
 void testNoOverlapAndDownbeatAnchor() {
     const auto guitar = makeGuitarFixture();
     BassSettings s{};
@@ -133,6 +170,7 @@ int main() {
     testDeterministicAndMonophonic();
     testFollowControlsGuitarLock();
     testMovementReducesRootDominance();
+    testStylesHaveDistinctBassRoles();
     testNoOverlapAndDownbeatAnchor();
 
     std::cout << "Midiator Bass Brain tests: PASS\n";

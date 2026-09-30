@@ -780,6 +780,14 @@ int main() {
     }
 
 
+    std::cout << "\nBass style diagnostics (512 phrases per style)\n";
+    std::cout << "----------------------------------------------\n";
+    for(int style=0;style<static_cast<int>(StyleId::Count);++style){
+        BassSettings bs{}; bs.style=static_cast<StyleId>(style); bs.movement=0.45f; bs.sustain=0.55f;
+        printBassSweepLine(styleNames[style],1.0,measureBass(bassGuitar,bs,760000u+style*10000u,512));
+    }
+    std::cout<<"\n";
+
     std::cout << "\nDrum Brain control sweep diagnostics (256 phrases per point)\n";
     std::cout << "---------------------------------------------------------\n";
     const auto drumGuitar = RiffEngine::generate(bassGuitarSettings, 0xD12A1001u);

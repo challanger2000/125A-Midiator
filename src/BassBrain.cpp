@@ -83,6 +83,12 @@ int chooseBassPitch(Rng& rng,
     // Heavy/NDH bass should live primarily on the pedal root, but selectively
     // follow important guitar movement instead of duplicating every guitar note.
     float rootChance = 0.72f - 0.34f * s.movement;
+    if (s.style == StyleId::NDHIndustrial)
+        rootChance += 0.10f;
+    else if (s.style == StyleId::DarkRockGothic)
+        rootChance -= 0.12f;
+    else if (s.style == StyleId::HeavyIndustrial)
+        rootChance += 0.02f;
     if (strongBeat)
         rootChance += 0.16f;
 
@@ -105,7 +111,12 @@ int chooseBassPitch(Rng& rng,
     while (target < root)
         target += 12;
 
-    if (rng.chance(s.octaveChance) && target <= 48)
+    float octaveChance = s.octaveChance;
+    if (s.style == StyleId::HeavyIndustrial)
+        octaveChance = std::min(1.0f, octaveChance * 1.8f + 0.06f);
+    else if (s.style == StyleId::DarkRockGothic)
+        octaveChance *= 0.75f;
+    if (rng.chance(octaveChance) && target <= 48)
         target += 12;
 
     return std::clamp(target, 24, 60);
@@ -159,20 +170,26 @@ Phrase BassBrain::generate(const Phrase& guitar,
         // strong beats retain anchors so the bass does not become random filler.
         bool hit = false;
         if (guitarHit) {
-            // FOLLOW is intentionally a true independence/lock control.
-            // At low values the bass selects only important guitar anchors;
-            // at high values it increasingly locks to the riff's onset grid.
+            float styleLock = 0.0f;
+            if (s.style == StyleId::NDHIndustrial) styleLock = 0.08f;
+            else if (s.style == StyleId::HeavyIndustrial) styleLock = 0.12f;
+            else if (s.style == StyleId::DarkRockGothic) styleLock = -0.08f;
+
             if (strongBeat)
-                hit = rng.chance(0.55f + 0.45f * s.follow);
+                hit = rng.chance(0.55f + 0.45f * s.follow + styleLock);
             else
-                hit = rng.chance(0.16f + 0.80f * s.follow);
+                hit = rng.chance(0.16f + 0.80f * s.follow + styleLock);
         } else if (strongBeat) {
             // Low FOLLOW gets its own quarter-note pulse so the bass can act
             // like a separate player rather than a transposed guitar copy.
             hit = rng.chance(0.10f + 0.40f * (1.0f - s.follow));
         } else {
-            const float independentPulse =
+            float independentPulse =
                 0.02f + 0.16f * (1.0f - s.follow) + 0.18f * s.passing;
+            if (s.style == StyleId::DarkRockGothic)
+                independentPulse += 0.08f;
+            else if (s.style == StyleId::HeavyIndustrial)
+                independentPulse += 0.03f;
             if ((local & 1) && rng.chance(independentPulse))
                 hit = true;
         }
@@ -193,10 +210,13 @@ Phrase BassBrain::generate(const Phrase& guitar,
             : (guitarHit ? rng.range(82, 104) : rng.range(68, 92));
 
         int length = 1;
-        if (!strongBeat && rng.chance(0.18f + 0.58f * s.sustain))
+        float sustainBias = 0.0f;
+        if (s.style == StyleId::DarkRockGothic) sustainBias = 0.14f;
+        else if (s.style == StyleId::HeavyIndustrial) sustainBias = -0.06f;
+        if (!strongBeat && rng.chance(0.18f + 0.58f * s.sustain + sustainBias))
             length = 2;
         if (strongBeat && !guitarHitAt(guitar, step + 1) &&
-            rng.chance(0.10f + 0.38f * s.sustain))
+            rng.chance(0.10f + 0.38f * s.sustain + sustainBias))
             length = 2;
 
         result.steps[step].noteCount = 1;
