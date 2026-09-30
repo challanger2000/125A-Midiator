@@ -574,7 +574,7 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
         synthPhrase_ = restoredSynthPhrase;
     } else {
         // V1-V4 stored only Guitar. Recreate companion roles once during
-        // migration; subsequent V5 saves freeze the exact generated result.
+        // migration; subsequent V7 saves freeze the exact generated result.
         regenerateBass();
     }
 
