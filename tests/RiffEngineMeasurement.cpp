@@ -355,7 +355,7 @@ struct PadSweepMetrics {
     double avgDurationSteps = 0.0;
     double avgSpanSemitones = 0.0;
     double avgVoiceJump = 0.0;
-    double fourVoiceShare = 0.0;
+    double octaveDoubleShare = 0.0;
     double colorVoiceShare = 0.0;
     double contextToneShare = 0.0;
 };
@@ -366,7 +366,7 @@ static PadSweepMetrics measurePads(const Phrase& guitar,
                                    unsigned seedBase,
                                    int samples = 256) {
     PadSweepMetrics m{};
-    long long chords=0, voices=0, durations=0, fourVoice=0, colorVoices=0;
+    long long chords=0, voices=0, durations=0, octaveDoubles=0, colorVoices=0;
     long long spans=0, jumps=0, jumpSum=0, contextCompared=0, contextMatched=0;
 
     for(int sidx=0;sidx<samples;++sidx){
@@ -410,15 +410,18 @@ static PadSweepMetrics measurePads(const Phrase& guitar,
 
             ++chords;
             voices+=st.noteCount;
-            if(st.noteCount==4) ++fourVoice;
+            if(st.noteCount==4) ++octaveDoubles;
 
             // Isolate the effect of Tension against the exact same seed,
             // context-follow choice and all other settings with tension=0.
             const auto& baseline=neutral.steps[i];
             if(baseline.noteCount>0){
-                const int actualPc=(st.notes[st.noteCount-1].pitch%12+12)%12;
-                const int basePc=(baseline.notes[baseline.noteCount-1].pitch%12+12)%12;
-                if(actualPc!=basePc || st.noteCount!=baseline.noteCount)
+                unsigned actualMask=0, baseMask=0;
+                for(int n=0;n<st.noteCount;++n)
+                    actualMask |= 1u << ((st.notes[n].pitch%12+12)%12);
+                for(int n=0;n<baseline.noteCount;++n)
+                    baseMask |= 1u << ((baseline.notes[n].pitch%12+12)%12);
+                if(actualMask!=baseMask)
                     ++colorVoices;
             }
 
@@ -445,7 +448,7 @@ static PadSweepMetrics measurePads(const Phrase& guitar,
     m.avgDurationSteps=durations/voiceCount;
     m.avgSpanSemitones=spans/chordCount;
     m.avgVoiceJump=jumps>0?static_cast<double>(jumpSum)/jumps:0.0;
-    m.fourVoiceShare=fourVoice/chordCount;
+    m.octaveDoubleShare=octaveDoubles/chordCount;
     m.colorVoiceShare=colorVoices/chordCount;
     m.contextToneShare=contextCompared?static_cast<double>(contextMatched)/contextCompared:0.0;
     return m;
@@ -458,7 +461,7 @@ static void printPadSweepLine(const char* label,double value,const PadSweepMetri
              <<" duration="<<m.avgDurationSteps
              <<" span="<<m.avgSpanSemitones
              <<" voiceJump="<<m.avgVoiceJump
-             <<" fourVoice="<<m.fourVoiceShare*100.0<<"%"
+             <<" octaveDouble="<<m.octaveDoubleShare*100.0<<"%"
              <<" colorVoice="<<m.colorVoiceShare*100.0<<"%"
              <<" contextTone="<<m.contextToneShare*100.0<<"%\n";
 }

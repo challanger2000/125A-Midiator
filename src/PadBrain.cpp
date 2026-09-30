@@ -188,28 +188,29 @@ PadPhrase PadBrain::generate(const Phrase& guitar,
                 guitar, bass, s, step, chordEverySteps, rootDegree);
         }
 
-        std::array<int, 4> degrees{{
+        std::array<int, 3> degrees{{
             rootDegree,
             (rootDegree + 2) % scale.count,
-            (rootDegree + 4) % scale.count,
-            (rootDegree + 6) % scale.count
+            (rootDegree + 4) % scale.count
         }};
 
-        int voices = 3;
-        if (s.style == StyleId::DarkRockGothic)
-            voices = 4;
-        else if (s.style == StyleId::HeavyIndustrial && s.tension > 0.45f)
-            voices = 4;
+        // Pads deliberately stay sparse: normally 2-3 distinct chord tones.
+        // A possible fourth voice is added later only as an octave doubling.
+        int harmonicVoices = 3;
+        if (s.style == StyleId::NDHIndustrial && rng.chance(0.55f))
+            harmonicVoices = 2;
+        else if (s.style == StyleId::HeavyIndustrial && rng.chance(0.28f))
+            harmonicVoices = 2;
 
         auto& dst = out.steps[step];
-        dst.noteCount = voices;
+        dst.noteCount = harmonicVoices;
 
         const int durationBase = chordEverySteps;
         int duration = std::max(2, static_cast<int>(std::lround(
             durationBase * (0.55 + 0.45 * s.sustain))));
         duration = std::min(duration, out.usedSteps() - step);
 
-        for (int v = 0; v < voices; ++v) {
+        for (int v = 0; v < harmonicVoices; ++v) {
             int pc = degreePc(s, degrees[v]);
             int target = s.centerMidi + (v - 1) * 5;
             if (v == 0)
@@ -244,7 +245,7 @@ PadPhrase PadBrain::generate(const Phrase& guitar,
 
             // Tension remains scale-safe: color voice may move to the adjacent
             // scale degree instead of using chromatic out-of-key notes.
-            if (v == voices - 1 && rng.chance(0.15f + 0.55f * s.tension)) {
+            if (v == harmonicVoices - 1 && rng.chance(0.15f + 0.55f * s.tension)) {
                 const int colorDegree = (degrees[v] + 1) % scale.count;
                 pitch = nearestPitchForPc(degreePc(s, colorDegree), pitch);
             }
@@ -259,6 +260,41 @@ PadPhrase PadBrain::generate(const Phrase& guitar,
                 velocity -= 3;
 
             dst.notes[v] = {pitch, std::clamp(velocity, 1, 126), duration};
+        }
+
+        // At most one additional pad voice, and only as a true octave
+        // doubling of an existing harmonic tone. This adds size without
+        // inventing a fourth independent chord degree.
+        float octaveDoubleProbability = 0.04f + 0.18f * s.spread;
+        if (s.style == StyleId::DarkRockGothic)
+            octaveDoubleProbability += 0.08f;
+        else if (s.style == StyleId::HeavyIndustrial)
+            octaveDoubleProbability += 0.03f;
+
+        if (harmonicVoices < kMaxPadVoices &&
+            rng.chance(std::clamp(octaveDoubleProbability, 0.0f, 0.32f))) {
+            const int sourceIndex =
+                (harmonicVoices > 2 && rng.chance(0.35f)) ? harmonicVoices - 1 : 0;
+            const auto source = dst.notes[sourceIndex];
+
+            int doubledPitch = source.pitch;
+            const bool canUp = source.pitch + 12 <= 88;
+            const bool canDown = source.pitch - 12 >= 45;
+
+            if (canUp && canDown)
+                doubledPitch += rng.chance(0.68f) ? 12 : -12;
+            else if (canUp)
+                doubledPitch += 12;
+            else if (canDown)
+                doubledPitch -= 12;
+
+            if (doubledPitch != source.pitch) {
+                dst.notes[dst.noteCount++] = {
+                    doubledPitch,
+                    std::clamp(source.velocity - 4, 1, 126),
+                    duration
+                };
+            }
         }
 
         sortVoicing(dst);

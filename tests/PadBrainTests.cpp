@@ -46,8 +46,8 @@ void testDeterministicPolyphonicScaleSafe() {
         if (a.steps[i].noteCount <= 0)
             continue;
         ++chords;
-        require(a.steps[i].noteCount >= 3 && a.steps[i].noteCount <= 4,
-                "Pad chord must use 3-4 voices");
+        require(a.steps[i].noteCount >= 2 && a.steps[i].noteCount <= 4,
+                "Pad chord must use 2-3 harmonic tones plus optional octave doubling");
         for (int n = 0; n < a.steps[i].noteCount; ++n) {
             const auto& x = a.steps[i].notes[n];
             const auto& y = b.steps[i].notes[n];
@@ -63,28 +63,85 @@ void testDeterministicPolyphonicScaleSafe() {
     require(chords >= 2, "Pad Brain must generate harmonic events");
 }
 
-void testDarkRockUsesRicherVoicings() {
+void testDarkRockUsesThreeToneHarmonyMoreOften() {
     Phrase guitar{}, bass{};
     makeContext(guitar, bass);
 
-    PadSettings ndh{};
-    ndh.style = StyleId::NDHIndustrial;
-    PadSettings dark = ndh;
-    dark.style = StyleId::DarkRockGothic;
+    auto averageUniquePitchClasses = [&](StyleId style) {
+        double total = 0.0;
+        long long chords = 0;
+        for (unsigned seed = 1; seed <= 256; ++seed) {
+            PadSettings s{};
+            s.style = style;
+            const auto p = PadBrain::generate(guitar, bass, s, 40000u + seed);
+            for (int i = 0; i < p.usedSteps(); ++i) {
+                const auto& st = p.steps[i];
+                if (st.noteCount <= 0)
+                    continue;
+                bool pcSeen[12]{};
+                int unique = 0;
+                for (int n = 0; n < st.noteCount; ++n) {
+                    const int pc = (st.notes[n].pitch % 12 + 12) % 12;
+                    if (!pcSeen[pc]) {
+                        pcSeen[pc] = true;
+                        ++unique;
+                    }
+                }
+                total += unique;
+                ++chords;
+            }
+        }
+        return total / std::max<long long>(1, chords);
+    };
 
-    const auto a = PadBrain::generate(guitar, bass, ndh, 77u);
-    const auto b = PadBrain::generate(guitar, bass, dark, 77u);
+    const auto ndh = averageUniquePitchClasses(StyleId::NDHIndustrial);
+    const auto dark = averageUniquePitchClasses(StyleId::DarkRockGothic);
+    require(dark > ndh + 0.30,
+            "Dark Rock/Gothic pads should use three-tone harmony more often than NDH");
+}
 
-    long long voicesA = 0, chordsA = 0, voicesB = 0, chordsB = 0;
-    for (int i = 0; i < a.usedSteps(); ++i) {
-        if (a.steps[i].noteCount > 0) { voicesA += a.steps[i].noteCount; ++chordsA; }
-        if (b.steps[i].noteCount > 0) { voicesB += b.steps[i].noteCount; ++chordsB; }
+void testFourthPadVoiceIsOctaveDoubleOnly() {
+    Phrase guitar{}, bass{};
+    makeContext(guitar, bass);
+
+    int fourVoiceChords = 0;
+    for (unsigned seed = 1; seed <= 1024; ++seed) {
+        PadSettings s{};
+        s.style = StyleId::DarkRockGothic;
+        s.spread = 1.0f;
+        const auto p = PadBrain::generate(guitar, bass, s, 50000u + seed);
+
+        for (int i = 0; i < p.usedSteps(); ++i) {
+            const auto& st = p.steps[i];
+            if (st.noteCount <= 0)
+                continue;
+
+            bool seen[12]{};
+            int unique = 0;
+            for (int n = 0; n < st.noteCount; ++n) {
+                const int pc = (st.notes[n].pitch % 12 + 12) % 12;
+                if (!seen[pc]) {
+                    seen[pc] = true;
+                    ++unique;
+                }
+            }
+            require(unique >= 2 && unique <= 3,
+                    "Pad harmony must contain only 2-3 distinct pitch classes");
+
+            if (st.noteCount == 4) {
+                ++fourVoiceChords;
+                bool foundExactOctavePair = false;
+                for (int a = 0; a < 4; ++a)
+                    for (int b = a + 1; b < 4; ++b)
+                        if (std::abs(st.notes[a].pitch - st.notes[b].pitch) == 12)
+                            foundExactOctavePair = true;
+                require(foundExactOctavePair,
+                        "a fourth Pad voice must be an exact octave doubling");
+            }
+        }
     }
-
-    require(chordsA > 0 && chordsB > 0, "Pad style test needs chords");
-    require(static_cast<double>(voicesB) / chordsB >
-            static_cast<double>(voicesA) / chordsA + 0.5,
-            "Dark Rock/Gothic pads must use richer voicings than NDH");
+    require(fourVoiceChords > 0,
+            "Pad octave-doubling fixture must observe occasional fourth voices");
 }
 
 void testMovementIncreasesHarmonicActivity() {
@@ -174,7 +231,7 @@ void testTensionProgressivelyAddsColorVoices() {
     Phrase guitar{}, bass{};
     makeContext(guitar, bass);
 
-    auto changedTopVoices = [&](float tension) {
+    auto changedHarmony = [&](float tension) {
         long long changed = 0;
         long long compared = 0;
         for (unsigned seed = 1; seed <= 256; ++seed) {
@@ -189,24 +246,29 @@ void testTensionProgressivelyAddsColorVoices() {
             for (int i = 0; i < a.usedSteps(); ++i) {
                 if (a.steps[i].noteCount <= 0 || b.steps[i].noteCount <= 0)
                     continue;
-                const auto& an = a.steps[i].notes[a.steps[i].noteCount - 1];
-                const auto& bn = b.steps[i].notes[b.steps[i].noteCount - 1];
+
+                unsigned maskA = 0, maskB = 0;
+                for (int n = 0; n < a.steps[i].noteCount; ++n)
+                    maskA |= 1u << ((a.steps[i].notes[n].pitch % 12 + 12) % 12);
+                for (int n = 0; n < b.steps[i].noteCount; ++n)
+                    maskB |= 1u << ((b.steps[i].notes[n].pitch % 12 + 12) % 12);
+
                 ++compared;
-                if ((an.pitch % 12 + 12) % 12 != (bn.pitch % 12 + 12) % 12)
+                if (maskA != maskB)
                     ++changed;
             }
         }
         return compared > 0 ? static_cast<double>(changed) / compared : 0.0;
     };
 
-    const double low = changedTopVoices(0.25f);
-    const double mid = changedTopVoices(0.50f);
-    const double high = changedTopVoices(1.0f);
+    const double low = changedHarmony(0.25f);
+    const double mid = changedHarmony(0.50f);
+    const double high = changedHarmony(1.0f);
 
     require(mid > low + 0.05,
-            "Pad Tension 50% must add more color-voice changes than 25%");
+            "Pad Tension 50% must alter harmony more than 25%");
     require(high > mid + 0.10,
-            "Pad Tension 100% must add materially more color-voice changes than 50%");
+            "Pad Tension 100% must alter harmony materially more than 50%");
 }
 
 void testContextFollowAlignsPadsWithRiff() {
@@ -286,7 +348,8 @@ void testVoiceLeadingAvoidsWildJumps() {
 
 int main() {
     testDeterministicPolyphonicScaleSafe();
-    testDarkRockUsesRicherVoicings();
+    testDarkRockUsesThreeToneHarmonyMoreOften();
+    testFourthPadVoiceIsOctaveDoubleOnly();
     testMovementIncreasesHarmonicActivity();
     testSpreadProgressivelyWidensVoicings();
     testMovementProgressivelyAddsHarmonicEvents();

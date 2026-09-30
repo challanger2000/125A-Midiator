@@ -27,12 +27,20 @@ int main(){
  SynthSettings ss{};ss.rootPitchClass=gs.rootPitchClass;ss.scale=gs.scale;ss.style=gs.style;
  const auto synth=SynthBrain::generate(guitar,bass,pads,ss,seed^0x53594E26u);
  const auto gh=hashPhrase(guitar),bh=hashPhrase(bass),dh=hashDrums(drums),ph=hashPads(pads),sh=hashPhrase(synth);
+ const auto ah=arrangementHash(gh,bh,dh,ph,sh);
+ std::cerr<<std::hex
+          <<"Golden actual: guitar=0x"<<gh
+          <<" bass=0x"<<bh
+          <<" drums=0x"<<dh
+          <<" pad=0x"<<ph
+          <<" synth=0x"<<sh
+          <<" arrangement=0x"<<ah<<"\n"<<std::dec;
  require(gh==0x864e0c07b172c048ull,"golden Guitar fingerprint changed");
  require(bh==0xbfdf56c03f0e11d5ull,"golden Bass fingerprint changed");
  require(dh==0x550d204a9b4b4c83ull,"golden Drum fingerprint changed");
  require(ph==0xa00f5780a9f729a2ull,"golden Pad fingerprint changed");
  require(sh==0x0db6729dbda2cd70aull,"golden Synth fingerprint changed");
- require(arrangementHash(gh,bh,dh,ph,sh)==0x26211ece9b781869ull,"golden arrangement fingerprint changed");
+ require(ah==0x26211ece9b781869ull,"golden arrangement fingerprint changed");
  std::cout<<"Midiator golden five-role fingerprint: PASS\n";
  return 0;
 }
