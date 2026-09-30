@@ -19,7 +19,7 @@ namespace {
 constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 8192;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 6u;
+constexpr uint32_t kStateVersion = 7u;
 constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
 constexpr const char* kMsgVariation = "125A.Midiator.Variation";
 
@@ -223,7 +223,11 @@ bool readStateHeader(IBStream* state,
                      int& manualRootPitchClass,
                      bool& midiRootSource,
                      bool& powerChordsEnabled,
-                     midiator::DrumMapId& drumMapId) {
+                     midiator::DrumMapId& drumMapId,
+                     midiator::BassSettings& bassSettings,
+                     midiator::DrumSettings& drumSettings,
+                     midiator::PadSettings& padSettings,
+                     midiator::SynthSettings& synthSettings) {
     uint32_t magic = 0;
     uint32_t version = 0;
     int32 root = 0;
@@ -313,6 +317,37 @@ bool readStateHeader(IBStream* state,
         } else {
             drumMapId = midiator::DrumMapId::GeneralMidi;
         }
+
+        if (version >= 7u) {
+            if (!readValue(state, bassSettings.follow) ||
+                !readValue(state, bassSettings.movement) ||
+                !readValue(state, drumSettings.density) ||
+                !readValue(state, drumSettings.complexity) ||
+                !readValue(state, padSettings.spread) ||
+                !readValue(state, padSettings.tension) ||
+                !readValue(state, synthSettings.activity) ||
+                !readValue(state, synthSettings.movement))
+                return false;
+
+            const float values[] = {
+                bassSettings.follow, bassSettings.movement,
+                drumSettings.density, drumSettings.complexity,
+                padSettings.spread, padSettings.tension,
+                synthSettings.activity, synthSettings.movement
+            };
+            for (float value : values)
+                if (!std::isfinite(value) || value < 0.0f || value > 1.0f)
+                    return false;
+        } else {
+            bassSettings.follow = 0.72f;
+            bassSettings.movement = 0.34f;
+            drumSettings.density = 0.48f;
+            drumSettings.complexity = 0.30f;
+            padSettings.spread = 0.42f;
+            padSettings.tension = 0.18f;
+            synthSettings.activity = 0.46f;
+            synthSettings.movement = 0.42f;
+        }
     } else {
         // V1 had only one fixed root and therefore maps naturally to Manual.
         manualRootPitchClass = settings.rootPitchClass;
@@ -321,6 +356,14 @@ bool readStateHeader(IBStream* state,
         powerChordsEnabled = true;
         settings.powerChordsEnabled = true;
         drumMapId = midiator::DrumMapId::GeneralMidi;
+        bassSettings.follow = 0.72f;
+        bassSettings.movement = 0.34f;
+        drumSettings.density = 0.48f;
+        drumSettings.complexity = 0.30f;
+        padSettings.spread = 0.42f;
+        padSettings.tension = 0.18f;
+        synthSettings.activity = 0.46f;
+        synthSettings.movement = 0.42f;
     }
 
     settings.scale = static_cast<midiator::ScaleId>(
@@ -445,7 +488,15 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
     const int32 drumMap = static_cast<int32>(drumMapId_);
     if (!writeValue(state, manualRoot) || !writeValue(state, rootSource) ||
         !writeValue(state, style) || !writeValue(state, powerChordsEnabled) ||
-        !writeValue(state, drumMap))
+        !writeValue(state, drumMap) ||
+        !writeValue(state, bassSettings_.follow) ||
+        !writeValue(state, bassSettings_.movement) ||
+        !writeValue(state, drumSettings_.density) ||
+        !writeValue(state, drumSettings_.complexity) ||
+        !writeValue(state, padSettings_.spread) ||
+        !writeValue(state, padSettings_.tension) ||
+        !writeValue(state, synthSettings_.activity) ||
+        !writeValue(state, synthSettings_.movement))
         return kResultFalse;
 
     if (!writePhraseState(state, phrase_) ||
@@ -470,11 +521,17 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     bool restoredMidiRootSource = midiRootSource_;
     bool restoredPowerChordsEnabled = settings_.powerChordsEnabled;
     midiator::DrumMapId restoredDrumMapId = drumMapId_;
+    midiator::BassSettings restoredBassSettings = bassSettings_;
+    midiator::DrumSettings restoredDrumSettings = drumSettings_;
+    midiator::PadSettings restoredPadSettings = padSettings_;
+    midiator::SynthSettings restoredSynthSettings = synthSettings_;
 
     uint32_t restoredStateVersion = 0;
     if (!readStateHeader(state, restoredStateVersion, restored, restoredVariation, restoredSeed,
                          restoredManualRoot, restoredMidiRootSource,
-                         restoredPowerChordsEnabled, restoredDrumMapId))
+                         restoredPowerChordsEnabled, restoredDrumMapId,
+                         restoredBassSettings, restoredDrumSettings,
+                         restoredPadSettings, restoredSynthSettings))
         return kResultFalse;
 
     midiator::Phrase restoredPhrase{};
@@ -504,6 +561,10 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     settings_.powerChordsEnabled = restoredPowerChordsEnabled;
     drumMapId_ = restoredDrumMapId;
     drumMap_ = midiator::DrumMidiMap::preset(drumMapId_);
+    bassSettings_ = restoredBassSettings;
+    drumSettings_ = restoredDrumSettings;
+    padSettings_ = restoredPadSettings;
+    synthSettings_ = restoredSynthSettings;
     phrase_ = restoredPhrase;
 
     if (restoredStateVersion >= 5u) {
