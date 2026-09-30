@@ -75,6 +75,60 @@ void testSustainRaisesLongNoteShare(){
     require(share(1.0f)>share(0.0f)+0.35,"Synth Sustain must materially increase long notes");
 }
 
+void testPitchAndLengthControlsDoNotRewriteRhythm(){
+    Phrase g{},b{}; PadPhrase p{}; makeContext(g,b,p);
+
+    auto sameTopology=[](const Phrase& a,const Phrase& z){
+        if(a.usedSteps()!=z.usedSteps()) return false;
+        for(int i=0;i<a.usedSteps();++i)
+            if((a.steps[i].noteCount>0)!=(z.steps[i].noteCount>0)) return false;
+        return true;
+    };
+
+    for(unsigned seed=1;seed<=128;++seed){
+        SynthSettings base{};
+        const auto ref=SynthBrain::generate(g,b,p,base,50000u+seed);
+
+        SynthSettings move=base; move.movement=1.0f;
+        require(sameTopology(ref,SynthBrain::generate(g,b,p,move,50000u+seed)),
+                "Synth Movement must change pitch behavior without rewriting rhythm");
+
+        SynthSettings rep=base; rep.repetition=0.0f;
+        require(sameTopology(ref,SynthBrain::generate(g,b,p,rep,50000u+seed)),
+                "Synth Repetition must change motif pitch identity without rewriting rhythm");
+
+        SynthSettings sus=base; sus.sustain=1.0f;
+        require(sameTopology(ref,SynthBrain::generate(g,b,p,sus,50000u+seed)),
+                "Synth Sustain must change note length without rewriting rhythm");
+    }
+}
+
+void testRepetitionPreservesMotifPitchIdentity(){
+    Phrase g{},b{}; PadPhrase p{}; makeContext(g,b,p);
+
+    auto motifAgreement=[&](float repetition){
+        long long compared=0,matching=0;
+        for(unsigned seed=1;seed<=256;++seed){
+            SynthSettings s{}; s.repetition=repetition;
+            const auto q=SynthBrain::generate(g,b,p,s,60000u+seed);
+            for(int i=16;i<q.usedSteps();++i){
+                const int ref=i%16;
+                if(q.steps[i].noteCount<=0 || q.steps[ref].noteCount<=0) continue;
+                ++compared;
+                if((q.steps[i].notes[0].pitch%12+12)%12 ==
+                   (q.steps[ref].notes[0].pitch%12+12)%12)
+                    ++matching;
+            }
+        }
+        return compared?static_cast<double>(matching)/compared:0.0;
+    };
+
+    const double low=motifAgreement(0.0f);
+    const double high=motifAgreement(1.0f);
+    require(high>low+0.12,
+            "Synth Repetition must materially increase repeated motif pitch identity");
+}
+
 void testStylesDiffer(){
     Phrase g{},b{}; PadPhrase p{}; makeContext(g,b,p);
     auto avgPitch=[&](StyleId style){
@@ -98,6 +152,8 @@ int main(){
     testDeterministicMonophonicScaleSafe();
     testActivityRaisesHitCount();
     testSustainRaisesLongNoteShare();
+    testPitchAndLengthControlsDoNotRewriteRhythm();
+    testRepetitionPreservesMotifPitchIdentity();
     testStylesDiffer();
     std::cout<<"Midiator Synth Brain tests: PASS\n";
     return 0;

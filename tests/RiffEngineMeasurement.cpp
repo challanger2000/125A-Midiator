@@ -430,10 +430,12 @@ static void printPadSweepLine(const char* label,double value,const PadSweepMetri
 
 struct SynthSweepMetrics {
     double hits=0.0, longShare=0.0, offbeatShare=0.0, avgJump=0.0, avgPitch=0.0;
+    double motifPitchAgreement=0.0;
 };
 static SynthSweepMetrics measureSynth(const Phrase& guitar,const Phrase& bass,const PadPhrase& pads,
                                       const SynthSettings& s,unsigned seedBase,int samples=256){
     SynthSweepMetrics m{}; long long hits=0,longs=0,off=0,jumps=0,jumpSum=0,pitchSum=0;
+    long long motifCompared=0,motifMatched=0;
     for(int si=0;si<samples;++si){
         const auto p=SynthBrain::generate(guitar,bass,pads,s,seedBase+static_cast<unsigned>(si));
         int prev=-1;
@@ -442,17 +444,29 @@ static SynthSweepMetrics measureSynth(const Phrase& guitar,const Phrase& bass,co
             ++hits; const auto& n=st.notes[0]; pitchSum+=n.pitch;
             if(n.lengthSteps>1) ++longs; if((i%2)!=0) ++off;
             if(prev>=0){jumpSum+=std::abs(n.pitch-prev);++jumps;} prev=n.pitch;
+            if(i>=16){
+                const int ref=i%16;
+                if(p.steps[ref].noteCount>0){
+                    ++motifCompared;
+                    const int a=(n.pitch%12+12)%12;
+                    const int b=(p.steps[ref].notes[0].pitch%12+12)%12;
+                    if(a==b) ++motifMatched;
+                }
+            }
         }
     }
     const double hc=std::max(1.0,static_cast<double>(hits));
     m.hits=hits/static_cast<double>(samples); m.longShare=longs/hc; m.offbeatShare=off/hc;
-    m.avgJump=jumps?static_cast<double>(jumpSum)/jumps:0.0; m.avgPitch=pitchSum/hc; return m;
+    m.avgJump=jumps?static_cast<double>(jumpSum)/jumps:0.0; m.avgPitch=pitchSum/hc;
+    m.motifPitchAgreement=motifCompared?static_cast<double>(motifMatched)/motifCompared:0.0;
+    return m;
 }
 static void printSynthSweepLine(const char* label,double value,const SynthSweepMetrics& m){
     std::cout<<label<<" "<<std::setw(5)<<value*100.0<<"%:"
              <<" hits="<<m.hits<<" long="<<m.longShare*100.0<<"%"
              <<" offbeat="<<m.offbeatShare*100.0<<"%"
-             <<" avgJump="<<m.avgJump<<" avgPitch="<<m.avgPitch<<"\n";
+             <<" avgJump="<<m.avgJump<<" avgPitch="<<m.avgPitch
+             <<" motifMatch="<<m.motifPitchAgreement*100.0<<"%\n";
 }
 
 int main() {

@@ -67,7 +67,9 @@ Phrase SynthBrain::generate(const Phrase& guitar,
 
     Phrase out{};
     out.bars=std::clamp(std::max(guitar.bars,bass.bars),1,kMaxBars);
-    Rng rng(seed);
+    Rng rhythmRng(seed);
+    Rng pitchRng(seed ^ 0x50495443u);
+    Rng lengthRng(seed ^ 0x4C454E47u);
 
     std::array<int,8> motifDegree{{0,2,4,1,0,3,2,5}};
     std::array<int,8> motifHit{{1,0,1,1,0,1,0,1}};
@@ -90,11 +92,11 @@ Phrase SynthBrain::generate(const Phrase& guitar,
         bool hit=motifHit[motifIndex]!=0;
 
         const bool offbeat=(local%2)!=0;
-        if(offbeat && rng.chance(0.05f+0.45f*s.syncopation))
+        if(offbeat && rhythmRng.chance(0.05f+0.45f*s.syncopation))
             hit=true;
-        if(!hit && rng.chance(0.06f+0.30f*s.activity))
+        if(!hit && rhythmRng.chance(0.06f+0.30f*s.activity))
             hit=true;
-        if(hit && !rng.chance(0.50f+0.45f*s.activity))
+        if(hit && !rhythmRng.chance(0.50f+0.45f*s.activity))
             hit=false;
 
         if(step%16==0)
@@ -103,8 +105,10 @@ Phrase SynthBrain::generate(const Phrase& guitar,
         if(!hit) continue;
 
         int degree=motifDegree[motifIndex];
-        if(rng.chance((1.0f-s.repetition)*(0.15f+0.55f*s.movement)))
-            degree += rng.chance(0.5f)?1:-1;
+        const float mutationProbability =
+            (1.0f - s.repetition) * (0.25f + 0.70f * s.movement);
+        if(pitchRng.chance(mutationProbability))
+            degree += pitchRng.chance(0.5f)?1:-1;
 
         int target=s.centerMidi;
         if(s.style==StyleId::DarkRockGothic) target+=5;
@@ -112,8 +116,8 @@ Phrase SynthBrain::generate(const Phrase& guitar,
 
         int pitch=pitchFromDegree(degree,s,target);
 
-        if(rng.chance(0.10f+0.55f*s.movement)){
-            int alt=pitch + (rng.chance(0.5f)?12:-12);
+        if(pitchRng.chance(0.10f+0.55f*s.movement)){
+            int alt=pitch + (pitchRng.chance(0.5f)?12:-12);
             if(alt>=48 && alt<=96 && std::abs(alt-previousPitch)<=12)
                 pitch=alt;
         }
@@ -129,9 +133,9 @@ Phrase SynthBrain::generate(const Phrase& guitar,
         else if(s.style==StyleId::DarkRockGothic) velocity-=4;
 
         int len=1;
-        if(rng.chance(0.12f+0.65f*s.sustain))
+        if(lengthRng.chance(0.12f+0.65f*s.sustain))
             len=2;
-        if(s.sustain>0.75f && rng.chance(0.30f))
+        if(s.sustain>0.75f && lengthRng.chance(0.30f))
             len=4;
 
         st.notes[0]={pitch,std::clamp(velocity,1,126),len};
