@@ -43,7 +43,15 @@ enum : ParamID {
     kRootSourceId = 111,
     kStyleId = 112,
     kPowerChordsEnabledId = 113,
-    kDrumMapId = 114
+    kDrumMapId = 114,
+    kBassFollowId = 115,
+    kBassMovementId = 116,
+    kDrumDensityId = 117,
+    kDrumComplexityId = 118,
+    kPadSpreadId = 119,
+    kPadTensionId = 120,
+    kSynthActivityId = 121,
+    kSynthMovementId = 122
 };
 
 static const FUID ProcessorUID(0x125A4001, 0x6D494449, 0x41544F52, 0x00000100);
