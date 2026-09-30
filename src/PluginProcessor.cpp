@@ -869,6 +869,22 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         bool midiRootSource = true;
         bool hasDrumMap = false;
         midiator::DrumMapId drumMap = midiator::DrumMapId::GeneralMidi;
+        bool hasBassFollow = false;
+        float bassFollow = 0.0f;
+        bool hasBassMovement = false;
+        float bassMovement = 0.0f;
+        bool hasDrumDensity = false;
+        float drumDensity = 0.0f;
+        bool hasDrumComplexity = false;
+        float drumComplexity = 0.0f;
+        bool hasPadSpread = false;
+        float padSpread = 0.0f;
+        bool hasPadTension = false;
+        float padTension = 0.0f;
+        bool hasSynthActivity = false;
+        float synthActivity = 0.0f;
+        bool hasSynthMovement = false;
+        float synthMovement = 0.0f;
         bool newRiff = false;
         bool variation = false;
     } pending;
@@ -961,6 +977,38 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
                                   : midiator::DrumMapId::PerfectDrums);
                 break;
             }
+            case kBassFollowId:
+                pending.hasBassFollow = true;
+                pending.bassFollow = static_cast<float>(v);
+                break;
+            case kBassMovementId:
+                pending.hasBassMovement = true;
+                pending.bassMovement = static_cast<float>(v);
+                break;
+            case kDrumDensityId:
+                pending.hasDrumDensity = true;
+                pending.drumDensity = static_cast<float>(v);
+                break;
+            case kDrumComplexityId:
+                pending.hasDrumComplexity = true;
+                pending.drumComplexity = static_cast<float>(v);
+                break;
+            case kPadSpreadId:
+                pending.hasPadSpread = true;
+                pending.padSpread = static_cast<float>(v);
+                break;
+            case kPadTensionId:
+                pending.hasPadTension = true;
+                pending.padTension = static_cast<float>(v);
+                break;
+            case kSynthActivityId:
+                pending.hasSynthActivity = true;
+                pending.synthActivity = static_cast<float>(v);
+                break;
+            case kSynthMovementId:
+                pending.hasSynthMovement = true;
+                pending.synthMovement = static_cast<float>(v);
+                break;
             default:
                 break;
         }
@@ -987,6 +1035,44 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         drumMapId_ = pending.drumMap;
         drumMap_ = midiator::DrumMidiMap::preset(drumMapId_);
         phraseChangedNeedsFlush_ = true;
+    }
+
+    bool bassRoleChanged = false;
+    bool drumRoleChanged = false;
+    bool padRoleChanged = false;
+    bool synthRoleChanged = false;
+
+    if (pending.hasBassFollow && pending.bassFollow != bassSettings_.follow) {
+        bassSettings_.follow = pending.bassFollow;
+        bassRoleChanged = true;
+    }
+    if (pending.hasBassMovement && pending.bassMovement != bassSettings_.movement) {
+        bassSettings_.movement = pending.bassMovement;
+        bassRoleChanged = true;
+    }
+    if (pending.hasDrumDensity && pending.drumDensity != drumSettings_.density) {
+        drumSettings_.density = pending.drumDensity;
+        drumRoleChanged = true;
+    }
+    if (pending.hasDrumComplexity && pending.drumComplexity != drumSettings_.complexity) {
+        drumSettings_.complexity = pending.drumComplexity;
+        drumRoleChanged = true;
+    }
+    if (pending.hasPadSpread && pending.padSpread != padSettings_.spread) {
+        padSettings_.spread = pending.padSpread;
+        padRoleChanged = true;
+    }
+    if (pending.hasPadTension && pending.padTension != padSettings_.tension) {
+        padSettings_.tension = pending.padTension;
+        padRoleChanged = true;
+    }
+    if (pending.hasSynthActivity && pending.synthActivity != synthSettings_.activity) {
+        synthSettings_.activity = pending.synthActivity;
+        synthRoleChanged = true;
+    }
+    if (pending.hasSynthMovement && pending.synthMovement != synthSettings_.movement) {
+        synthSettings_.movement = pending.synthMovement;
+        synthRoleChanged = true;
     }
 
     const auto oldScale = settings_.scale;
@@ -1082,6 +1168,23 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     // have deterministic semantics independent of VST3 queue ordering.
     if (pending.variation)
         generateVariation();
+
+    const bool arrangementAlreadyRegenerated =
+        freshGeneration || guitarEdited || pending.variation;
+
+    if (!arrangementAlreadyRegenerated) {
+        if (bassRoleChanged)
+            regenerateBass();
+        else if (drumRoleChanged)
+            regenerateDrums();
+        else if (padRoleChanged)
+            regeneratePads();
+        else if (synthRoleChanged)
+            regenerateSynth();
+
+        if (bassRoleChanged || drumRoleChanged || padRoleChanged || synthRoleChanged)
+            phraseChangedNeedsFlush_ = true;
+    }
 }
 
 void MidiatorProcessor::flushActiveNotes(IEventList* output, double ppqPosition) {
@@ -1515,6 +1618,14 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     addPercent(STR16("Power Chords Amount"), kPowerChordId, 25.0);
     addPercent(STR16("Palm Mute"), kPalmMuteId, 70.0);
     addPercent(STR16("Variation Amount"), kVariationAmountId, 35.0);
+    addPercent(STR16("Bass Follow"), kBassFollowId, 72.0);
+    addPercent(STR16("Bass Movement"), kBassMovementId, 34.0);
+    addPercent(STR16("Drum Density"), kDrumDensityId, 48.0);
+    addPercent(STR16("Drum Complexity"), kDrumComplexityId, 30.0);
+    addPercent(STR16("Pad Spread"), kPadSpreadId, 42.0);
+    addPercent(STR16("Pad Tension"), kPadTensionId, 18.0);
+    addPercent(STR16("Synth Activity"), kSynthActivityId, 46.0);
+    addPercent(STR16("Synth Movement"), kSynthMovementId, 42.0);
 
     auto* newRiff = new RangeParameter(STR16("NEW Riff"), kNewRiffId, STR16(""),
                                        0.0, 1.0, 0.0, 1, ParameterInfo::kCanAutomate);
@@ -1569,9 +1680,14 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     bool midiRootSource = true;
     bool powerChordsEnabled = true;
     midiator::DrumMapId drumMapId = midiator::DrumMapId::GeneralMidi;
+    midiator::BassSettings bassSettings{};
+    midiator::DrumSettings drumSettings{};
+    midiator::PadSettings padSettings{};
+    midiator::SynthSettings synthSettings{};
     uint32_t restoredStateVersion = 0;
     if (!readStateHeader(state, restoredStateVersion, restored, variationAmount, seed,
-                         manualRoot, midiRootSource, powerChordsEnabled, drumMapId))
+                         manualRoot, midiRootSource, powerChordsEnabled, drumMapId,
+                         bassSettings, drumSettings, padSettings, synthSettings))
         return kResultFalse;
 
     auto barsIndex = [](int bars) -> double {
@@ -1602,6 +1718,14 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     setParamNormalized(kPowerChordId, restored.powerChordChance);
     setParamNormalized(kPalmMuteId, restored.palmMuteChance);
     setParamNormalized(kVariationAmountId, variationAmount);
+    setParamNormalized(kBassFollowId, bassSettings.follow);
+    setParamNormalized(kBassMovementId, bassSettings.movement);
+    setParamNormalized(kDrumDensityId, drumSettings.density);
+    setParamNormalized(kDrumComplexityId, drumSettings.complexity);
+    setParamNormalized(kPadSpreadId, padSettings.spread);
+    setParamNormalized(kPadTensionId, padSettings.tension);
+    setParamNormalized(kSynthActivityId, synthSettings.activity);
+    setParamNormalized(kSynthMovementId, synthSettings.movement);
 
     return kResultOk;
 }
