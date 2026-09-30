@@ -366,45 +366,25 @@ static PadSweepMetrics measurePads(const Phrase& guitar,
     PadSweepMetrics m{};
     long long chords=0, voices=0, durations=0, fourVoice=0, colorVoices=0;
     long long spans=0, jumps=0, jumpSum=0, contextCompared=0, contextMatched=0;
+
     for(int sidx=0;sidx<samples;++sidx){
-        const auto p=PadBrain::generate(guitar,bass,settings,seedBase+static_cast<unsigned>(sidx));
+        const unsigned seed=seedBase+static_cast<unsigned>(sidx);
+        const auto p=PadBrain::generate(guitar,bass,settings,seed);
+
+        PadSettings neutralSettings=settings;
+        neutralSettings.tension=0.0f;
+        const auto neutral=PadBrain::generate(guitar,bass,neutralSettings,seed);
+
         std::array<int,kMaxPadVoices> previous{{-1,-1,-1,-1}};
         int activeChord=-1;
+
         for(int i=0;i<p.usedSteps();++i){
-            if(p.steps[i].noteCount>0) activeChord=i;
             const auto& st=p.steps[i];
-            if(st.noteCount<=0) continue;
-            ++chords;
-            voices+=st.noteCount;
-            if(st.noteCount==4) ++fourVoice;
+            if(st.noteCount>0)
+                activeChord=i;
 
-            // PadBrain's highest voice is the color voice. Reconstruct the
-            // expected diatonic top pitch class and count deliberate adjacent
-            // scale-degree substitutions introduced by Tension.
-            static constexpr std::array<int,8> progression{{0,5,2,6,0,3,1,4}};
-            const auto& scale = RiffEngine::scaleDefinition(settings.scale);
-            const int chordIndex = i / 8; // upper bound works for both 8/16-step cadence
-            const int rootDegree = progression[static_cast<size_t>(chordIndex % progression.size())] %
-                                   std::max(1, scale.count);
-            const int topDegree = (rootDegree + (st.noteCount == 4 ? 6 : 4)) % scale.count;
-            int expectedPc = (settings.rootPitchClass + scale.intervals[topDegree]) % 12;
-            if (expectedPc < 0) expectedPc += 12;
-            const int actualPc = (st.notes[st.noteCount-1].pitch % 12 + 12) % 12;
-            if (actualPc != expectedPc) ++colorVoices;
-
-            int lo=127,hi=0;
-            for(int n=0;n<st.noteCount;++n){
-                const auto& note=st.notes[n];
-                durations+=note.lengthSteps;
-                lo=std::min(lo,note.pitch); hi=std::max(hi,note.pitch);
-                if(previous[n]>=0){
-                    jumpSum+=std::abs(note.pitch-previous[n]);
-                    ++jumps;
-                }
-                previous[n]=note.pitch;
-            }
-            spans+=hi-lo;
-
+            // Measure Guitar/Bass agreement against the currently active pad
+            // harmony across the whole harmonic section, not only at onset.
             if(activeChord>=0){
                 auto matchContext=[&](int pitch){
                     const int pc=(pitch%12+12)%12;
@@ -422,8 +402,39 @@ static PadSweepMetrics measurePads(const Phrase& guitar,
                     if(matchContext(bass.steps[i].notes[0].pitch)) ++contextMatched;
                 }
             }
+
+            if(st.noteCount<=0)
+                continue;
+
+            ++chords;
+            voices+=st.noteCount;
+            if(st.noteCount==4) ++fourVoice;
+
+            // Isolate the effect of Tension against the exact same seed,
+            // context-follow choice and all other settings with tension=0.
+            const auto& baseline=neutral.steps[i];
+            if(baseline.noteCount>0){
+                const int actualPc=(st.notes[st.noteCount-1].pitch%12+12)%12;
+                const int basePc=(baseline.notes[baseline.noteCount-1].pitch%12+12)%12;
+                if(actualPc!=basePc || st.noteCount!=baseline.noteCount)
+                    ++colorVoices;
+            }
+
+            int lo=127,hi=0;
+            for(int n=0;n<st.noteCount;++n){
+                const auto& note=st.notes[n];
+                durations+=note.lengthSteps;
+                lo=std::min(lo,note.pitch); hi=std::max(hi,note.pitch);
+                if(previous[n]>=0){
+                    jumpSum+=std::abs(note.pitch-previous[n]);
+                    ++jumps;
+                }
+                previous[n]=note.pitch;
+            }
+            spans+=hi-lo;
         }
     }
+
     const double phraseCount=static_cast<double>(samples);
     const double chordCount=std::max(1.0,static_cast<double>(chords));
     const double voiceCount=std::max(1.0,static_cast<double>(voices));
