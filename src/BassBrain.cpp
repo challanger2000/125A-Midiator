@@ -58,7 +58,8 @@ int nearestScalePitch(int wanted, int rootPitchClass, ScaleId scale) {
         if (up <= 60 && RiffEngine::isScaleTone(up, rootPitchClass, scale))
             return up;
         const int down = wanted - distance;
-        if (down >= 24 && RiffEngine::isScaleTone(down, rootPitchClass, scale))
+        if (down >= 24 && down <= 60 &&
+            RiffEngine::isScaleTone(down, rootPitchClass, scale))
             return down;
     }
     return std::clamp(wanted, 24, 60);

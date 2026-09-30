@@ -109,6 +109,48 @@ void testMovementReducesRootDominance() {
             "Bass Movement must reduce pedal-root dominance");
 }
 
+void testAllScalesStaySafeAtBassRegisterEdges() {
+    for (int scaleIndex = 0;
+         scaleIndex < static_cast<int>(ScaleId::Count);
+         ++scaleIndex) {
+        for (int root = 0; root < 12; ++root) {
+            GeneratorSettings gs{};
+            gs.rootPitchClass = root;
+            gs.scale = static_cast<ScaleId>(scaleIndex);
+            gs.bars = 4;
+            gs.density = 1.0f;
+            gs.complexity = 1.0f;
+
+            for (unsigned seed = 1; seed <= 128; ++seed) {
+                const auto guitar = RiffEngine::generate(
+                    gs, 140000u + seed + static_cast<unsigned>(root * 1000 + scaleIndex * 20000));
+
+                BassSettings bs{};
+                bs.rootPitchClass = root;
+                bs.scale = static_cast<ScaleId>(scaleIndex);
+                bs.follow = 0.0f;
+                bs.movement = 1.0f;
+                bs.passing = 1.0f;
+                bs.octaveChance = 1.0f;
+                bs.sustain = 1.0f;
+
+                const auto bass = BassBrain::generate(
+                    guitar, bs, 240000u + seed + static_cast<unsigned>(root * 1000 + scaleIndex * 20000));
+
+                for (int i = 0; i < bass.usedSteps(); ++i) {
+                    if (bass.steps[i].noteCount <= 0)
+                        continue;
+                    const auto& n = bass.steps[i].notes[0];
+                    require(n.pitch >= 24 && n.pitch <= 60,
+                            "Bass register-edge test must remain in supported range");
+                    require(RiffEngine::isScaleTone(n.pitch, root, bs.scale),
+                            "Bass register-edge snapping must remain scale-safe for every root/scale");
+                }
+            }
+        }
+    }
+}
+
 void testStylesHaveDistinctBassRoles() {
     const auto guitar = makeGuitarFixture();
 
@@ -170,6 +212,7 @@ int main() {
     testDeterministicAndMonophonic();
     testFollowControlsGuitarLock();
     testMovementReducesRootDominance();
+    testAllScalesStaySafeAtBassRegisterEdges();
     testStylesHaveDistinctBassRoles();
     testNoOverlapAndDownbeatAnchor();
 
