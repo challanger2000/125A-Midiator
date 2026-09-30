@@ -33,7 +33,7 @@ int wrap12(int v) {
 int nearestPitchForPc(int pc, int around) {
     int best = around;
     int bestDistance = 999;
-    for (int p = std::max(36, around - 18); p <= std::min(96, around + 18); ++p) {
+    for (int p = std::max(45, around - 18); p <= std::min(88, around + 18); ++p) {
         if (wrap12(p) != wrap12(pc))
             continue;
         const int d = std::abs(p - around);
