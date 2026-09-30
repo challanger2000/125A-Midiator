@@ -1545,6 +1545,135 @@ void testGuiAndParameterActionsCoalesceSameBlock() {
 }
 
 
+
+void testRoleControlsRegenerateOnlyFromTheirDependencyBoundary() {
+    using NoteSig = std::pair<int,int>;
+
+    auto captureBus = [](MidiatorProcessor& processor, int bus, double startQn) {
+        auto context = makeContext(startQn, true);
+        EventList output;
+        auto data = makeProcessData(context, output, 192000);
+        require(processor.process(data) == kResultOk,
+                "role-dependency capture must process");
+
+        std::vector<NoteSig> notes;
+        for (const auto& e : output.events) {
+            if (e.type != Event::kNoteOnEvent || e.busIndex != bus)
+                continue;
+            const int step = static_cast<int>(
+                std::lround((e.ppqPosition - startQn) / 0.25));
+            notes.emplace_back(step, e.noteOn.pitch);
+        }
+        return notes;
+    };
+
+    auto apply = [](MidiatorProcessor& processor, ParamID id,
+                    double value, double stopQn) {
+        ParameterChanges changes;
+        int32 qi = 0, pi = 0;
+        auto* q = changes.addParameterData(id, qi);
+        require(q && q->addPoint(0, value, pi) == kResultOk,
+                "role-control parameter value must be accepted");
+        auto stopped = makeContext(stopQn, false);
+        EventList out;
+        auto data = makeProcessData(stopped, out, 64, &changes);
+        require(processor.process(data) == kResultOk,
+                "role-control stopped change block must process");
+    };
+
+    // Bass controls may regenerate Bass and every dependent role, but Guitar
+    // itself must remain the exact same composition.
+    {
+        MidiatorProcessor p;
+        require(p.setProcessing(true) == kResultOk,
+                "Bass dependency fixture must start");
+        const auto guitarBefore = captureBus(p, kGuitarOutBus, 0.0);
+        const auto bassBefore = captureBus(p, kBassOutBus, 8.0);
+        apply(p, kBassFollowId, 0.0, 16.0);
+        const auto guitarAfter = captureBus(p, kGuitarOutBus, 16.0);
+        const auto bassAfter = captureBus(p, kBassOutBus, 24.0);
+        require(guitarBefore == guitarAfter,
+                "Bass controls must never rewrite the Guitar role");
+        require(bassBefore != bassAfter,
+                "Bass Follow must regenerate Bass output at processor level");
+    }
+
+    // Drum controls start regeneration at Drums. Guitar and Bass must remain
+    // untouched while the Drum role changes.
+    {
+        MidiatorProcessor p;
+        require(p.setProcessing(true) == kResultOk,
+                "Drum dependency fixture must start");
+        const auto guitarBefore = captureBus(p, kGuitarOutBus, 0.0);
+        const auto bassBefore = captureBus(p, kBassOutBus, 8.0);
+        const auto drumsBefore = captureBus(p, kDrumsOutBus, 16.0);
+        apply(p, kDrumDensityId, 1.0, 24.0);
+        const auto guitarAfter = captureBus(p, kGuitarOutBus, 24.0);
+        const auto bassAfter = captureBus(p, kBassOutBus, 32.0);
+        const auto drumsAfter = captureBus(p, kDrumsOutBus, 40.0);
+        require(guitarBefore == guitarAfter,
+                "Drum controls must never rewrite the Guitar role");
+        require(bassBefore == bassAfter,
+                "Drum controls must never rewrite the Bass role");
+        require(drumsBefore != drumsAfter,
+                "Drum Density must regenerate Drum output at processor level");
+    }
+
+    // Pad controls start regeneration at Pads. Guitar, Bass and Drums are
+    // upstream and therefore must remain byte-for-byte musically identical.
+    {
+        MidiatorProcessor p;
+        require(p.setProcessing(true) == kResultOk,
+                "Pad dependency fixture must start");
+        const auto guitarBefore = captureBus(p, kGuitarOutBus, 0.0);
+        const auto bassBefore = captureBus(p, kBassOutBus, 8.0);
+        const auto drumsBefore = captureBus(p, kDrumsOutBus, 16.0);
+        const auto padsBefore = captureBus(p, kPadOutBus, 24.0);
+        apply(p, kPadSpreadId, 1.0, 32.0);
+        const auto guitarAfter = captureBus(p, kGuitarOutBus, 32.0);
+        const auto bassAfter = captureBus(p, kBassOutBus, 40.0);
+        const auto drumsAfter = captureBus(p, kDrumsOutBus, 48.0);
+        const auto padsAfter = captureBus(p, kPadOutBus, 56.0);
+        require(guitarBefore == guitarAfter,
+                "Pad controls must never rewrite the Guitar role");
+        require(bassBefore == bassAfter,
+                "Pad controls must never rewrite the Bass role");
+        require(drumsBefore == drumsAfter,
+                "Pad controls must never rewrite the Drum role");
+        require(padsBefore != padsAfter,
+                "Pad Spread must regenerate Pad output at processor level");
+    }
+
+    // Synth is the terminal role. Its controls must alter Synth only.
+    {
+        MidiatorProcessor p;
+        require(p.setProcessing(true) == kResultOk,
+                "Synth dependency fixture must start");
+        const auto guitarBefore = captureBus(p, kGuitarOutBus, 0.0);
+        const auto bassBefore = captureBus(p, kBassOutBus, 8.0);
+        const auto drumsBefore = captureBus(p, kDrumsOutBus, 16.0);
+        const auto padsBefore = captureBus(p, kPadOutBus, 24.0);
+        const auto synthBefore = captureBus(p, kSynthOutBus, 32.0);
+        apply(p, kSynthMovementId, 1.0, 40.0);
+        const auto guitarAfter = captureBus(p, kGuitarOutBus, 40.0);
+        const auto bassAfter = captureBus(p, kBassOutBus, 48.0);
+        const auto drumsAfter = captureBus(p, kDrumsOutBus, 56.0);
+        const auto padsAfter = captureBus(p, kPadOutBus, 64.0);
+        const auto synthAfter = captureBus(p, kSynthOutBus, 72.0);
+        require(guitarBefore == guitarAfter,
+                "Synth controls must never rewrite the Guitar role");
+        require(bassBefore == bassAfter,
+                "Synth controls must never rewrite the Bass role");
+        require(drumsBefore == drumsAfter,
+                "Synth controls must never rewrite the Drum role");
+        require(padsBefore == padsAfter,
+                "Synth controls must never rewrite the Pad role");
+        require(synthBefore != synthAfter,
+                "Synth Movement must regenerate Synth output at processor level");
+    }
+}
+
+
 void testVerifiedDrumMapParameterChangesOutput() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk,
@@ -1598,6 +1727,7 @@ int main() {
     testAllInstrumentRolesUseSeparateOutputBuses();
     testDedicatedInstrumentOutputBuses();
     testVerifiedDrumMapParameterChangesOutput();
+    testRoleControlsRegenerateOnlyFromTheirDependencyBoundary();
     testNewRiffChangesRhythmMask();
     testNewRiffToggleZeroValueStillCommands();
     testHeavyIndustrialStaysLockedToHostGrid();
