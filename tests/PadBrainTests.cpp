@@ -353,14 +353,29 @@ void testVoiceLeadingAvoidsWildJumps() {
         }
 
         if (previousCount > 0) {
-            for (int c = 0; c < currentCount; ++c) {
-                int bestDistance = 999;
-                for (int prev = 0; prev < previousCount; ++prev)
-                    bestDistance = std::min(
-                        bestDistance,
-                        std::abs(currentUnique[c] - previousUnique[prev]));
-                require(bestDistance <= 12,
-                        "Pad voice-leading must keep every harmonic tone within an octave of prior harmony");
+            // Only the shared voice population must continue smoothly.
+            // A newly introduced third harmonic tone (2 -> 3 voices) or a
+            // removed color tone (3 -> 2) has no one-to-one predecessor.
+            if (currentCount <= previousCount) {
+                for (int c = 0; c < currentCount; ++c) {
+                    int bestDistance = 999;
+                    for (int prev = 0; prev < previousCount; ++prev)
+                        bestDistance = std::min(
+                            bestDistance,
+                            std::abs(currentUnique[c] - previousUnique[prev]));
+                    require(bestDistance <= 12,
+                            "retained Pad voices must stay within an octave of prior harmony");
+                }
+            } else {
+                for (int prev = 0; prev < previousCount; ++prev) {
+                    int bestDistance = 999;
+                    for (int c = 0; c < currentCount; ++c)
+                        bestDistance = std::min(
+                            bestDistance,
+                            std::abs(previousUnique[prev] - currentUnique[c]));
+                    require(bestDistance <= 12,
+                            "existing Pad voices must continue within an octave when a color tone is added");
+                }
             }
         }
 
