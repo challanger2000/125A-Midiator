@@ -123,7 +123,7 @@ void testFollowControlsKickLock() {
             "Drum Follow must materially increase kick lock to guitar/bass context");
 }
 
-void testHumanizeIncreasesVelocitySpread() {
+void testHumanizeChangesVelocityNotPattern() {
     Phrase guitar{}, bass{};
     makeContext(guitar, bass);
 
@@ -132,29 +132,36 @@ void testHumanizeIncreasesVelocitySpread() {
     DrumSettings human = dry;
     human.humanize = 1.0f;
 
-    auto spread = [&](const DrumSettings& s) {
-        double sum = 0.0, sumSq = 0.0;
-        long long n = 0;
-        for (unsigned seed = 1; seed <= 128; ++seed) {
-            const auto d = DrumBrain::generate(guitar, bass, s, 80000u + seed);
-            for (int i = 0; i < d.usedSteps(); ++i) {
-                for (int h = 0; h < d.steps[i].hitCount; ++h) {
-                    const double v = d.steps[i].hits[h].velocity;
-                    sum += v;
-                    sumSq += v * v;
-                    ++n;
-                }
+    long long comparedHits = 0;
+    long long changedVelocities = 0;
+    long long absoluteVelocityDelta = 0;
+
+    for (unsigned seed = 1; seed <= 128; ++seed) {
+        const auto a = DrumBrain::generate(guitar, bass, dry, 80000u + seed);
+        const auto b = DrumBrain::generate(guitar, bass, human, 80000u + seed);
+
+        require(a.bars == b.bars, "Humanize must not change drum phrase length");
+        for (int i = 0; i < a.usedSteps(); ++i) {
+            require(a.steps[i].hitCount == b.steps[i].hitCount,
+                    "Humanize must not change drum hit topology");
+            for (int h = 0; h < a.steps[i].hitCount; ++h) {
+                require(a.steps[i].hits[h].voice == b.steps[i].hits[h].voice,
+                        "Humanize must not change drum voices");
+                ++comparedHits;
+                const int delta = std::abs(
+                    a.steps[i].hits[h].velocity - b.steps[i].hits[h].velocity);
+                absoluteVelocityDelta += delta;
+                if (delta > 0)
+                    ++changedVelocities;
             }
         }
-        const double mean = sum / std::max<long long>(1, n);
-        const double variance = sumSq / std::max<long long>(1, n) - mean * mean;
-        return variance > 0.0 ? std::sqrt(variance) : 0.0;
-    };
+    }
 
-    const double lowSpread = spread(dry);
-    const double highSpread = spread(human);
-    require(highSpread > lowSpread + 1.5,
-            "Drum Humanize must materially increase velocity spread");
+    require(comparedHits > 0, "Humanize test must compare generated drum hits");
+    require(changedVelocities > comparedHits / 2,
+            "High Humanize must alter velocities on most drum hits");
+    require(static_cast<double>(absoluteVelocityDelta) / comparedHits > 2.0,
+            "High Humanize must create a musically material velocity deviation");
 }
 
 void testMappingLayerIndependentOfComposition() {
@@ -172,7 +179,7 @@ int main() {
     testDeterministicAndBounded();
     testBackbeatAndStructuralCrash();
     testFollowControlsKickLock();
-    testHumanizeIncreasesVelocitySpread();
+    testHumanizeChangesVelocityNotPattern();
     testMappingLayerIndependentOfComposition();
 
     std::cout << "Midiator Drum Brain tests: PASS\n";

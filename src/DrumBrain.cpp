@@ -100,6 +100,9 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
     DrumPhrase out{};
     out.bars = std::clamp(std::max(guitar.bars, bass.bars), 1, kMaxBars);
     Rng rng(seed);
+    // Velocity humanization must never perturb structural generation.
+    // Keep a separate deterministic stream so Humanize changes dynamics only.
+    Rng velocityRng(seed ^ 0x48A91E37u);
 
     for (int step = 0; step < out.usedSteps(); ++step) {
         const int local = step % kStepsPerBar;
@@ -119,14 +122,14 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
                               rng.chance(0.10f + 0.30f * s.complexity);
             addHit(ds,
                    open ? DrumVoice::OpenHat : DrumVoice::ClosedHat,
-                   humanizedVelocity(rng, eighth ? 86 : 70, s.humanize));
+                   humanizedVelocity(velocityRng, eighth ? 86 : 70, s.humanize));
         }
 
         // Backbeat remains musically stable.
         if (beat == 1 && local % 4 == 0)
-            addHit(ds, DrumVoice::Snare, humanizedVelocity(rng, 112, s.humanize));
+            addHit(ds, DrumVoice::Snare, humanizedVelocity(velocityRng, 112, s.humanize));
         if (beat == 3 && local % 4 == 0)
-            addHit(ds, DrumVoice::Snare, humanizedVelocity(rng, 116, s.humanize));
+            addHit(ds, DrumVoice::Snare, humanizedVelocity(velocityRng, 116, s.humanize));
 
         // Kick language: shared anchors from guitar/bass plus independent
         // quarter-note support when Follow is low.
@@ -142,12 +145,12 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
 
         // Do not stack kick blindly under every backbeat at low density.
         if (kick && !(local == 4 || local == 12) || (kick && s.density > 0.62f))
-            addHit(ds, DrumVoice::Kick, humanizedVelocity(rng, quarter ? 112 : 98, s.humanize));
+            addHit(ds, DrumVoice::Kick, humanizedVelocity(velocityRng, quarter ? 112 : 98, s.humanize));
 
         // Ghost notes before/after backbeats.
         if ((local == 3 || local == 11) &&
             rng.chance(0.05f + 0.32f * s.complexity))
-            addHit(ds, DrumVoice::GhostSnare, humanizedVelocity(rng, 48, s.humanize));
+            addHit(ds, DrumVoice::GhostSnare, humanizedVelocity(velocityRng, 48, s.humanize));
 
         // Crash is structural punctuation, not a mandatory bar marker.
         // Always mark the phrase opening; later downbeats only punctuate
@@ -161,7 +164,7 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
                 rng.chance(0.08f + 0.22f * s.complexity);
             if (phraseOpening || sectionOpening || transitionAccent)
                 addHit(ds, DrumVoice::Crash,
-                       humanizedVelocity(rng, 118, s.humanize));
+                       humanizedVelocity(velocityRng, 118, s.humanize));
         }
 
         // Simple tom fill language on the final beat of every second bar.
@@ -172,7 +175,7 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
                 DrumVoice tom = DrumVoice::LowTom;
                 if (local >= 14) tom = DrumVoice::MidTom;
                 if (local == 15) tom = DrumVoice::HighTom;
-                addHit(ds, tom, humanizedVelocity(rng, 96 + (local - 12) * 4, s.humanize));
+                addHit(ds, tom, humanizedVelocity(velocityRng, 96 + (local - 12) * 4, s.humanize));
             }
         }
     }
