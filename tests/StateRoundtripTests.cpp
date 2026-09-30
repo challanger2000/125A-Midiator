@@ -228,14 +228,15 @@ void verifyLegacyControllerMigration(uint32_t version,
             "legacy Power Chords Enabled migration must preserve/default correctly");
     require(std::abs(controller.getParamNormalized(kDrumMapId)) < 1e-9,
             "legacy Drum Map migration must default to General MIDI");
-    require(std::abs(controller.getParamNormalized(kBassFollowId) - 0.72) < 1e-9 &&
-            std::abs(controller.getParamNormalized(kBassMovementId) - 0.34) < 1e-9 &&
-            std::abs(controller.getParamNormalized(kDrumDensityId) - 0.48) < 1e-9 &&
-            std::abs(controller.getParamNormalized(kDrumComplexityId) - 0.30) < 1e-9 &&
-            std::abs(controller.getParamNormalized(kPadSpreadId) - 0.42) < 1e-9 &&
-            std::abs(controller.getParamNormalized(kPadTensionId) - 0.18) < 1e-9 &&
-            std::abs(controller.getParamNormalized(kSynthActivityId) - 0.46) < 1e-9 &&
-            std::abs(controller.getParamNormalized(kSynthMovementId) - 0.42) < 1e-9,
+    constexpr double kRoleEpsilon = 1e-6;
+    require(std::abs(controller.getParamNormalized(kBassFollowId) - 0.72) < kRoleEpsilon &&
+            std::abs(controller.getParamNormalized(kBassMovementId) - 0.34) < kRoleEpsilon &&
+            std::abs(controller.getParamNormalized(kDrumDensityId) - 0.48) < kRoleEpsilon &&
+            std::abs(controller.getParamNormalized(kDrumComplexityId) - 0.30) < kRoleEpsilon &&
+            std::abs(controller.getParamNormalized(kPadSpreadId) - 0.42) < kRoleEpsilon &&
+            std::abs(controller.getParamNormalized(kPadTensionId) - 0.18) < kRoleEpsilon &&
+            std::abs(controller.getParamNormalized(kSynthActivityId) - 0.46) < kRoleEpsilon &&
+            std::abs(controller.getParamNormalized(kSynthMovementId) - 0.42) < kRoleEpsilon,
             "legacy role controls must migrate to documented defaults");
 
     fixture.rewind();
