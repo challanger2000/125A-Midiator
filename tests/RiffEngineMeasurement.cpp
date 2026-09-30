@@ -84,6 +84,127 @@ static int longestHitRun(const Phrase& p) {
     return longest;
 }
 
+
+struct SweepMetrics {
+    double hits = 0.0;
+    double rootShare = 0.0;
+    double muteShare = 0.0;
+    double chordShare = 0.0;
+    double longNoteShare = 0.0;
+    double distinctPitchClasses = 0.0;
+    double avgAbsJump = 0.0;
+    double adjacentBarJaccard = 0.0;
+    double fast4Share = 0.0;
+    double longRestShare = 0.0;
+};
+
+static SweepMetrics measureSettings(const GeneratorSettings& settings,
+                                    unsigned seedBase,
+                                    int samples = 256) {
+    SweepMetrics m{};
+    long long totalHits = 0;
+    long long rootNotes = 0;
+    long long muteNotes = 0;
+    long long chordHits = 0;
+    long long longNotes = 0;
+    long long jumpCount = 0;
+    long long jumpSum = 0;
+    long long distinctPcTotal = 0;
+    long long barPairs = 0;
+    double barJaccardSum = 0.0;
+    int fast4Phrases = 0;
+    int longRestPhrases = 0;
+
+    for (int sidx = 0; sidx < samples; ++sidx) {
+        const auto p = RiffEngine::generate(settings, seedBase + static_cast<unsigned>(sidx));
+        bool pcs[12] = {};
+        int previousPitch = -1;
+        int run = 0;
+        int longestRun = 0;
+        int rest = 0;
+        int longestRest = 0;
+
+        for (int i = 0; i < p.usedSteps(); ++i) {
+            const auto& st = p.steps[i];
+            if (st.noteCount <= 0) {
+                run = 0;
+                ++rest;
+                longestRest = std::max(longestRest, rest);
+                continue;
+            }
+
+            rest = 0;
+            ++run;
+            longestRun = std::max(longestRun, run);
+            ++totalHits;
+            if (st.noteCount > 1) ++chordHits;
+
+            const auto& n = st.notes[0];
+            const int pc = (n.pitch % 12 + 12) % 12;
+            pcs[pc] = true;
+            if (pc == settings.rootPitchClass) ++rootNotes;
+            if (n.velocity <= 40) ++muteNotes;
+            if (n.lengthSteps > 1) ++longNotes;
+
+            if (previousPitch >= 0) {
+                jumpSum += std::abs(n.pitch - previousPitch);
+                ++jumpCount;
+            }
+            previousPitch = n.pitch;
+        }
+
+        if (longestRun >= 4) ++fast4Phrases;
+        if (longestRest >= 4) ++longRestPhrases;
+
+        int distinct = 0;
+        for (bool used : pcs) distinct += used ? 1 : 0;
+        distinctPcTotal += distinct;
+
+        for (int bar = 1; bar < p.bars; ++bar) {
+            int intersection = 0;
+            int unionCount = 0;
+            for (int i = 0; i < kStepsPerBar; ++i) {
+                const bool a = p.steps[(bar - 1) * kStepsPerBar + i].noteCount > 0;
+                const bool b = p.steps[bar * kStepsPerBar + i].noteCount > 0;
+                if (a || b) ++unionCount;
+                if (a && b) ++intersection;
+            }
+            barJaccardSum += unionCount > 0
+                ? static_cast<double>(intersection) / unionCount : 1.0;
+            ++barPairs;
+        }
+    }
+
+    const double phraseCount = static_cast<double>(samples);
+    const double hitCount = std::max(1.0, static_cast<double>(totalHits));
+    m.hits = totalHits / phraseCount;
+    m.rootShare = rootNotes / hitCount;
+    m.muteShare = muteNotes / hitCount;
+    m.chordShare = chordHits / hitCount;
+    m.longNoteShare = longNotes / hitCount;
+    m.distinctPitchClasses = distinctPcTotal / phraseCount;
+    m.avgAbsJump = jumpCount > 0 ? static_cast<double>(jumpSum) / jumpCount : 0.0;
+    m.adjacentBarJaccard = barPairs > 0 ? barJaccardSum / barPairs : 1.0;
+    m.fast4Share = static_cast<double>(fast4Phrases) / phraseCount;
+    m.longRestShare = static_cast<double>(longRestPhrases) / phraseCount;
+    return m;
+}
+
+static void printSweepLine(const char* label, double value, const SweepMetrics& m) {
+    std::cout << label << " " << std::setw(5) << value * 100.0 << "%:"
+              << " hits=" << m.hits
+              << " root=" << m.rootShare * 100.0 << "%"
+              << " mute=" << m.muteShare * 100.0 << "%"
+              << " chords=" << m.chordShare * 100.0 << "%"
+              << " longNotes=" << m.longNoteShare * 100.0 << "%"
+              << " pitchClasses=" << m.distinctPitchClasses
+              << " avgJump=" << m.avgAbsJump
+              << " barJaccard=" << m.adjacentBarJaccard * 100.0 << "%"
+              << " fast4=" << m.fast4Share * 100.0 << "%"
+              << " longRest=" << m.longRestShare * 100.0 << "%"
+              << "\n";
+}
+
 int main() {
     std::cout << "125A Midiator measurement report\n";
     std::cout << "================================\n";
@@ -287,6 +408,51 @@ int main() {
         std::cout << "Variation " << pct(amount) << "%: avg changed steps "
                   << diffSum / samples << "/" << s.bars * 16
                   << ", onset Jaccard " << pct(jacSum / samples) << "%\n";
+    }
+
+
+    std::cout << "\nControl sweep diagnostics (256 phrases per point)\n";
+    std::cout << "------------------------------------------------\n";
+    const float sweepValues[] = {0.0f, 0.25f, 0.50f, 0.75f, 1.0f};
+
+    for (float v : sweepValues) {
+        GeneratorSettings x = s;
+        x.density = v;
+        printSweepLine("Density   ", v, measureSettings(x, 500000u + static_cast<unsigned>(v * 1000.0f)));
+    }
+    std::cout << "\n";
+    for (float v : sweepValues) {
+        GeneratorSettings x = s;
+        x.complexity = v;
+        printSweepLine("Complexity", v, measureSettings(x, 510000u + static_cast<unsigned>(v * 1000.0f)));
+    }
+    std::cout << "\n";
+    for (float v : sweepValues) {
+        GeneratorSettings x = s;
+        x.repetition = v;
+        printSweepLine("Repetition", v, measureSettings(x, 520000u + static_cast<unsigned>(v * 1000.0f)));
+    }
+    std::cout << "\n";
+    for (float v : sweepValues) {
+        GeneratorSettings x = s;
+        x.palmMuteChance = v;
+        printSweepLine("Palm Mute ", v, measureSettings(x, 530000u + static_cast<unsigned>(v * 1000.0f)));
+    }
+    std::cout << "\n";
+    for (float v : sweepValues) {
+        GeneratorSettings x = s;
+        x.powerChordChance = v;
+        x.powerChordsEnabled = true;
+        printSweepLine("PowerChord", v, measureSettings(x, 540000u + static_cast<unsigned>(v * 1000.0f)));
+    }
+
+    std::cout << "\nStyle detail diagnostics (512 phrases each)\n";
+    std::cout << "-------------------------------------------\n";
+    for (int style = 0; style < static_cast<int>(StyleId::Count); ++style) {
+        GeneratorSettings x = s;
+        x.style = static_cast<StyleId>(style);
+        const auto m = measureSettings(x, 550000u + static_cast<unsigned>(style * 10000), 512);
+        printSweepLine(styleNames[style], 0.0, m);
     }
 
     GeneratorSettings exampleSettings = s;

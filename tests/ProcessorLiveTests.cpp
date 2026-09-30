@@ -535,30 +535,65 @@ void testGeneratedNoteLengthsAffectMidiOutput() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
 
-    auto context = makeContext(0.0, true);
-    EventList output;
-    auto data = makeProcessData(context, output, 192000);
-    require(processor.process(data) == kResultOk, "note-length scheduling process must succeed");
+    ParameterChanges setup;
+    int32 qi = 0, pi = 0;
+    auto* density = setup.addParameterData(kDensityId, qi);
+    require(density && density->addPoint(0, 0.12, pi) == kResultOk,
+            "low Density setup must be accepted");
+    auto* palm = setup.addParameterData(kPalmMuteId, qi);
+    require(palm && palm->addPoint(0, 0.0, pi) == kResultOk,
+            "Palm Mute OFF setup must be accepted");
+
+    auto stopped = makeContext(0.0, false);
+    EventList stoppedOut;
+    auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &setup);
+    require(processor.process(stoppedData) == kResultOk,
+            "note-length setup block must succeed");
 
     bool foundShort = false;
     bool foundLong = false;
 
-    for (const auto& on : output.events) {
-        if (on.type != Event::kNoteOnEvent)
-            continue;
+    for (int round = 0; round < 12 && !foundLong; ++round) {
+        ParameterChanges command;
+        qi = 0; pi = 0;
+        auto* q = command.addParameterData(kNewRiffId, qi);
+        require(q && q->addPoint(0, (round & 1) ? 0.0 : 1.0, pi) == kResultOk,
+                "NEW RIFF command must be accepted");
 
-        for (const auto& off : output.events) {
-            if (off.type != Event::kNoteOffEvent || off.noteOff.pitch != on.noteOn.pitch)
-                continue;
-            if (off.ppqPosition + 1e-9 < on.ppqPosition)
+        const double startQn = static_cast<double>(round) * 8.0;
+        auto stopContext = makeContext(startQn, false);
+        EventList stopOutput;
+        auto stopData = makeProcessData(stopContext, stopOutput, 64, &command);
+        require(processor.process(stopData) == kResultOk,
+                "NEW RIFF note-length setup must succeed");
+
+        auto context = makeContext(startQn, true);
+        EventList output;
+        auto data = makeProcessData(context, output, 192000);
+        require(processor.process(data) == kResultOk,
+                "note-length scheduling process must succeed");
+
+        for (const auto& on : output.events) {
+            if (on.type != Event::kNoteOnEvent)
                 continue;
 
-            const double duration = off.ppqPosition - on.ppqPosition;
+            double bestOff = -1.0;
+            for (const auto& off : output.events) {
+                if (off.type != Event::kNoteOffEvent || off.noteOff.pitch != on.noteOn.pitch)
+                    continue;
+                if (off.ppqPosition + 1e-9 < on.ppqPosition)
+                    continue;
+                if (bestOff < 0.0 || off.ppqPosition < bestOff)
+                    bestOff = off.ppqPosition;
+            }
+            if (bestOff < 0.0)
+                continue;
+
+            const double duration = bestOff - on.ppqPosition;
             if (std::abs(duration - (0.25 - 1.0 / 16.0)) < 1e-8)
                 foundShort = true;
             if (duration > (0.25 - 1.0 / 16.0) + 1e-8)
                 foundLong = true;
-            break;
         }
     }
 
