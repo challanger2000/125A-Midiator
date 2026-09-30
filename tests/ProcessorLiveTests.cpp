@@ -1122,6 +1122,61 @@ void testGuiMessageBurstsAreCoalescedPerBlock() {
             "same-block VARIATION message bursts must coalesce to one composition");
 }
 
+
+
+void testParameterQueueOrderCannotChangeCompositionCommands() {
+    auto runCase = [](bool actionFirst, bool variation) {
+        MidiatorProcessor processor;
+        require(processor.setProcessing(true) == kResultOk,
+                "queue-order fixture must start");
+
+        ParameterChanges changes;
+        int32 qi = 0;
+        int32 pi = 0;
+
+        auto addAction = [&]() {
+            const ParamID id = variation ? kVariationId : kNewRiffId;
+            auto* q = changes.addParameterData(id, qi);
+            require(q && q->addPoint(0, 1.0, pi) == kResultOk,
+                    "queue-order action must be accepted");
+        };
+        auto addStyle = [&]() {
+            auto* q = changes.addParameterData(kStyleId, qi);
+            require(q && q->addPoint(0, 1.0, pi) == kResultOk,
+                    "queue-order Heavy Industrial style must be accepted");
+        };
+        auto addScale = [&]() {
+            auto* q = changes.addParameterData(kScaleId, qi);
+            // Harmonic Minor = index 3 of 7 -> normalized 0.5.
+            require(q && q->addPoint(0, 0.5, pi) == kResultOk,
+                    "queue-order scale must be accepted");
+        };
+
+        if (actionFirst) {
+            addAction();
+            addStyle();
+            addScale();
+        } else {
+            addStyle();
+            addScale();
+            addAction();
+        }
+
+        auto stopped = makeContext(0.0, false);
+        EventList stoppedOut;
+        auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &changes);
+        require(processor.process(stoppedData) == kResultOk,
+                "queue-order command block must succeed");
+
+        return captureGuitarPhrase(processor, 0.0);
+    };
+
+    require(runCase(true, false) == runCase(false, false),
+            "NEW RIFF result must not depend on VST3 parameter queue order");
+    require(runCase(true, true) == runCase(false, true),
+            "VARIATION result must not depend on VST3 parameter queue order");
+}
+
 } // namespace
 
 int main() {
@@ -1145,6 +1200,7 @@ int main() {
     testVariationPressReleaseFlushesHeldNotes();
     testTransportJumpFlushesHeldNotes();
     testGuiMessageBurstsAreCoalescedPerBlock();
+    testParameterQueueOrderCannotChangeCompositionCommands();
 
     std::cout << "Midiator live processor tests: PASS\n";
     return 0;

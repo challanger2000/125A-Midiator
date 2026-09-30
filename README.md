@@ -50,7 +50,7 @@ Ghost Snare uses the acoustic snare pitch with reduced velocity rather than subs
 
 ## Host and lifecycle behavior
 
-The processor requests VST3 musical timeline, tempo, time signature and transport state. It flushes active notes on stop, timeline jumps and phrase replacement, keeps per-bus active-note state, sorts same-sample NoteOff before NoteOn, supports realtime/offline processing and fails explicitly rather than silently dropping MIDI if the fixed realtime-safe scheduler capacity is exceeded.
+The processor requests VST3 musical timeline, tempo, time signature and transport state. It flushes active notes on stop, timeline jumps and phrase replacement, keeps per-bus active-note state, sorts same-sample NoteOff before NoteOn, supports realtime/offline processing and stages events in fixed realtime-safe memory one musical cycle at a time, so very large offline blocks can span many cycles without whole-block scheduler overflow.
 
 ## State
 
@@ -58,7 +58,7 @@ The established public state stores the shared musical state and generated Guita
 
 ## Automated verification
 
-The development branch checks deterministic generation, scale safety, phrase integrity, role-specific controls, style behavior, Pad voice-leading/context-follow, Synth motif/harmony follow, Drum Humanize invariance, verified drum maps, five dedicated event output buses, per-bus balance/flush, large offline blocks, explicit scheduler overflow, state roundtrip, GUI/editor lifecycle, Steinberg Validator and statistical measurement reports.
+The development branch checks deterministic generation, scale safety, phrase integrity, role-specific controls, style behavior, Pad voice-leading/context-follow, Synth motif/harmony follow, Drum Humanize invariance, verified drum maps, five dedicated event output buses, per-bus balance/flush, large offline blocks with cycle-chunked scheduling, state roundtrip, GUI/editor lifecycle, Steinberg Validator and statistical measurement reports.
 
 A frozen deterministic **golden five-role arrangement fingerprint** protects a known NDH / A Phrygian four-bar reference so unintended musical changes fail CI immediately.
 

@@ -579,6 +579,8 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
         return;
 
     bool tonalFrameChanged = false;
+    bool fallbackNewRiff = false;
+    bool fallbackVariation = false;
 
     for (int32 i = 0; i < data.inputParameterChanges->getParameterCount(); ++i) {
         auto* queue = data.inputParameterChanges->getParameterData(i);
@@ -587,14 +589,16 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
 
         const auto id = queue->getParameterId();
 
-        // Fallback action-parameter path. The normal GUI path uses explicit
-        // controller->processor messages; if a host cannot connect the two
-        // peers, each delivered fallback parameter change is one command.
+        // Defer action parameters until every normal parameter queue in this
+        // block has been consumed. VST3 hosts are not required to present
+        // parameter queues in a musically meaningful order; NEW RIFF and
+        // VARIATION must therefore see the complete final settings for the
+        // block rather than whichever queues happened to precede them.
         if (id == kNewRiffId || id == kVariationId) {
             if (id == kNewRiffId)
-                generateNew();
+                fallbackNewRiff = true;
             else
-                generateVariation();
+                fallbackVariation = true;
             continue;
         }
 
@@ -682,8 +686,17 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
         }
     }
 
-    if (tonalFrameChanged)
+    // A tonal-frame change already requires a fresh composition. Coalesce
+    // an accompanying NEW RIFF fallback into that same generation so queue
+    // order cannot cause double work or a discarded intermediate phrase.
+    if (tonalFrameChanged || fallbackNewRiff)
         generateNew();
+
+    // VARIATION is deliberately applied after any required fresh generation,
+    // so a same-block Style/Scale + VARIATION request has deterministic
+    // semantics independent of host queue ordering.
+    if (fallbackVariation)
+        generateVariation();
 }
 
 void MidiatorProcessor::flushActiveNotes(IEventList* output, double ppqPosition) {
