@@ -1,6 +1,7 @@
 #include "RiffEngine.h"
 #include "BassBrain.h"
 #include "DrumBrain.h"
+#include "PadBrain.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -344,6 +345,69 @@ static void printDrumSweepLine(const char* label,double value,const DrumSweepMet
              <<" velStd="<<m.velocityStdDev<<"\n";
 }
 
+
+struct PadSweepMetrics {
+    double chords = 0.0;
+    double avgVoices = 0.0;
+    double avgDurationSteps = 0.0;
+    double avgSpanSemitones = 0.0;
+    double avgVoiceJump = 0.0;
+    double fourVoiceShare = 0.0;
+};
+
+static PadSweepMetrics measurePads(const Phrase& guitar,
+                                   const Phrase& bass,
+                                   const PadSettings& settings,
+                                   unsigned seedBase,
+                                   int samples = 256) {
+    PadSweepMetrics m{};
+    long long chords=0, voices=0, durations=0, fourVoice=0;
+    long long spans=0, jumps=0, jumpSum=0;
+    for(int sidx=0;sidx<samples;++sidx){
+        const auto p=PadBrain::generate(guitar,bass,settings,seedBase+static_cast<unsigned>(sidx));
+        std::array<int,kMaxPadVoices> previous{{-1,-1,-1,-1}};
+        for(int i=0;i<p.usedSteps();++i){
+            const auto& st=p.steps[i];
+            if(st.noteCount<=0) continue;
+            ++chords;
+            voices+=st.noteCount;
+            if(st.noteCount==4) ++fourVoice;
+            int lo=127,hi=0;
+            for(int n=0;n<st.noteCount;++n){
+                const auto& note=st.notes[n];
+                durations+=note.lengthSteps;
+                lo=std::min(lo,note.pitch); hi=std::max(hi,note.pitch);
+                if(previous[n]>=0){
+                    jumpSum+=std::abs(note.pitch-previous[n]);
+                    ++jumps;
+                }
+                previous[n]=note.pitch;
+            }
+            spans+=hi-lo;
+        }
+    }
+    const double phraseCount=static_cast<double>(samples);
+    const double chordCount=std::max(1.0,static_cast<double>(chords));
+    const double voiceCount=std::max(1.0,static_cast<double>(voices));
+    m.chords=chords/phraseCount;
+    m.avgVoices=voices/chordCount;
+    m.avgDurationSteps=durations/voiceCount;
+    m.avgSpanSemitones=spans/chordCount;
+    m.avgVoiceJump=jumps>0?static_cast<double>(jumpSum)/jumps:0.0;
+    m.fourVoiceShare=fourVoice/chordCount;
+    return m;
+}
+
+static void printPadSweepLine(const char* label,double value,const PadSweepMetrics& m){
+    std::cout<<label<<" "<<std::setw(5)<<value*100.0<<"%:"
+             <<" chords="<<m.chords
+             <<" voices="<<m.avgVoices
+             <<" duration="<<m.avgDurationSteps
+             <<" span="<<m.avgSpanSemitones
+             <<" voiceJump="<<m.avgVoiceJump
+             <<" fourVoice="<<m.fourVoiceShare*100.0<<"%\n";
+}
+
 int main() {
     std::cout << "125A Midiator measurement report\n";
     std::cout << "================================\n";
@@ -675,6 +739,40 @@ int main() {
                                      740000u + static_cast<unsigned>(style) * 10000u, 512);
         printDrumSweepLine(styleNames[style], 1.0, dm);
     }
+
+
+    std::cout << "\nPad Brain control sweep diagnostics (256 phrases per point)\n";
+    std::cout << "--------------------------------------------------------\n";
+    const auto padGuitar = RiffEngine::generate(bassGuitarSettings, 0x50414411u);
+    BassSettings padBassSettings{};
+    const auto padBass = BassBrain::generate(padGuitar, padBassSettings, 0x50414412u);
+    for(float v : sweepValues){
+        PadSettings ps{}; ps.movement=v;
+        printPadSweepLine("Movement",v,measurePads(padGuitar,padBass,ps,810000u));
+    }
+    std::cout<<"\n";
+    for(float v : sweepValues){
+        PadSettings ps{}; ps.spread=v;
+        printPadSweepLine("Spread  ",v,measurePads(padGuitar,padBass,ps,820000u));
+    }
+    std::cout<<"\n";
+    for(float v : sweepValues){
+        PadSettings ps{}; ps.tension=v;
+        printPadSweepLine("Tension ",v,measurePads(padGuitar,padBass,ps,830000u));
+    }
+    std::cout<<"\n";
+    for(float v : sweepValues){
+        PadSettings ps{}; ps.sustain=v;
+        printPadSweepLine("Sustain ",v,measurePads(padGuitar,padBass,ps,840000u));
+    }
+    std::cout<<"\nPad style diagnostics (512 phrases per style)\n";
+    std::cout<<"----------------------------------------------\n";
+    for(int style=0;style<static_cast<int>(StyleId::Count);++style){
+        PadSettings ps{}; ps.style=static_cast<StyleId>(style);
+        const auto pm=measurePads(padGuitar,padBass,ps,850000u+style*10000u,512);
+        printPadSweepLine(styleNames[style],1.0,pm);
+    }
+    std::cout<<"\n";
 
     GeneratorSettings exampleSettings = s;
     exampleSettings.bars = 4;

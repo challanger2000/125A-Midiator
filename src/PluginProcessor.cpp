@@ -421,6 +421,15 @@ void MidiatorProcessor::regenerateDrums() {
     drumSettings_.style = settings_.style;
     drumPhrase_ = midiator::DrumBrain::generate(
         phrase_, bassPhrase_, drumSettings_, seed_ ^ 0xD12A2026u);
+    regeneratePads();
+}
+
+void MidiatorProcessor::regeneratePads() {
+    padSettings_.rootPitchClass = settings_.rootPitchClass;
+    padSettings_.scale = settings_.scale;
+    padSettings_.style = settings_.style;
+    padPhrase_ = midiator::PadBrain::generate(
+        phrase_, bassPhrase_, padSettings_, seed_ ^ 0x50414426u);
 }
 
 void MidiatorProcessor::resizePhraseBars(int newBars) {
@@ -883,6 +892,32 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         }
     };
     scheduleDrums();
+
+    auto schedulePads = [&]() {
+        constexpr double kPadReleaseGapQn = 1.0 / 64.0;
+        for (long long cycle = firstCycle; cycle <= lastCycle; ++cycle) {
+            const double cycleStartQn =
+                transportAnchorQn_ + static_cast<double>(cycle) * patternLengthQn;
+            for (int stepIndex = 0; stepIndex < padPhrase_.usedSteps(); ++stepIndex) {
+                const auto& step = padPhrase_.steps[stepIndex];
+                if (step.noteCount <= 0)
+                    continue;
+                const double onQn =
+                    cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
+                for (int n = 0; n < step.noteCount; ++n) {
+                    const auto& note = step.notes[n];
+                    const double durationQn =
+                        static_cast<double>(std::max(1, note.lengthSteps)) *
+                        kStepQuarterNotes;
+                    const double offQn =
+                        std::max(onQn, onQn + durationQn - kPadReleaseGapQn);
+                    addScheduled(onQn, true, note.pitch, note.velocity, kPadOutBus);
+                    addScheduled(offQn, false, note.pitch, 0, kPadOutBus);
+                }
+            }
+        }
+    };
+    schedulePads();
 
     if (schedulerOverflow) {
         // Never silently drop scheduled MIDI. A host-sized block that exceeds
