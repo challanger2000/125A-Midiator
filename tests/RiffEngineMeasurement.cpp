@@ -431,19 +431,33 @@ static void printPadSweepLine(const char* label,double value,const PadSweepMetri
 struct SynthSweepMetrics {
     double hits=0.0, longShare=0.0, offbeatShare=0.0, avgJump=0.0, avgPitch=0.0;
     double motifPitchAgreement=0.0;
+    double padChordToneShare=0.0;
 };
 static SynthSweepMetrics measureSynth(const Phrase& guitar,const Phrase& bass,const PadPhrase& pads,
                                       const SynthSettings& s,unsigned seedBase,int samples=256){
     SynthSweepMetrics m{}; long long hits=0,longs=0,off=0,jumps=0,jumpSum=0,pitchSum=0;
-    long long motifCompared=0,motifMatched=0;
+    long long motifCompared=0,motifMatched=0,padCompared=0,padMatched=0;
     for(int si=0;si<samples;++si){
         const auto p=SynthBrain::generate(guitar,bass,pads,s,seedBase+static_cast<unsigned>(si));
         int prev=-1;
+        int activeChord=-1;
         for(int i=0;i<p.usedSteps();++i){
+            if(i<pads.usedSteps() && pads.steps[i].noteCount>0)
+                activeChord=i;
             const auto& st=p.steps[i]; if(st.noteCount<=0) continue;
             ++hits; const auto& n=st.notes[0]; pitchSum+=n.pitch;
             if(n.lengthSteps>1) ++longs; if((i%2)!=0) ++off;
             if(prev>=0){jumpSum+=std::abs(n.pitch-prev);++jumps;} prev=n.pitch;
+            if(activeChord>=0){
+                ++padCompared;
+                const int pc=(n.pitch%12+12)%12;
+                const auto& chord=pads.steps[activeChord];
+                for(int cn=0;cn<chord.noteCount;++cn){
+                    if(((chord.notes[cn].pitch%12+12)%12)==pc){
+                        ++padMatched; break;
+                    }
+                }
+            }
             if(i>=16){
                 const int ref=i%16;
                 if(p.steps[ref].noteCount>0){
@@ -459,6 +473,7 @@ static SynthSweepMetrics measureSynth(const Phrase& guitar,const Phrase& bass,co
     m.hits=hits/static_cast<double>(samples); m.longShare=longs/hc; m.offbeatShare=off/hc;
     m.avgJump=jumps?static_cast<double>(jumpSum)/jumps:0.0; m.avgPitch=pitchSum/hc;
     m.motifPitchAgreement=motifCompared?static_cast<double>(motifMatched)/motifCompared:0.0;
+    m.padChordToneShare=padCompared?static_cast<double>(padMatched)/padCompared:0.0;
     return m;
 }
 static void printSynthSweepLine(const char* label,double value,const SynthSweepMetrics& m){
@@ -466,7 +481,8 @@ static void printSynthSweepLine(const char* label,double value,const SynthSweepM
              <<" hits="<<m.hits<<" long="<<m.longShare*100.0<<"%"
              <<" offbeat="<<m.offbeatShare*100.0<<"%"
              <<" avgJump="<<m.avgJump<<" avgPitch="<<m.avgPitch
-             <<" motifMatch="<<m.motifPitchAgreement*100.0<<"%\n";
+             <<" motifMatch="<<m.motifPitchAgreement*100.0<<"%"
+             <<" chordTone="<<m.padChordToneShare*100.0<<"%\n";
 }
 
 int main() {
@@ -852,6 +868,8 @@ int main() {
     for(float v:sweepValues){ SynthSettings ss{}; ss.syncopation=v; printSynthSweepLine("Syncopation",v,measureSynth(synthGuitar,synthBass,synthPads,ss,940000u)); }
     std::cout<<"\n";
     for(float v:sweepValues){ SynthSettings ss{}; ss.sustain=v; printSynthSweepLine("Sustain  ",v,measureSynth(synthGuitar,synthBass,synthPads,ss,950000u)); }
+    std::cout<<"\n";
+    for(float v:sweepValues){ SynthSettings ss{}; ss.harmonicFollow=v; printSynthSweepLine("Harmonic ",v,measureSynth(synthGuitar,synthBass,synthPads,ss,955000u)); }
     std::cout<<"\nSynth style diagnostics (512 phrases per style)\n";
     for(int style=0;style<static_cast<int>(StyleId::Count);++style){ SynthSettings ss{}; ss.style=static_cast<StyleId>(style); printSynthSweepLine(styleNames[style],1.0,measureSynth(synthGuitar,synthBass,synthPads,ss,960000u+style*10000u,512)); }
     std::cout<<"\n";

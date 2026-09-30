@@ -49,11 +49,49 @@ int pitchFromDegree(int degree, const SynthSettings& s, int around) {
     return best;
 }
 
+int nearestPadChordPitch(const PadPhrase& pads, int step, int around) {
+    if (pads.usedSteps() <= 0)
+        return around;
+
+    const int used = pads.usedSteps();
+    int idx = ((step % used) + used) % used;
+
+    // Find the harmony currently sounding: nearest pad onset at or before
+    // this synth step, wrapping to the previous phrase cycle if necessary.
+    int chordStep = -1;
+    for (int delta = 0; delta < used; ++delta) {
+        const int candidate = (idx - delta + used) % used;
+        if (pads.steps[candidate].noteCount > 0) {
+            chordStep = candidate;
+            break;
+        }
+    }
+    if (chordStep < 0)
+        return around;
+
+    const auto& chord = pads.steps[chordStep];
+    int best = around;
+    int bestDistance = 999;
+    for (int n = 0; n < chord.noteCount; ++n) {
+        const int pc = wrap12(chord.notes[n].pitch);
+        for (int p = 48; p <= 96; ++p) {
+            if (wrap12(p) != pc)
+                continue;
+            const int d = std::abs(p - around);
+            if (d < bestDistance) {
+                best = p;
+                bestDistance = d;
+            }
+        }
+    }
+    return best;
+}
+
 } // namespace
 
 Phrase SynthBrain::generate(const Phrase& guitar,
                             const Phrase& bass,
-                            const PadPhrase&,
+                            const PadPhrase& pads,
                             const SynthSettings& settings,
                             uint32_t seed) {
     SynthSettings s=settings;
@@ -63,6 +101,7 @@ Phrase SynthBrain::generate(const Phrase& guitar,
     s.repetition=std::clamp(s.repetition,0.0f,1.0f);
     s.syncopation=std::clamp(s.syncopation,0.0f,1.0f);
     s.sustain=std::clamp(s.sustain,0.0f,1.0f);
+    s.harmonicFollow=std::clamp(s.harmonicFollow,0.0f,1.0f);
     s.centerMidi=std::clamp(s.centerMidi,60,84);
 
     Phrase out{};
@@ -70,6 +109,7 @@ Phrase SynthBrain::generate(const Phrase& guitar,
     Rng rhythmRng(seed);
     Rng pitchRng(seed ^ 0x50495443u);
     Rng lengthRng(seed ^ 0x4C454E47u);
+    Rng harmonyRng(seed ^ 0x4841524Du);
 
     std::array<int,8> motifDegree{{0,2,4,1,0,3,2,5}};
     std::array<int,8> motifHit{{1,0,1,1,0,1,0,1}};
@@ -120,6 +160,15 @@ Phrase SynthBrain::generate(const Phrase& guitar,
             int alt=pitch + (pitchRng.chance(0.5f)?12:-12);
             if(alt>=48 && alt<=96 && std::abs(alt-previousPitch)<=12)
                 pitch=alt;
+        }
+
+        // Harmonic Follow does not turn the synth into a mechanical arpeggiator:
+        // it probabilistically gravitates melodic notes toward the currently
+        // sounding pad chord while preserving the role's own rhythm and motif.
+        if(harmonyRng.chance(s.harmonicFollow)){
+            const int chordTone = nearestPadChordPitch(pads, step, pitch);
+            if(std::abs(chordTone-pitch)<=7 || s.harmonicFollow>0.85f)
+                pitch=chordTone;
         }
 
         if(std::abs(pitch-previousPitch)>12)

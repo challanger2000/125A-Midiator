@@ -129,6 +129,40 @@ void testRepetitionPreservesMotifPitchIdentity(){
             "Synth Repetition must materially increase repeated motif pitch identity");
 }
 
+void testHarmonicFollowTargetsPadChordTones(){
+    Phrase g{},b{}; PadPhrase p{}; makeContext(g,b,p);
+
+    auto chordToneShare=[&](float follow){
+        long long hits=0,matches=0;
+        for(unsigned seed=1;seed<=256;++seed){
+            SynthSettings s{}; s.harmonicFollow=follow;
+            const auto q=SynthBrain::generate(g,b,p,s,70000u+seed);
+
+            int activeChord=-1;
+            for(int i=0;i<q.usedSteps();++i){
+                if(i<p.usedSteps() && p.steps[i].noteCount>0)
+                    activeChord=i;
+                if(q.steps[i].noteCount<=0 || activeChord<0) continue;
+
+                ++hits;
+                const int pc=(q.steps[i].notes[0].pitch%12+12)%12;
+                const auto& chord=p.steps[activeChord];
+                for(int n=0;n<chord.noteCount;++n){
+                    if(((chord.notes[n].pitch%12+12)%12)==pc){
+                        ++matches; break;
+                    }
+                }
+            }
+        }
+        return hits?static_cast<double>(matches)/hits:0.0;
+    };
+
+    const double independent=chordToneShare(0.0f);
+    const double guided=chordToneShare(1.0f);
+    require(guided>independent+0.20,
+            "Synth Harmonic Follow must materially increase pad-chord-tone targeting");
+}
+
 void testStylesDiffer(){
     Phrase g{},b{}; PadPhrase p{}; makeContext(g,b,p);
     auto avgPitch=[&](StyleId style){
@@ -154,6 +188,7 @@ int main(){
     testSustainRaisesLongNoteShare();
     testPitchAndLengthControlsDoNotRewriteRhythm();
     testRepetitionPreservesMotifPitchIdentity();
+    testHarmonicFollowTargetsPadChordTones();
     testStylesDiffer();
     std::cout<<"Midiator Synth Brain tests: PASS\n";
     return 0;

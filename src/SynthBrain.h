@@ -18,6 +18,7 @@ struct SynthSettings {
     float repetition = 0.62f;
     float syncopation = 0.34f;
     float sustain = 0.30f;
+    float harmonicFollow = 0.68f;
     int centerMidi = 72;
 };
 
