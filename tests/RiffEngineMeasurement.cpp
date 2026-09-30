@@ -5,7 +5,9 @@
 #include "SynthBrain.h"
 
 #include <algorithm>
+#include <chrono>
 #include <iomanip>
+#include <vector>
 #include <iostream>
 
 using namespace midiator;
@@ -519,6 +521,162 @@ static void printSynthSweepLine(const char* label,double value,const SynthSweepM
              <<" chordTone="<<m.padChordToneShare*100.0<<"%\n";
 }
 
+
+
+static uint32_t benchmarkNextSeed(uint32_t x) {
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    return x ? x : 0x125A2026u;
+}
+
+struct NewRiffBenchResult {
+    double avgAttempts = 0.0;
+    int p95Attempts = 0;
+    int p99Attempts = 0;
+    int maxAttempts = 0;
+    double full32Share = 0.0;
+    double p50Us = 0.0;
+    double p95Us = 0.0;
+    double p99Us = 0.0;
+    double maxUs = 0.0;
+};
+
+static NewRiffBenchResult benchmarkNewRiffPath(StyleId style,
+                                               int samples = 256) {
+    std::vector<int> attempts;
+    std::vector<double> micros;
+    attempts.reserve(static_cast<size_t>(samples));
+    micros.reserve(static_cast<size_t>(samples));
+
+    long long attemptSum = 0;
+    int full32 = 0;
+
+    GeneratorSettings settings{};
+    settings.bars = 4;
+    settings.rootPitchClass = 9;
+    settings.scale = ScaleId::Phrygian;
+    settings.style = style;
+
+    for (int sample = 0; sample < samples; ++sample) {
+        uint32_t stateSeed = 0x600D0000u + static_cast<uint32_t>(sample * 977 + static_cast<int>(style) * 131);
+        const auto previous = RiffEngine::generate(settings, stateSeed);
+
+        const int requiredDifference = std::max(6, previous.usedSteps() / 3);
+        Phrase bestCandidate{};
+        Phrase candidate{};
+        double bestJaccard = 2.0;
+        int bestDifference = -1;
+        int usedAttempts = 0;
+
+        const auto start = std::chrono::steady_clock::now();
+
+        for (int attempt = 0; attempt < 32; ++attempt) {
+            ++usedAttempts;
+            stateSeed = benchmarkNextSeed(stateSeed);
+            candidate = RiffEngine::generate(settings, stateSeed);
+
+            const int difference = countDiffSteps(previous, candidate);
+            const double jaccard = onsetJaccard(previous, candidate);
+
+            if (jaccard < bestJaccard ||
+                (std::abs(jaccard - bestJaccard) < 1e-9 &&
+                 difference > bestDifference)) {
+                bestCandidate = candidate;
+                bestJaccard = jaccard;
+                bestDifference = difference;
+            }
+
+            if (difference >= requiredDifference && jaccard <= 0.48)
+                break;
+        }
+
+        // Mirror the processor's downstream regeneration cascade so the
+        // timing represents a complete five-role NEW RIFF operation.
+        BassSettings bs{};
+        bs.rootPitchClass = settings.rootPitchClass;
+        bs.scale = settings.scale;
+        bs.style = settings.style;
+        const auto bass = BassBrain::generate(
+            bestCandidate, bs, stateSeed ^ 0xB4552026u);
+
+        DrumSettings ds{};
+        ds.style = settings.style;
+        const auto drums = DrumBrain::generate(
+            bestCandidate, bass, ds, stateSeed ^ 0xD12A2026u);
+
+        PadSettings ps{};
+        ps.rootPitchClass = settings.rootPitchClass;
+        ps.scale = settings.scale;
+        ps.style = settings.style;
+        const auto pads = PadBrain::generate(
+            bestCandidate, bass, ps, stateSeed ^ 0x50414426u);
+
+        SynthSettings ss{};
+        ss.rootPitchClass = settings.rootPitchClass;
+        ss.scale = settings.scale;
+        ss.style = settings.style;
+        const auto synth = SynthBrain::generate(
+            bestCandidate, bass, pads, ss, stateSeed ^ 0x53594E26u);
+
+        // Prevent an optimizing compiler from proving the generated roles dead.
+        volatile int sink = bass.usedSteps() + drums.usedSteps() +
+                            pads.usedSteps() + synth.usedSteps();
+        (void)sink;
+
+        const auto stop = std::chrono::steady_clock::now();
+        const double us = std::chrono::duration<double, std::micro>(stop - start).count();
+
+        attempts.push_back(usedAttempts);
+        micros.push_back(us);
+        attemptSum += usedAttempts;
+        if (usedAttempts == 32)
+            ++full32;
+    }
+
+    std::sort(attempts.begin(), attempts.end());
+    std::sort(micros.begin(), micros.end());
+
+    auto percentileIndex = [samples](double p) {
+        const int idx = static_cast<int>(std::ceil(p * samples)) - 1;
+        return std::clamp(idx, 0, samples - 1);
+    };
+
+    NewRiffBenchResult r{};
+    r.avgAttempts = static_cast<double>(attemptSum) / samples;
+    r.p95Attempts = attempts[static_cast<size_t>(percentileIndex(0.95))];
+    r.p99Attempts = attempts[static_cast<size_t>(percentileIndex(0.99))];
+    r.maxAttempts = attempts.back();
+    r.full32Share = static_cast<double>(full32) / samples;
+    r.p50Us = micros[static_cast<size_t>(percentileIndex(0.50))];
+    r.p95Us = micros[static_cast<size_t>(percentileIndex(0.95))];
+    r.p99Us = micros[static_cast<size_t>(percentileIndex(0.99))];
+    r.maxUs = micros.back();
+    return r;
+}
+
+static void printNewRiffBenchmarks() {
+    static const char* names[] = {
+        "NDH / Industrial", "Dark Rock / Gothic", "Heavy Industrial"
+    };
+
+    std::cout << "\nNEW RIFF full-path diagnostics (256 operations per style)\n";
+    std::cout << "---------------------------------------------------------\n";
+    for (int i = 0; i < static_cast<int>(StyleId::Count); ++i) {
+        const auto r = benchmarkNewRiffPath(static_cast<StyleId>(i));
+        std::cout << names[i]
+                  << ": attempts avg=" << r.avgAttempts
+                  << " p95=" << r.p95Attempts
+                  << " p99=" << r.p99Attempts
+                  << " max=" << r.maxAttempts
+                  << " full32=" << r.full32Share * 100.0 << "%"
+                  << " time_us p50=" << r.p50Us
+                  << " p95=" << r.p95Us
+                  << " p99=" << r.p99Us
+                  << " max=" << r.maxUs
+                  << "\n";
+    }
+}
 
 static uint64_t fnvMix(uint64_t h, uint64_t value) {
     for (int i = 0; i < 8; ++i) {
@@ -1050,6 +1208,7 @@ int main() {
     printPhraseGrid(RiffEngine::generate(exampleSettings, 202u), "Example riff B - A Phrygian");
     printPhraseGrid(RiffEngine::generate(exampleSettings, 303u), "Example riff C - A Phrygian");
 
+    printNewRiffBenchmarks();
     printGoldenArrangementFingerprint();
 
     return 0;
