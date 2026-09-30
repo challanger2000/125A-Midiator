@@ -35,7 +35,7 @@ int main(){
           <<" pad=0x"<<ph
           <<" synth=0x"<<sh
           <<" arrangement=0x"<<ah<<"\n"<<std::dec;
- const auto ah=arrangementHash(gh,bh,dh,ph,sh);
+
 
 
  require(gh==0x864e0c07b172c048ull,"golden Guitar fingerprint changed");
