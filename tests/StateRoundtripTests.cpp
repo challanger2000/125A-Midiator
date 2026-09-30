@@ -482,6 +482,112 @@ int main() {
         4u, 9, 8, true, static_cast<int32>(midiator::StyleId::DarkRockGothic),
         8.0 / 11.0, 1.0, 0.5, false);
 
+    // V5 was the first exact five-role payload format. It had a 64-byte
+    // header and no Drum Map or role-shaping values. Reconstruct that exact
+    // historical byte layout from a valid current state by removing the
+    // V6/V7-only header extension, then prove that V7 preserves all five
+    // serialized role payloads while supplying the documented defaults.
+    {
+        MemoryStream current;
+        MidiatorProcessor source;
+        require(source.getState(&current) == kResultOk,
+                "current state fixture for V5 migration must serialize");
+
+        MemoryStream v5;
+        v5.bytes().insert(v5.bytes().end(),
+                          current.bytes().begin(),
+                          current.bytes().begin() + 64);
+        v5.bytes().insert(v5.bytes().end(),
+                          current.bytes().begin() + 100,
+                          current.bytes().end());
+        const uint32_t v5Version = 5u;
+        patchFixtureValue(v5, sizeof(uint32_t), v5Version);
+
+        const std::vector<uint8_t> oldPayload(
+            v5.bytes().begin() + 64, v5.bytes().end());
+
+        v5.rewind();
+        MidiatorProcessor migrated;
+        require(migrated.setState(&v5) == kResultOk,
+                "frozen V5 five-role state must migrate to V7");
+
+        MemoryStream upgraded;
+        require(migrated.getState(&upgraded) == kResultOk,
+                "migrated V5 state must serialize as V7");
+        require(upgraded.bytes().size() >= 100 + oldPayload.size(),
+                "upgraded V5 state must contain full V7 header and payload");
+        require(std::equal(oldPayload.begin(), oldPayload.end(),
+                           upgraded.bytes().begin() + 100),
+                "V5 migration must preserve exact Guitar/Bass/Drums/Pad/Synth payload bytes");
+
+        // V5 predates Drum Map and role shaping.
+        const int32 expectedMap =
+            static_cast<int32>(midiator::DrumMapId::GeneralMidi);
+        int32 storedMap = -1;
+        std::memcpy(&storedMap, upgraded.bytes().data() + 64, sizeof(storedMap));
+        require(storedMap == expectedMap,
+                "V5 migration must default Drum Map to General MIDI");
+
+        const float expectedRoleDefaults[] = {
+            0.72f, 0.34f, 0.48f, 0.30f,
+            0.42f, 0.18f, 0.46f, 0.42f
+        };
+        for (size_t i = 0; i < std::size(expectedRoleDefaults); ++i) {
+            float value = 0.0f;
+            std::memcpy(&value,
+                        upgraded.bytes().data() + 68 + i * sizeof(float),
+                        sizeof(value));
+            require(std::abs(value - expectedRoleDefaults[i]) < 1e-6f,
+                    "V5 migration must install documented role-control defaults");
+        }
+    }
+
+    // V6 added the verified Drum Map at byte 64 but still predates the eight
+    // V7 role-shaping floats. Its five-role payload therefore begins at byte
+    // 68. Preserve both the selected verified map and the complete payload.
+    {
+        MemoryStream current;
+        MidiatorProcessor source;
+        require(source.getState(&current) == kResultOk,
+                "current state fixture for V6 migration must serialize");
+
+        // Use EZdrummer 3 rather than the default so map preservation is
+        // actually tested.
+        const int32 ezd3 =
+            static_cast<int32>(midiator::DrumMapId::EZdrummer3);
+        patchFixtureValue(current, 64, ezd3);
+
+        MemoryStream v6;
+        v6.bytes().insert(v6.bytes().end(),
+                          current.bytes().begin(),
+                          current.bytes().begin() + 68);
+        v6.bytes().insert(v6.bytes().end(),
+                          current.bytes().begin() + 100,
+                          current.bytes().end());
+        const uint32_t v6Version = 6u;
+        patchFixtureValue(v6, sizeof(uint32_t), v6Version);
+
+        const std::vector<uint8_t> oldPayload(
+            v6.bytes().begin() + 68, v6.bytes().end());
+
+        v6.rewind();
+        MidiatorProcessor migrated;
+        require(migrated.setState(&v6) == kResultOk,
+                "frozen V6 Drum-Map state must migrate to V7");
+
+        MemoryStream upgraded;
+        require(migrated.getState(&upgraded) == kResultOk,
+                "migrated V6 state must serialize as V7");
+        require(std::equal(oldPayload.begin(), oldPayload.end(),
+                           upgraded.bytes().begin() + 100),
+                "V6 migration must preserve exact five-role payload bytes");
+
+        int32 storedMap = -1;
+        std::memcpy(&storedMap, upgraded.bytes().data() + 64, sizeof(storedMap));
+        require(storedMap == ezd3,
+                "V6 migration must preserve the selected verified Drum Map");
+    }
+
     std::cout << "Midiator processor-state roundtrip test: PASS\n";
     return 0;
 }
