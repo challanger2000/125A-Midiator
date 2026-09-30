@@ -209,6 +209,57 @@ void testTensionProgressivelyAddsColorVoices() {
             "Pad Tension 100% must add materially more color-voice changes than 50%");
 }
 
+void testContextFollowAlignsPadsWithRiff() {
+    Phrase guitar{}, bass{};
+    makeContext(guitar, bass);
+
+    auto contextToneShare = [&](float follow) {
+        long long compared = 0;
+        long long matching = 0;
+
+        for (unsigned seed = 1; seed <= 256; ++seed) {
+            PadSettings s{};
+            s.contextFollow = follow;
+            const auto pads = PadBrain::generate(guitar, bass, s, 120000u + seed);
+
+            int activeChord = -1;
+            for (int i = 0; i < pads.usedSteps(); ++i) {
+                if (pads.steps[i].noteCount > 0)
+                    activeChord = i;
+                if (activeChord < 0)
+                    continue;
+
+                auto matchesChord = [&](int pitch) {
+                    const int pc = (pitch % 12 + 12) % 12;
+                    const auto& chord = pads.steps[activeChord];
+                    for (int n = 0; n < chord.noteCount; ++n)
+                        if (((chord.notes[n].pitch % 12 + 12) % 12) == pc)
+                            return true;
+                    return false;
+                };
+
+                if (i < guitar.usedSteps() && guitar.steps[i].noteCount > 0) {
+                    ++compared;
+                    if (matchesChord(guitar.steps[i].notes[0].pitch))
+                        ++matching;
+                }
+                if (i < bass.usedSteps() && bass.steps[i].noteCount > 0) {
+                    ++compared;
+                    if (matchesChord(bass.steps[i].notes[0].pitch))
+                        ++matching;
+                }
+            }
+        }
+
+        return compared > 0 ? static_cast<double>(matching) / compared : 0.0;
+    };
+
+    const double independent = contextToneShare(0.0f);
+    const double guided = contextToneShare(1.0f);
+    require(guided > independent + 0.10,
+            "Pad Context Follow must materially improve Guitar/Bass chord-tone alignment");
+}
+
 void testVoiceLeadingAvoidsWildJumps() {
     Phrase guitar{}, bass{};
     makeContext(guitar, bass);
@@ -240,6 +291,7 @@ int main() {
     testSpreadProgressivelyWidensVoicings();
     testMovementProgressivelyAddsHarmonicEvents();
     testTensionProgressivelyAddsColorVoices();
+    testContextFollowAlignsPadsWithRiff();
     testVoiceLeadingAvoidsWildJumps();
     std::cout << "Midiator Pad Brain tests: PASS\n";
     return 0;

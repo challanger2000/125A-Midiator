@@ -67,6 +67,65 @@ int nearestScaleTone(int pitch, const PadSettings& s) {
     return best;
 }
 
+bool chordContainsPc(const PadSettings& s, int rootDegree, int pc) {
+    const auto& scale = RiffEngine::scaleDefinition(s.scale);
+    for (int offset : {0, 2, 4}) {
+        const int degree = (rootDegree + offset) % scale.count;
+        if (degreePc(s, degree) == wrap12(pc))
+            return true;
+    }
+    return false;
+}
+
+int chooseContextRootDegree(const Phrase& guitar,
+                            const Phrase& bass,
+                            const PadSettings& s,
+                            int startStep,
+                            int spanSteps,
+                            int fallbackDegree) {
+    const auto& scale = RiffEngine::scaleDefinition(s.scale);
+    int bestDegree = fallbackDegree;
+    double bestScore = -1.0;
+    bool sawContext = false;
+
+    for (int candidate = 0; candidate < scale.count; ++candidate) {
+        double score = candidate == fallbackDegree ? 0.20 : 0.0;
+
+        for (int offset = 0; offset < spanSteps; ++offset) {
+            const int step = startStep + offset;
+            if (step >= guitar.usedSteps() && step >= bass.usedSteps())
+                break;
+
+            const bool strong = (step % 4) == 0;
+
+            if (step < bass.usedSteps() && bass.steps[step].noteCount > 0) {
+                sawContext = true;
+                const int pc = bass.steps[step].notes[0].pitch;
+                if (chordContainsPc(s, candidate, pc))
+                    score += strong ? 3.0 : 2.0;
+                if (degreePc(s, candidate) == wrap12(pc))
+                    score += strong ? 1.5 : 0.5;
+            }
+
+            if (step < guitar.usedSteps() && guitar.steps[step].noteCount > 0) {
+                sawContext = true;
+                const int pc = guitar.steps[step].notes[0].pitch;
+                if (chordContainsPc(s, candidate, pc))
+                    score += strong ? 2.0 : 1.0;
+                if (degreePc(s, candidate) == wrap12(pc))
+                    score += strong ? 0.8 : 0.2;
+            }
+        }
+
+        if (score > bestScore) {
+            bestScore = score;
+            bestDegree = candidate;
+        }
+    }
+
+    return sawContext ? bestDegree : fallbackDegree;
+}
+
 void sortVoicing(PadStep& step) {
     std::sort(step.notes.begin(), step.notes.begin() + step.noteCount,
               [](const PadNote& a, const PadNote& b) { return a.pitch < b.pitch; });
@@ -84,12 +143,14 @@ PadPhrase PadBrain::generate(const Phrase& guitar,
     s.spread = std::clamp(s.spread, 0.0f, 1.0f);
     s.tension = std::clamp(s.tension, 0.0f, 1.0f);
     s.sustain = std::clamp(s.sustain, 0.0f, 1.0f);
+    s.contextFollow = std::clamp(s.contextFollow, 0.0f, 1.0f);
     s.centerMidi = std::clamp(s.centerMidi, 48, 72);
 
     PadPhrase out{};
     out.bars = std::clamp(std::max(guitar.bars, bass.bars), 1, kMaxBars);
 
     Rng rng(seed);
+    Rng contextRng(seed ^ 0x434F4E54u);
     const auto& scale = RiffEngine::scaleDefinition(s.scale);
 
     int chordEverySteps = 16;
@@ -117,6 +178,14 @@ PadPhrase PadBrain::generate(const Phrase& guitar,
         if (s.style == StyleId::NDHIndustrial && chordIndex > 0 &&
             !rng.chance(0.22f + 0.38f * s.movement)) {
             rootDegree = 0;
+        }
+
+        // Context Follow makes the pad harmonically serve the actual riff.
+        // It only chooses the diatonic chord root; voicing, movement, tension
+        // and sustain remain independent pad decisions.
+        if (contextRng.chance(s.contextFollow)) {
+            rootDegree = chooseContextRootDegree(
+                guitar, bass, s, step, chordEverySteps, rootDegree);
         }
 
         std::array<int, 4> degrees{{

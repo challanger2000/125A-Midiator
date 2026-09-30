@@ -355,6 +355,7 @@ struct PadSweepMetrics {
     double avgVoiceJump = 0.0;
     double fourVoiceShare = 0.0;
     double colorVoiceShare = 0.0;
+    double contextToneShare = 0.0;
 };
 
 static PadSweepMetrics measurePads(const Phrase& guitar,
@@ -364,11 +365,13 @@ static PadSweepMetrics measurePads(const Phrase& guitar,
                                    int samples = 256) {
     PadSweepMetrics m{};
     long long chords=0, voices=0, durations=0, fourVoice=0, colorVoices=0;
-    long long spans=0, jumps=0, jumpSum=0;
+    long long spans=0, jumps=0, jumpSum=0, contextCompared=0, contextMatched=0;
     for(int sidx=0;sidx<samples;++sidx){
         const auto p=PadBrain::generate(guitar,bass,settings,seedBase+static_cast<unsigned>(sidx));
         std::array<int,kMaxPadVoices> previous{{-1,-1,-1,-1}};
+        int activeChord=-1;
         for(int i=0;i<p.usedSteps();++i){
+            if(p.steps[i].noteCount>0) activeChord=i;
             const auto& st=p.steps[i];
             if(st.noteCount<=0) continue;
             ++chords;
@@ -401,6 +404,24 @@ static PadSweepMetrics measurePads(const Phrase& guitar,
                 previous[n]=note.pitch;
             }
             spans+=hi-lo;
+
+            if(activeChord>=0){
+                auto matchContext=[&](int pitch){
+                    const int pc=(pitch%12+12)%12;
+                    const auto& chord=p.steps[activeChord];
+                    for(int cn=0;cn<chord.noteCount;++cn)
+                        if(((chord.notes[cn].pitch%12+12)%12)==pc) return true;
+                    return false;
+                };
+                if(i<guitar.usedSteps() && guitar.steps[i].noteCount>0){
+                    ++contextCompared;
+                    if(matchContext(guitar.steps[i].notes[0].pitch)) ++contextMatched;
+                }
+                if(i<bass.usedSteps() && bass.steps[i].noteCount>0){
+                    ++contextCompared;
+                    if(matchContext(bass.steps[i].notes[0].pitch)) ++contextMatched;
+                }
+            }
         }
     }
     const double phraseCount=static_cast<double>(samples);
@@ -413,6 +434,7 @@ static PadSweepMetrics measurePads(const Phrase& guitar,
     m.avgVoiceJump=jumps>0?static_cast<double>(jumpSum)/jumps:0.0;
     m.fourVoiceShare=fourVoice/chordCount;
     m.colorVoiceShare=colorVoices/chordCount;
+    m.contextToneShare=contextCompared?static_cast<double>(contextMatched)/contextCompared:0.0;
     return m;
 }
 
@@ -424,7 +446,8 @@ static void printPadSweepLine(const char* label,double value,const PadSweepMetri
              <<" span="<<m.avgSpanSemitones
              <<" voiceJump="<<m.avgVoiceJump
              <<" fourVoice="<<m.fourVoiceShare*100.0<<"%"
-             <<" colorVoice="<<m.colorVoiceShare*100.0<<"%\n";
+             <<" colorVoice="<<m.colorVoiceShare*100.0<<"%"
+             <<" contextTone="<<m.contextToneShare*100.0<<"%\n";
 }
 
 
@@ -849,6 +872,11 @@ int main() {
     for(float v : sweepValues){
         PadSettings ps{}; ps.sustain=v;
         printPadSweepLine("Sustain ",v,measurePads(padGuitar,padBass,ps,840000u));
+    }
+    std::cout<<"\n";
+    for(float v : sweepValues){
+        PadSettings ps{}; ps.contextFollow=v;
+        printPadSweepLine("Context ",v,measurePads(padGuitar,padBass,ps,845000u));
     }
     std::cout<<"\nPad style diagnostics (512 phrases per style)\n";
     std::cout<<"----------------------------------------------\n";

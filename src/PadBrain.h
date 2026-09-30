@@ -38,6 +38,7 @@ struct PadSettings {
     float spread = 0.42f;
     float tension = 0.18f;
     float sustain = 0.82f;
+    float contextFollow = 0.68f;
     int centerMidi = 60;
 };
 
