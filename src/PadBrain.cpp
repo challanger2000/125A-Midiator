@@ -93,12 +93,18 @@ PadPhrase PadBrain::generate(const Phrase& guitar,
     const auto& scale = RiffEngine::scaleDefinition(s.scale);
 
     int chordEverySteps = 16;
+    float halfBarProbability = 0.0f;
     if (s.style == StyleId::HeavyIndustrial)
-        chordEverySteps = s.movement >= 0.35f ? 8 : 16;
+        halfBarProbability = 0.12f + 0.78f * s.movement;
     else if (s.style == StyleId::DarkRockGothic)
-        chordEverySteps = s.movement >= 0.70f ? 8 : 16;
+        halfBarProbability = 0.04f + 0.62f * s.movement;
     else
-        chordEverySteps = s.movement >= 0.55f ? 8 : 16;
+        halfBarProbability = 0.06f + 0.70f * s.movement;
+
+    // Movement should react progressively: lower values mostly hold whole-bar
+    // harmony, higher values increasingly introduce half-bar changes.
+    chordEverySteps = rng.chance(std::clamp(halfBarProbability, 0.0f, 0.96f))
+        ? 8 : 16;
 
     const std::array<int, 8> progression{{0, 5, 2, 6, 0, 3, 1, 4}};
     std::array<int, kMaxPadVoices> previous{{-1, -1, -1, -1}};
@@ -159,8 +165,13 @@ PadPhrase PadBrain::generate(const Phrase& guitar,
                 pitch = best;
             }
 
-            if (v >= 2 && s.spread > 0.55f && pitch + 12 <= 88)
-                pitch += 12;
+            if (v >= 2 && pitch + 12 <= 88) {
+                const float voiceBias = (v == 2) ? -0.08f : 0.10f;
+                const float openProbability =
+                    std::clamp(0.10f + 0.78f * s.spread + voiceBias, 0.0f, 0.96f);
+                if (rng.chance(openProbability))
+                    pitch += 12;
+            }
 
             // Tension remains scale-safe: color voice may move to the adjacent
             // scale degree instead of using chromatic out-of-key notes.

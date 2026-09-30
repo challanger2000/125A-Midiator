@@ -109,6 +109,67 @@ void testMovementIncreasesHarmonicActivity() {
             "Pad Movement must increase harmonic event rate");
 }
 
+void testSpreadProgressivelyWidensVoicings() {
+    Phrase guitar{}, bass{};
+    makeContext(guitar, bass);
+
+    auto averageSpan = [&](float spread) {
+        double span = 0.0;
+        long long chords = 0;
+        for (unsigned seed = 1; seed <= 256; ++seed) {
+            PadSettings s{};
+            s.spread = spread;
+            const auto p = PadBrain::generate(guitar, bass, s, 60000u + seed);
+            for (int i = 0; i < p.usedSteps(); ++i) {
+                const auto& st = p.steps[i];
+                if (st.noteCount <= 0) continue;
+                int lo = 127, hi = 0;
+                for (int n = 0; n < st.noteCount; ++n) {
+                    lo = std::min(lo, st.notes[n].pitch);
+                    hi = std::max(hi, st.notes[n].pitch);
+                }
+                span += hi - lo;
+                ++chords;
+            }
+        }
+        return span / std::max<long long>(1, chords);
+    };
+
+    const auto low = averageSpan(0.0f);
+    const auto mid = averageSpan(0.5f);
+    const auto high = averageSpan(1.0f);
+    require(mid > low + 2.0,
+            "Pad Spread 50% must be audibly wider than 0%");
+    require(high > mid + 2.0,
+            "Pad Spread 100% must be audibly wider than 50%");
+}
+
+void testMovementProgressivelyAddsHarmonicEvents() {
+    Phrase guitar{}, bass{};
+    makeContext(guitar, bass);
+
+    auto averageChords = [&](float movement) {
+        double chords = 0.0;
+        for (unsigned seed = 1; seed <= 256; ++seed) {
+            PadSettings s{};
+            s.movement = movement;
+            const auto p = PadBrain::generate(guitar, bass, s, 70000u + seed);
+            for (int i = 0; i < p.usedSteps(); ++i)
+                if (p.steps[i].noteCount > 0)
+                    chords += 1.0;
+        }
+        return chords / 256.0;
+    };
+
+    const auto low = averageChords(0.0f);
+    const auto mid = averageChords(0.5f);
+    const auto high = averageChords(1.0f);
+    require(mid > low + 0.5,
+            "Pad Movement 50% must add harmonic activity over 0%");
+    require(high > mid + 0.5,
+            "Pad Movement 100% must add harmonic activity over 50%");
+}
+
 void testVoiceLeadingAvoidsWildJumps() {
     Phrase guitar{}, bass{};
     makeContext(guitar, bass);
@@ -137,6 +198,8 @@ int main() {
     testDeterministicPolyphonicScaleSafe();
     testDarkRockUsesRicherVoicings();
     testMovementIncreasesHarmonicActivity();
+    testSpreadProgressivelyWidensVoicings();
+    testMovementProgressivelyAddsHarmonicEvents();
     testVoiceLeadingAvoidsWildJumps();
     std::cout << "Midiator Pad Brain tests: PASS\n";
     return 0;
