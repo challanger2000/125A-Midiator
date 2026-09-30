@@ -2,6 +2,7 @@
 #include "BassBrain.h"
 #include "DrumBrain.h"
 #include "PadBrain.h"
+#include "SynthBrain.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -426,6 +427,34 @@ static void printPadSweepLine(const char* label,double value,const PadSweepMetri
              <<" colorVoice="<<m.colorVoiceShare*100.0<<"%\n";
 }
 
+
+struct SynthSweepMetrics {
+    double hits=0.0, longShare=0.0, offbeatShare=0.0, avgJump=0.0, avgPitch=0.0;
+};
+static SynthSweepMetrics measureSynth(const Phrase& guitar,const Phrase& bass,const PadPhrase& pads,
+                                      const SynthSettings& s,unsigned seedBase,int samples=256){
+    SynthSweepMetrics m{}; long long hits=0,longs=0,off=0,jumps=0,jumpSum=0,pitchSum=0;
+    for(int si=0;si<samples;++si){
+        const auto p=SynthBrain::generate(guitar,bass,pads,s,seedBase+static_cast<unsigned>(si));
+        int prev=-1;
+        for(int i=0;i<p.usedSteps();++i){
+            const auto& st=p.steps[i]; if(st.noteCount<=0) continue;
+            ++hits; const auto& n=st.notes[0]; pitchSum+=n.pitch;
+            if(n.lengthSteps>1) ++longs; if((i%2)!=0) ++off;
+            if(prev>=0){jumpSum+=std::abs(n.pitch-prev);++jumps;} prev=n.pitch;
+        }
+    }
+    const double hc=std::max(1.0,static_cast<double>(hits));
+    m.hits=hits/static_cast<double>(samples); m.longShare=longs/hc; m.offbeatShare=off/hc;
+    m.avgJump=jumps?static_cast<double>(jumpSum)/jumps:0.0; m.avgPitch=pitchSum/hc; return m;
+}
+static void printSynthSweepLine(const char* label,double value,const SynthSweepMetrics& m){
+    std::cout<<label<<" "<<std::setw(5)<<value*100.0<<"%:"
+             <<" hits="<<m.hits<<" long="<<m.longShare*100.0<<"%"
+             <<" offbeat="<<m.offbeatShare*100.0<<"%"
+             <<" avgJump="<<m.avgJump<<" avgPitch="<<m.avgPitch<<"\n";
+}
+
 int main() {
     std::cout << "125A Midiator measurement report\n";
     std::cout << "================================\n";
@@ -792,6 +821,26 @@ int main() {
     }
     std::cout<<"\n";
 
+
+    std::cout<<"\nSynth Brain control sweep diagnostics (256 phrases per point)\n";
+    std::cout<<"----------------------------------------------------------\n";
+    const auto synthGuitar=RiffEngine::generate(bassGuitarSettings,0x53594E11u);
+    BassSettings synthBassSettings{};
+    const auto synthBass=BassBrain::generate(synthGuitar,synthBassSettings,0x53594E12u);
+    PadSettings synthPadSettings{};
+    const auto synthPads=PadBrain::generate(synthGuitar,synthBass,synthPadSettings,0x53594E13u);
+    for(float v:sweepValues){ SynthSettings ss{}; ss.activity=v; printSynthSweepLine("Activity ",v,measureSynth(synthGuitar,synthBass,synthPads,ss,910000u)); }
+    std::cout<<"\n";
+    for(float v:sweepValues){ SynthSettings ss{}; ss.movement=v; printSynthSweepLine("Movement ",v,measureSynth(synthGuitar,synthBass,synthPads,ss,920000u)); }
+    std::cout<<"\n";
+    for(float v:sweepValues){ SynthSettings ss{}; ss.repetition=v; printSynthSweepLine("Repetition",v,measureSynth(synthGuitar,synthBass,synthPads,ss,930000u)); }
+    std::cout<<"\n";
+    for(float v:sweepValues){ SynthSettings ss{}; ss.syncopation=v; printSynthSweepLine("Syncopation",v,measureSynth(synthGuitar,synthBass,synthPads,ss,940000u)); }
+    std::cout<<"\n";
+    for(float v:sweepValues){ SynthSettings ss{}; ss.sustain=v; printSynthSweepLine("Sustain  ",v,measureSynth(synthGuitar,synthBass,synthPads,ss,950000u)); }
+    std::cout<<"\nSynth style diagnostics (512 phrases per style)\n";
+    for(int style=0;style<static_cast<int>(StyleId::Count);++style){ SynthSettings ss{}; ss.style=static_cast<StyleId>(style); printSynthSweepLine(styleNames[style],1.0,measureSynth(synthGuitar,synthBass,synthPads,ss,960000u+style*10000u,512)); }
+    std::cout<<"\n";
     GeneratorSettings exampleSettings = s;
     exampleSettings.bars = 4;
     printPhraseGrid(RiffEngine::generate(exampleSettings, 101u), "Example riff A - A Phrygian");

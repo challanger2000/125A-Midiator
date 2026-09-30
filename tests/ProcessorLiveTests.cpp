@@ -185,7 +185,7 @@ void testDedicatedInstrumentOutputBuses() {
     processor.terminate();
 }
 
-void testGuitarBassDrumsAndPadsUseSeparateOutputBuses() {
+void testAllInstrumentRolesUseSeparateOutputBuses() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
 
@@ -199,6 +199,7 @@ void testGuitarBassDrumsAndPadsUseSeparateOutputBuses() {
     int bassOns = 0;
     int drumOns = 0;
     int padOns = 0;
+    int synthOns = 0;
     int unexpectedOns = 0;
     for (const auto& e : output.events) {
         if (e.type != Event::kNoteOnEvent)
@@ -217,6 +218,10 @@ void testGuitarBassDrumsAndPadsUseSeparateOutputBuses() {
             ++padOns;
             require(e.noteOn.pitch >= 45 && e.noteOn.pitch <= 88,
                     "Pad Out notes must stay in the pad register");
+        } else if (e.busIndex == kSynthOutBus) {
+            ++synthOns;
+            require(e.noteOn.pitch >= 48 && e.noteOn.pitch <= 96,
+                    "Synth Out notes must stay in the melodic synth register");
         } else {
             ++unexpectedOns;
         }
@@ -226,8 +231,8 @@ void testGuitarBassDrumsAndPadsUseSeparateOutputBuses() {
     require(bassOns > 0, "Bass Out must emit bass notes");
     require(drumOns > 0, "Drums Out must emit mapped drum notes");
     require(padOns > 0, "Pad Out must emit polyphonic pad notes");
-    require(unexpectedOns == 0,
-            "inactive Synth bus must not emit placeholder notes");
+    require(synthOns > 0, "Synth Out must emit melodic synth notes");
+    require(unexpectedOns == 0, "no undefined event bus may emit notes");
 }
 
 void testNewRiffChangesRhythmMask() {
@@ -603,7 +608,7 @@ void testLargeOfflineBlockKeepsNoteEventsBalanced() {
         }
     }
 
-    for (int bus : {kGuitarOutBus, kBassOutBus, kDrumsOutBus, kPadOutBus}) {
+    for (int bus : {kGuitarOutBus, kBassOutBus, kDrumsOutBus, kPadOutBus, kSynthOutBus}) {
         require(noteOns[static_cast<size_t>(bus)] > 20,
                 "large offline fixture must exercise every active instrument bus");
         require(noteOffs[static_cast<size_t>(bus)] > 20,
@@ -613,15 +618,14 @@ void testLargeOfflineBlockKeepsNoteEventsBalanced() {
                     "large offline scheduling must not silently lose per-bus note-on/off pairs");
     }
 
-    require(noteOns[kSynthOutBus] == 0 && noteOffs[kSynthOutBus] == 0,
-            "Synth Out must remain silent until a Synth Brain exists");
+
 }
 
 void testStopFlushesEveryActiveInstrumentBus() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
 
-    // Use a tiny running block at the downbeat so Guitar, Bass, Drums and Pads all
+    // Use a tiny running block at the downbeat so Guitar, Bass, Drums, Pads and Synth all
     // have active notes whose scheduled NoteOff lies outside this block.
     auto runningContext = makeContext(0.0, true);
     EventList running;
@@ -639,6 +643,7 @@ void testStopFlushesEveryActiveInstrumentBus() {
     require(hadOn[kBassOutBus], "flush fixture must hold a Bass note");
     require(hadOn[kDrumsOutBus], "flush fixture must hold a Drum note");
     require(hadOn[kPadOutBus], "flush fixture must hold a Pad note");
+    require(hadOn[kSynthOutBus], "flush fixture must hold a Synth note");
 
     auto stoppedContext = makeContext(64.0 / 24000.0, false);
     EventList stopped;
@@ -656,8 +661,7 @@ void testStopFlushesEveryActiveInstrumentBus() {
     require(flushed[kBassOutBus], "transport stop must flush Bass Out");
     require(flushed[kDrumsOutBus], "transport stop must flush Drums Out");
     require(flushed[kPadOutBus], "transport stop must flush Pad Out");
-    require(!flushed[kSynthOutBus],
-            "transport stop must not fabricate flushes on inactive Synth Out");
+    require(flushed[kSynthOutBus], "transport stop must flush Synth Out");
 }
 
 void testSchedulerOverflowIsExplicit() {
@@ -1004,7 +1008,7 @@ void testTransportJumpFlushesHeldNotes() {
 } // namespace
 
 int main() {
-    testGuitarBassDrumsAndPadsUseSeparateOutputBuses();
+    testAllInstrumentRolesUseSeparateOutputBuses();
     testDedicatedInstrumentOutputBuses();
     testNewRiffChangesRhythmMask();
     testNewRiffToggleZeroValueStillCommands();

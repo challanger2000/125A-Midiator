@@ -430,6 +430,15 @@ void MidiatorProcessor::regeneratePads() {
     padSettings_.style = settings_.style;
     padPhrase_ = midiator::PadBrain::generate(
         phrase_, bassPhrase_, padSettings_, seed_ ^ 0x50414426u);
+    regenerateSynth();
+}
+
+void MidiatorProcessor::regenerateSynth() {
+    synthSettings_.rootPitchClass = settings_.rootPitchClass;
+    synthSettings_.scale = settings_.scale;
+    synthSettings_.style = settings_.style;
+    synthPhrase_ = midiator::SynthBrain::generate(
+        phrase_, bassPhrase_, padPhrase_, synthSettings_, seed_ ^ 0x53594E26u);
 }
 
 void MidiatorProcessor::resizePhraseBars(int newBars) {
@@ -918,6 +927,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         }
     };
     schedulePads();
+    schedulePhrase(synthPhrase_, kSynthOutBus);
 
     if (schedulerOverflow) {
         // Never silently drop scheduled MIDI. A host-sized block that exceeds

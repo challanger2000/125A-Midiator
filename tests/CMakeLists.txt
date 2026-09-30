@@ -13,6 +13,7 @@ add_executable(MidiatorMeasure
     ../src/BassBrain.cpp
     ../src/DrumBrain.cpp
     ../src/PadBrain.cpp
+    ../src/SynthBrain.cpp
 )
 
 target_include_directories(MidiatorMeasure PRIVATE ../src)
@@ -34,6 +35,7 @@ add_executable(MidiatorStateRoundtripTests
     ../src/BassBrain.cpp
     ../src/DrumBrain.cpp
     ../src/PadBrain.cpp
+    ../src/SynthBrain.cpp
 )
 
 target_include_directories(MidiatorStateRoundtripTests PRIVATE ../src)
@@ -49,6 +51,7 @@ add_executable(MidiatorProcessorLiveTests
     ../src/BassBrain.cpp
     ../src/DrumBrain.cpp
     ../src/PadBrain.cpp
+    ../src/SynthBrain.cpp
 )
 
 target_include_directories(MidiatorProcessorLiveTests PRIVATE ../src)

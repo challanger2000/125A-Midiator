@@ -4,6 +4,7 @@
 #include "BassBrain.h"
 #include "DrumBrain.h"
 #include "PadBrain.h"
+#include "SynthBrain.h"
 
 #include "public.sdk/source/vst/vstaudioeffect.h"
 #include "public.sdk/source/vst/vsteditcontroller.h"
@@ -92,6 +93,8 @@ private:
     midiator::DrumMidiMap drumMap_ = midiator::DrumMidiMap::preset(midiator::DrumMapId::GeneralMidi);
     midiator::PadSettings padSettings_{};
     midiator::PadPhrase padPhrase_{};
+    midiator::SynthSettings synthSettings_{};
+    midiator::Phrase synthPhrase_{};
     uint32_t seed_ = 0x125A2026u;
 
     double sampleRate_ = 44100.0;
@@ -114,6 +117,7 @@ private:
     void regenerateBass();
     void regenerateDrums();
     void regeneratePads();
+    void regenerateSynth();
     void resizePhraseBars(int newBars);
     void applyPowerChordMode(bool enabled);
     void transposePhraseToRoot(int newRootPitchClass);
