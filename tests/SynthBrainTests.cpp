@@ -61,6 +61,37 @@ void testActivityRaisesHitCount(){
     require(avg(1.0f)>avg(0.0f)+6.0,"Synth Activity must materially increase hit count");
 }
 
+
+void testMovementMateriallyIncreasesPitchTravel(){
+    Phrase g{},b{}; PadPhrase p{}; makeContext(g,b,p);
+
+    auto avgJump=[&](float movement){
+        long long jumps=0,total=0;
+        for(unsigned seed=1;seed<=256;++seed){
+            SynthSettings s{}; s.movement=movement;
+            const auto q=SynthBrain::generate(g,b,p,s,23000u+seed);
+            int prev=-1;
+            for(int i=0;i<q.usedSteps();++i){
+                if(q.steps[i].noteCount<=0) continue;
+                const int pitch=q.steps[i].notes[0].pitch;
+                if(prev>=0){ total+=std::abs(pitch-prev); ++jumps; }
+                prev=pitch;
+            }
+        }
+        return jumps?static_cast<double>(total)/jumps:0.0;
+    };
+
+    const double low=avgJump(0.0f);
+    const double mid=avgJump(0.5f);
+    const double high=avgJump(1.0f);
+
+    require(mid>low+1.2,
+            "Synth Movement 50% must materially increase melodic pitch travel over 0%");
+    require(high>mid+0.7,
+            "Synth Movement 100% must remain progressively stronger than 50%");
+}
+
+
 void testSyncopationRaisesOffbeatShare(){
     Phrase g{},b{}; PadPhrase p{}; makeContext(g,b,p);
 
@@ -240,6 +271,7 @@ void testStylesDiffer(){
 int main(){
     testDeterministicCompactGestureScaleSafe();
     testActivityRaisesHitCount();
+    testMovementMateriallyIncreasesPitchTravel();
     testSyncopationRaisesOffbeatShare();
     testSustainRaisesLongNoteShare();
     testPitchAndLengthControlsDoNotRewriteRhythm();
