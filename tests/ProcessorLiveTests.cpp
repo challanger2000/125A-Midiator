@@ -1177,6 +1177,129 @@ void testParameterQueueOrderCannotChangeCompositionCommands() {
             "VARIATION result must not depend on VST3 parameter queue order");
 }
 
+
+
+void testRoleSpecificGateRules() {
+    constexpr double kSixteenthQn = 0.25;
+    constexpr double kSixtyFourthQn = 1.0 / 16.0;
+    constexpr double eps = 1e-8;
+
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "gate-rule fixture must start");
+
+    bool sawDrum = false;
+    bool sawGuitarBoundaryGap = false;
+    bool sawBassBoundaryGap = false;
+    bool sawPadBoundaryGap = false;
+    bool sawSynthLegatoBoundary = false;
+
+    for (int round = 0; round < 16 &&
+         !(sawDrum && sawGuitarBoundaryGap && sawBassBoundaryGap &&
+           sawPadBoundaryGap && sawSynthLegatoBoundary); ++round) {
+        ParameterChanges command;
+        int32 qi = 0, pi = 0;
+        auto* q = command.addParameterData(kNewRiffId, qi);
+        require(q && q->addPoint(0, (round & 1) ? 0.0 : 1.0, pi) == kResultOk,
+                "gate-rule NEW RIFF command must be accepted");
+
+        const double startQn = static_cast<double>(round) * 8.0;
+        auto stopped = makeContext(startQn, false);
+        EventList stoppedOut;
+        auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &command);
+        require(processor.process(stoppedData) == kResultOk,
+                "gate-rule setup block must succeed");
+
+        auto context = makeContext(startQn, true);
+        EventList output;
+        auto data = makeProcessData(context, output, 192000);
+        require(processor.process(data) == kResultOk,
+                "gate-rule capture must succeed");
+
+        auto earliestMatchingOff = [&](int bus, int pitch, double onQn) {
+            double best = -1.0;
+            for (const auto& e : output.events) {
+                if (e.type != Event::kNoteOffEvent || e.busIndex != bus ||
+                    e.noteOff.pitch != pitch || e.ppqPosition + eps < onQn)
+                    continue;
+                if (best < 0.0 || e.ppqPosition < best)
+                    best = e.ppqPosition;
+            }
+            return best;
+        };
+
+        // Every drum note must have an exact 16th-note gate.
+        for (const auto& e : output.events) {
+            if (e.type != Event::kNoteOnEvent || e.busIndex != kDrumsOutBus)
+                continue;
+            const double off = earliestMatchingOff(
+                kDrumsOutBus, e.noteOn.pitch, e.ppqPosition);
+            if (off < 0.0)
+                continue;
+            require(std::abs((off - e.ppqPosition) - kSixteenthQn) < eps,
+                    "every Drum note must be exactly one 16th note long");
+            sawDrum = true;
+        }
+
+        auto checkGapRole = [&](int bus, bool& sawBoundary) {
+            std::vector<double> onsets;
+            for (const auto& e : output.events) {
+                if (e.type == Event::kNoteOnEvent && e.busIndex == bus) {
+                    if (onsets.empty() || std::abs(onsets.back() - e.ppqPosition) > eps)
+                        onsets.push_back(e.ppqPosition);
+                }
+            }
+            for (size_t i = 1; i < onsets.size(); ++i) {
+                const double nextOn = onsets[i];
+                for (const auto& e : output.events) {
+                    if (e.type != Event::kNoteOffEvent || e.busIndex != bus)
+                        continue;
+                    if (e.ppqPosition > onsets[i - 1] + eps &&
+                        e.ppqPosition <= nextOn + eps) {
+                        require(e.ppqPosition <= nextOn - kSixtyFourthQn + eps,
+                                "Guitar/Bass/Pad must leave at least a 64th-note gap");
+                        if (std::abs((nextOn - e.ppqPosition) - kSixtyFourthQn) < eps)
+                            sawBoundary = true;
+                    }
+                }
+            }
+        };
+
+        checkGapRole(kGuitarOutBus, sawGuitarBoundaryGap);
+        checkGapRole(kBassOutBus, sawBassBoundaryGap);
+        checkGapRole(kPadOutBus, sawPadBoundaryGap);
+
+        // Synth is deliberately different: a generated note may end exactly
+        // at the next monophonic onset, with NoteOff sorted before NoteOn.
+        std::vector<double> synthOnsets;
+        for (const auto& e : output.events)
+            if (e.type == Event::kNoteOnEvent && e.busIndex == kSynthOutBus)
+                synthOnsets.push_back(e.ppqPosition);
+
+        for (size_t i = 1; i < synthOnsets.size(); ++i) {
+            const double nextOn = synthOnsets[i];
+            for (const auto& e : output.events) {
+                if (e.type == Event::kNoteOffEvent &&
+                    e.busIndex == kSynthOutBus &&
+                    std::abs(e.ppqPosition - nextOn) < eps) {
+                    sawSynthLegatoBoundary = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    require(sawDrum, "gate-rule fixture must observe Drum events");
+    require(sawGuitarBoundaryGap,
+            "Guitar must demonstrate the configured 64th-note release gap");
+    require(sawBassBoundaryGap,
+            "Bass must demonstrate the configured 64th-note release gap");
+    require(sawPadBoundaryGap,
+            "Pad must demonstrate the configured 64th-note release gap");
+    require(sawSynthLegatoBoundary,
+            "Synth must demonstrate independent legato-capable scheduling");
+}
+
 } // namespace
 
 int main() {
@@ -1192,6 +1315,7 @@ int main() {
     testStopFlushesEveryActiveInstrumentBus();
     testHugeOfflineBlockChunksSchedulerSafely();
     testGeneratedNoteLengthsAffectMidiOutput();
+    testRoleSpecificGateRules();
     testMidiRootSourceTransposesRiff();
     testManualRootSourceIgnoresMidiRootNotes();
     testTransportUsesHostBarGrid();

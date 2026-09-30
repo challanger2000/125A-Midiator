@@ -1034,7 +1034,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     };
 
     auto scheduleDrumCycle = [&](double cycleStartQn) {
-        constexpr double kDrumGateQn = 1.0 / 16.0;
+        constexpr double kDrumGateQn = kStepQuarterNotes; // exact 1/16-note gate
         for (int stepIndex = 0; stepIndex < drumPhrase_.usedSteps(); ++stepIndex) {
             const auto& step = drumPhrase_.steps[stepIndex];
             if (step.hitCount <= 0)
@@ -1052,22 +1052,76 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     };
 
     auto schedulePadCycle = [&](double cycleStartQn) {
-        constexpr double kPadReleaseGapQn = 1.0 / 64.0;
-        for (int stepIndex = 0; stepIndex < padPhrase_.usedSteps(); ++stepIndex) {
+        constexpr double kPadReleaseGapQn = 1.0 / 16.0; // 1/64-note gap
+        const int usedSteps = padPhrase_.usedSteps();
+
+        for (int stepIndex = 0; stepIndex < usedSteps; ++stepIndex) {
             const auto& step = padPhrase_.steps[stepIndex];
             if (step.noteCount <= 0)
                 continue;
+
+            int stepsToNextChord = usedSteps;
+            for (int delta = 1; delta <= usedSteps; ++delta) {
+                const int nextIndex = (stepIndex + delta) % usedSteps;
+                if (padPhrase_.steps[nextIndex].noteCount > 0) {
+                    stepsToNextChord = delta;
+                    break;
+                }
+            }
+
             const double onQn =
                 cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
+            const double nextChordQn =
+                onQn + static_cast<double>(stepsToNextChord) * kStepQuarterNotes;
+            const double latestOffQn =
+                std::max(onQn, nextChordQn - kPadReleaseGapQn);
+
             for (int n = 0; n < step.noteCount; ++n) {
                 const auto& note = step.notes[n];
-                const double durationQn =
-                    static_cast<double>(std::max(1, note.lengthSteps)) *
-                    kStepQuarterNotes;
+                const double requestedOffQn =
+                    onQn + static_cast<double>(std::max(1, note.lengthSteps)) *
+                               kStepQuarterNotes - kPadReleaseGapQn;
                 const double offQn =
-                    std::max(onQn, onQn + durationQn - kPadReleaseGapQn);
+                    std::max(onQn, std::min(latestOffQn, requestedOffQn));
                 addScheduled(onQn, true, note.pitch, note.velocity, kPadOutBus);
                 addScheduled(offQn, false, note.pitch, 0, kPadOutBus);
+            }
+        }
+    };
+
+    auto scheduleSynthCycle = [&](double cycleStartQn) {
+        const int usedSteps = synthPhrase_.usedSteps();
+
+        for (int stepIndex = 0; stepIndex < usedSteps; ++stepIndex) {
+            const auto& step = synthPhrase_.steps[stepIndex];
+            if (step.noteCount <= 0)
+                continue;
+
+            int stepsToNextHit = usedSteps;
+            for (int delta = 1; delta <= usedSteps; ++delta) {
+                const int nextIndex = (stepIndex + delta) % usedSteps;
+                if (synthPhrase_.steps[nextIndex].noteCount > 0) {
+                    stepsToNextHit = delta;
+                    break;
+                }
+            }
+
+            const double onQn =
+                cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
+            const double nextOnQn =
+                onQn + static_cast<double>(stepsToNextHit) * kStepQuarterNotes;
+
+            // Synth articulation is independent of Guitar/Bass/Pad gating.
+            // Honor the generated note length and allow a legato boundary at
+            // the next monophonic onset. Same-sample NoteOff is sorted first.
+            for (int n = 0; n < step.noteCount; ++n) {
+                const auto& note = step.notes[n];
+                const double requestedOffQn =
+                    onQn + static_cast<double>(std::max(1, note.lengthSteps)) *
+                               kStepQuarterNotes;
+                const double offQn = std::max(onQn, std::min(nextOnQn, requestedOffQn));
+                addScheduled(onQn, true, note.pitch, note.velocity, kSynthOutBus);
+                addScheduled(offQn, false, note.pitch, 0, kSynthOutBus);
             }
         }
     };
@@ -1128,7 +1182,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         schedulePhraseCycle(bassPhrase_, kBassOutBus, cycleStartQn);
         scheduleDrumCycle(cycleStartQn);
         schedulePadCycle(cycleStartQn);
-        schedulePhraseCycle(synthPhrase_, kSynthOutBus, cycleStartQn);
+        scheduleSynthCycle(cycleStartQn);
 
         if (schedulerOverflow) {
             // This now represents excessive complexity inside one single
