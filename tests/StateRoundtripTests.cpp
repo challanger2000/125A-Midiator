@@ -226,6 +226,8 @@ void verifyLegacyControllerMigration(uint32_t version,
     const double expectedPower = expectedPowerChordsEnabled ? 1.0 : 0.0;
     require(std::abs(controller.getParamNormalized(kPowerChordsEnabledId) - expectedPower) < 1e-9,
             "legacy Power Chords Enabled migration must preserve/default correctly");
+    require(std::abs(controller.getParamNormalized(kDrumMapId)) < 1e-9,
+            "legacy Drum Map migration must default to General MIDI");
 
     fixture.rewind();
     MidiatorProcessor processor;
@@ -236,7 +238,7 @@ void verifyLegacyControllerMigration(uint32_t version,
     require(processor.getState(&migrated) == kResultOk,
             "migrated legacy state must serialize as current state");
     require(migrated.bytes().size() > fixture.bytes().size(),
-            "current V5 state must include fields absent from legacy fixture");
+            "current V6 state must include fields absent from legacy fixture");
 }
 
 } // namespace
@@ -312,12 +314,12 @@ int main() {
     require(first.bytes() == second.bytes(),
             "state roundtrip must be byte-identical, including generated phrase data");
 
-    // V5 must restore the exact companion-role payload, not regenerate it.
+    // V6 must restore the exact companion-role payload, not regenerate it.
     // Layout is fixed-width: 64-byte header, then Guitar/Bass/Drums/Pad/Synth.
     MemoryStream companionPatched;
     companionPatched.bytes() = first.bytes();
 
-    constexpr size_t kHeaderBytes = 64;
+    constexpr size_t kHeaderBytes = 68;
     constexpr size_t kPhraseBytes =
         sizeof(int32) + midiator::kMaxSteps *
         (sizeof(int32) + midiator::kMaxNotesPerStep * 3 * sizeof(int32));
@@ -335,7 +337,7 @@ int main() {
     const size_t synthOffset = padOffset + kPadPhraseBytes;
 
     // Patch valid data fields in every non-Guitar role. Even if a particular
-    // step is currently unused, V5 promises exact payload recall.
+    // step is currently unused, V6 promises exact payload recall.
     const int32 bassPitch = 59;
     const int32 drumVelocity = 77;
     const int32 padPitch = 83;
@@ -357,13 +359,13 @@ int main() {
     companionPatched.rewind();
     MidiatorProcessor exactRestore;
     require(exactRestore.setState(&companionPatched) == kResultOk,
-            "V5 companion-payload fixture must restore");
+            "V6 companion-payload fixture must restore");
 
     MemoryStream exactReserialized;
     require(exactRestore.getState(&exactReserialized) == kResultOk,
-            "V5 companion-payload fixture must serialize again");
+            "V6 companion-payload fixture must serialize again");
     require(companionPatched.bytes() == exactReserialized.bytes(),
-            "V5 must preserve exact Bass/Drums/Pad/Synth payload bytes without regeneration");
+            "V6 must preserve exact Bass/Drums/Pad/Synth payload bytes without regeneration");
 
     auto expectRejectedPatch = [&](size_t offset, int32 value, const char* message) {
         MemoryStream damaged;
@@ -374,22 +376,24 @@ int main() {
         require(target.setState(&damaged) != kResultOk, message);
     };
 
-    // Current V5 header values are exact too. Invalid enums/ranges,
+    // Current V6 header values are exact too. Invalid enums/ranges,
     // non-boolean flags and non-finite controls must be rejected.
     expectRejectedPatch(8, 99,
-                        "V5 invalid Root must be rejected");
+                        "V6 invalid Root must be rejected");
     expectRejectedPatch(12, 99,
-                        "V5 invalid Scale must be rejected");
+                        "V6 invalid Scale must be rejected");
     expectRejectedPatch(16, 3,
-                        "V5 invalid Bars must be rejected");
+                        "V6 invalid Bars must be rejected");
     expectRejectedPatch(48, 99,
-                        "V5 invalid Manual Root must be rejected");
+                        "V6 invalid Manual Root must be rejected");
     expectRejectedPatch(52, 2,
-                        "V5 invalid Root Source must be rejected");
+                        "V6 invalid Root Source must be rejected");
     expectRejectedPatch(56, 99,
-                        "V5 invalid Style must be rejected");
+                        "V6 invalid Style must be rejected");
     expectRejectedPatch(60, 2,
-                        "V5 invalid Power Chords Enabled flag must be rejected");
+                        "V6 invalid Power Chords Enabled flag must be rejected");
+    expectRejectedPatch(64, static_cast<int32>(midiator::DrumMapId::SuperiorDrummer3),
+                        "V6 unverified Drum Map id must be rejected");
 
     {
         MemoryStream damaged;
@@ -399,23 +403,23 @@ int main() {
         damaged.rewind();
         MidiatorProcessor target;
         require(target.setState(&damaged) != kResultOk,
-                "V5 NaN Density must be rejected");
+                "V6 NaN Density must be rejected");
     }
 
-    // Current V5 states are exact payloads. Structural corruption must be
+    // Current V6 states are exact payloads. Structural corruption must be
     // rejected instead of silently clamped into a different arrangement.
     expectRejectedPatch(bassOffset, 3,
-                        "V5 invalid Bass bars must be rejected");
+                        "V6 invalid Bass bars must be rejected");
     expectRejectedPatch(bassOffset + sizeof(int32), 99,
-                        "V5 invalid Bass noteCount must be rejected");
+                        "V6 invalid Bass noteCount must be rejected");
     expectRejectedPatch(drumOffset + sizeof(int32), 99,
-                        "V5 invalid Drum hitCount must be rejected");
+                        "V6 invalid Drum hitCount must be rejected");
     expectRejectedPatch(drumOffset + sizeof(int32) + sizeof(int32), 99,
-                        "V5 invalid Drum voice must be rejected");
+                        "V6 invalid Drum voice must be rejected");
     expectRejectedPatch(padOffset + sizeof(int32), 99,
-                        "V5 invalid Pad noteCount must be rejected");
+                        "V6 invalid Pad noteCount must be rejected");
     expectRejectedPatch(synthOffset + sizeof(int32) + sizeof(int32), 200,
-                        "V5 invalid Synth pitch must be rejected");
+                        "V6 invalid Synth pitch must be rejected");
 
     MemoryStream corrupted;
     corrupted.bytes() = first.bytes();
@@ -453,7 +457,7 @@ int main() {
         3u, 9, 5, false, static_cast<int32>(midiator::StyleId::HeavyIndustrial),
         5.0 / 11.0, 0.0, 1.0);
 
-    // V4: exact pre-V5 layout includes Power Chords Enabled but only Guitar payload.
+    // V4: exact pre-V6 layout includes Power Chords Enabled but only Guitar payload.
     verifyLegacyControllerMigration(
         4u, 9, 8, true, static_cast<int32>(midiator::StyleId::DarkRockGothic),
         8.0 / 11.0, 1.0, 0.5, false);
