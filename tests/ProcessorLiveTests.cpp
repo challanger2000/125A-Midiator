@@ -1228,15 +1228,25 @@ void testRoleSpecificGateRules() {
             return best;
         };
 
-        // Every drum note must have an exact 16th-note gate.
+        // Every drum NoteOn must have a matching NoteOff exactly one
+        // 16th later. Do not pair by "earliest same-pitch NoteOff", because
+        // repeated hits can legitimately place the previous NoteOff at the
+        // same timestamp as the next NoteOn.
         for (const auto& e : output.events) {
             if (e.type != Event::kNoteOnEvent || e.busIndex != kDrumsOutBus)
                 continue;
-            const double off = earliestMatchingOff(
-                kDrumsOutBus, e.noteOn.pitch, e.ppqPosition);
-            if (off < 0.0)
-                continue;
-            require(std::abs((off - e.ppqPosition) - kSixteenthQn) < eps,
+            const double expectedOff = e.ppqPosition + kSixteenthQn;
+            bool foundExactOff = false;
+            for (const auto& off : output.events) {
+                if (off.type == Event::kNoteOffEvent &&
+                    off.busIndex == kDrumsOutBus &&
+                    off.noteOff.pitch == e.noteOn.pitch &&
+                    std::abs(off.ppqPosition - expectedOff) < eps) {
+                    foundExactOff = true;
+                    break;
+                }
+            }
+            require(foundExactOff,
                     "every Drum note must be exactly one 16th note long");
             sawDrum = true;
         }

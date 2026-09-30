@@ -197,9 +197,12 @@ PadPhrase PadBrain::generate(const Phrase& guitar,
         // Pads deliberately stay sparse: normally 2-3 distinct chord tones.
         // A possible fourth voice is added later only as an octave doubling.
         int harmonicVoices = 3;
-        if (s.style == StyleId::NDHIndustrial && rng.chance(0.55f))
+        const float contextRichness = 1.0f - s.contextFollow;
+        if (s.style == StyleId::NDHIndustrial &&
+            rng.chance(0.55f * contextRichness))
             harmonicVoices = 2;
-        else if (s.style == StyleId::HeavyIndustrial && rng.chance(0.28f))
+        else if (s.style == StyleId::HeavyIndustrial &&
+                 rng.chance(0.28f * contextRichness))
             harmonicVoices = 2;
 
         auto& dst = out.steps[step];
