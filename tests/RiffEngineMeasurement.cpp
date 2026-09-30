@@ -519,6 +519,130 @@ static void printSynthSweepLine(const char* label,double value,const SynthSweepM
              <<" chordTone="<<m.padChordToneShare*100.0<<"%\n";
 }
 
+
+static uint64_t fnvMix(uint64_t h, uint64_t value) {
+    for (int i = 0; i < 8; ++i) {
+        h ^= (value >> (i * 8)) & 0xffu;
+        h *= 1099511628211ull;
+    }
+    return h;
+}
+
+static uint64_t hashPhrase(const Phrase& p) {
+    uint64_t h = 1469598103934665603ull;
+    h = fnvMix(h, static_cast<uint64_t>(p.bars));
+    h = fnvMix(h, static_cast<uint64_t>(p.usedSteps()));
+    for (int i = 0; i < p.usedSteps(); ++i) {
+        const auto& st = p.steps[i];
+        h = fnvMix(h, static_cast<uint64_t>(st.noteCount));
+        for (int n = 0; n < st.noteCount; ++n) {
+            h = fnvMix(h, static_cast<uint64_t>(st.notes[n].pitch));
+            h = fnvMix(h, static_cast<uint64_t>(st.notes[n].velocity));
+            h = fnvMix(h, static_cast<uint64_t>(st.notes[n].lengthSteps));
+        }
+    }
+    return h;
+}
+
+static uint64_t hashDrums(const DrumPhrase& p) {
+    uint64_t h = 1469598103934665603ull;
+    h = fnvMix(h, static_cast<uint64_t>(p.bars));
+    h = fnvMix(h, static_cast<uint64_t>(p.usedSteps()));
+    for (int i = 0; i < p.usedSteps(); ++i) {
+        const auto& st = p.steps[i];
+        h = fnvMix(h, static_cast<uint64_t>(st.hitCount));
+        for (int n = 0; n < st.hitCount; ++n) {
+            h = fnvMix(h, static_cast<uint64_t>(st.hits[n].voice));
+            h = fnvMix(h, static_cast<uint64_t>(st.hits[n].velocity));
+        }
+    }
+    return h;
+}
+
+static uint64_t hashPads(const PadPhrase& p) {
+    uint64_t h = 1469598103934665603ull;
+    h = fnvMix(h, static_cast<uint64_t>(p.bars));
+    h = fnvMix(h, static_cast<uint64_t>(p.usedSteps()));
+    for (int i = 0; i < p.usedSteps(); ++i) {
+        const auto& st = p.steps[i];
+        h = fnvMix(h, static_cast<uint64_t>(st.noteCount));
+        for (int n = 0; n < st.noteCount; ++n) {
+            h = fnvMix(h, static_cast<uint64_t>(st.notes[n].pitch));
+            h = fnvMix(h, static_cast<uint64_t>(st.notes[n].velocity));
+            h = fnvMix(h, static_cast<uint64_t>(st.notes[n].lengthSteps));
+        }
+    }
+    return h;
+}
+
+static uint64_t arrangementHash(uint64_t guitar,
+                                uint64_t bass,
+                                uint64_t drums,
+                                uint64_t pads,
+                                uint64_t synth) {
+    uint64_t h = 1469598103934665603ull;
+    h = fnvMix(h, guitar);
+    h = fnvMix(h, bass);
+    h = fnvMix(h, drums);
+    h = fnvMix(h, pads);
+    h = fnvMix(h, synth);
+    return h;
+}
+
+static void printGoldenArrangementFingerprint() {
+    constexpr uint32_t seed = 0x125A5EEDu;
+
+    GeneratorSettings gs{};
+    gs.bars = 4;
+    gs.rootPitchClass = 9;
+    gs.scale = ScaleId::Phrygian;
+    gs.style = StyleId::NDHIndustrial;
+
+    const auto guitar = RiffEngine::generate(gs, seed);
+
+    BassSettings bs{};
+    bs.rootPitchClass = gs.rootPitchClass;
+    bs.scale = gs.scale;
+    bs.style = gs.style;
+    const auto bass = BassBrain::generate(guitar, bs, seed ^ 0xB4552026u);
+
+    DrumSettings ds{};
+    ds.style = gs.style;
+    const auto drums = DrumBrain::generate(guitar, bass, ds, seed ^ 0xD12A2026u);
+
+    PadSettings ps{};
+    ps.rootPitchClass = gs.rootPitchClass;
+    ps.scale = gs.scale;
+    ps.style = gs.style;
+    const auto pads = PadBrain::generate(guitar, bass, ps, seed ^ 0x50414426u);
+
+    SynthSettings ss{};
+    ss.rootPitchClass = gs.rootPitchClass;
+    ss.scale = gs.scale;
+    ss.style = gs.style;
+    const auto synth = SynthBrain::generate(
+        guitar, bass, pads, ss, seed ^ 0x53594E26u);
+
+    const auto guitarHash = hashPhrase(guitar);
+    const auto bassHash = hashPhrase(bass);
+    const auto drumHash = hashDrums(drums);
+    const auto padHash = hashPads(pads);
+    const auto synthHash = hashPhrase(synth);
+
+    std::cout << "\nGolden arrangement fingerprint\n";
+    std::cout << "------------------------------\n";
+    std::cout << std::hex << std::showbase;
+    std::cout << "Guitar=" << guitarHash << "\n";
+    std::cout << "Bass=" << bassHash << "\n";
+    std::cout << "Drums=" << drumHash << "\n";
+    std::cout << "Pad=" << padHash << "\n";
+    std::cout << "Synth=" << synthHash << "\n";
+    std::cout << "Arrangement="
+              << arrangementHash(guitarHash, bassHash, drumHash, padHash, synthHash)
+              << "\n";
+    std::cout << std::dec << std::noshowbase;
+}
+
 int main() {
     std::cout << "125A Midiator measurement report\n";
     std::cout << "================================\n";
@@ -925,6 +1049,8 @@ int main() {
     printPhraseGrid(RiffEngine::generate(exampleSettings, 101u), "Example riff A - A Phrygian");
     printPhraseGrid(RiffEngine::generate(exampleSettings, 202u), "Example riff B - A Phrygian");
     printPhraseGrid(RiffEngine::generate(exampleSettings, 303u), "Example riff C - A Phrygian");
+
+    printGoldenArrangementFingerprint();
 
     return 0;
 }
