@@ -172,8 +172,8 @@ Phrase BassBrain::generate(const Phrase& guitar,
         if (guitarHit) {
             float styleLock = 0.0f;
             if (s.style == StyleId::NDHIndustrial) styleLock = 0.08f;
-            else if (s.style == StyleId::HeavyIndustrial) styleLock = 0.12f;
-            else if (s.style == StyleId::DarkRockGothic) styleLock = -0.08f;
+            else if (s.style == StyleId::HeavyIndustrial) styleLock = 0.20f;
+            else if (s.style == StyleId::DarkRockGothic) styleLock = -0.12f;
 
             if (strongBeat)
                 hit = rng.chance(0.55f + 0.45f * s.follow + styleLock);
@@ -187,9 +187,9 @@ Phrase BassBrain::generate(const Phrase& guitar,
             float independentPulse =
                 0.02f + 0.16f * (1.0f - s.follow) + 0.18f * s.passing;
             if (s.style == StyleId::DarkRockGothic)
-                independentPulse += 0.08f;
+                independentPulse += 0.10f;
             else if (s.style == StyleId::HeavyIndustrial)
-                independentPulse += 0.03f;
+                independentPulse = std::max(0.0f, independentPulse - 0.02f);
             if ((local & 1) && rng.chance(independentPulse))
                 hit = true;
         }
