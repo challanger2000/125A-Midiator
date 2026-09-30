@@ -323,19 +323,49 @@ void testVoiceLeadingAvoidsWildJumps() {
     PadSettings s{};
     s.style = StyleId::DarkRockGothic;
     s.movement = 1.0f;
+    s.spread = 1.0f;
     const auto p = PadBrain::generate(guitar, bass, s, 101u);
 
-    std::array<int, kMaxPadVoices> previous{{-1,-1,-1,-1}};
+    std::array<int, 3> previousUnique{{-1,-1,-1}};
+    int previousCount = 0;
+
     for (int i = 0; i < p.usedSteps(); ++i) {
-        if (p.steps[i].noteCount <= 0)
+        const auto& step = p.steps[i];
+        if (step.noteCount <= 0)
             continue;
-        for (int v = 0; v < p.steps[i].noteCount; ++v) {
-            const int pitch = p.steps[i].notes[v].pitch;
-            if (previous[v] >= 0)
-                require(std::abs(pitch - previous[v]) <= 12,
-                        "Pad voice-leading must avoid jumps larger than an octave");
-            previous[v] = pitch;
+
+        // Collapse an optional octave-doubled fourth voice to its harmonic
+        // pitch class. Voice-leading must be judged by the actual 2-3
+        // harmonic tones, not by sorted array indices.
+        std::array<int, 3> currentUnique{{-1,-1,-1}};
+        int currentCount = 0;
+        bool seenPc[12]{};
+
+        for (int n = 0; n < step.noteCount; ++n) {
+            const int pitch = step.notes[n].pitch;
+            const int pc = (pitch % 12 + 12) % 12;
+            if (seenPc[pc])
+                continue;
+            seenPc[pc] = true;
+            require(currentCount < 3,
+                    "Pad harmony must have at most three unique pitch classes");
+            currentUnique[currentCount++] = pitch;
         }
+
+        if (previousCount > 0) {
+            for (int c = 0; c < currentCount; ++c) {
+                int bestDistance = 999;
+                for (int prev = 0; prev < previousCount; ++prev)
+                    bestDistance = std::min(
+                        bestDistance,
+                        std::abs(currentUnique[c] - previousUnique[prev]));
+                require(bestDistance <= 12,
+                        "Pad voice-leading must keep every harmonic tone within an octave of prior harmony");
+            }
+        }
+
+        previousUnique = currentUnique;
+        previousCount = currentCount;
     }
 }
 
