@@ -471,11 +471,12 @@ struct SynthSweepMetrics {
     double hits=0.0, longShare=0.0, offbeatShare=0.0, avgJump=0.0, avgPitch=0.0;
     double motifPitchAgreement=0.0;
     double padChordToneShare=0.0;
+    double dyadShare=0.0;
 };
 static SynthSweepMetrics measureSynth(const Phrase& guitar,const Phrase& bass,const PadPhrase& pads,
                                       const SynthSettings& s,unsigned seedBase,int samples=256){
     SynthSweepMetrics m{}; long long hits=0,longs=0,off=0,jumps=0,jumpSum=0,pitchSum=0;
-    long long motifCompared=0,motifMatched=0,padCompared=0,padMatched=0;
+    long long motifCompared=0,motifMatched=0,padCompared=0,padMatched=0,dyads=0;
     for(int si=0;si<samples;++si){
         const auto p=SynthBrain::generate(guitar,bass,pads,s,seedBase+static_cast<unsigned>(si));
         int prev=-1;
@@ -484,16 +485,19 @@ static SynthSweepMetrics measureSynth(const Phrase& guitar,const Phrase& bass,co
             if(i<pads.usedSteps() && pads.steps[i].noteCount>0)
                 activeChord=i;
             const auto& st=p.steps[i]; if(st.noteCount<=0) continue;
-            ++hits; const auto& n=st.notes[0]; pitchSum+=n.pitch;
+            ++hits; if(st.noteCount==2) ++dyads;
+            const auto& n=st.notes[0]; pitchSum+=n.pitch;
             if(n.lengthSteps>1) ++longs; if((i%2)!=0) ++off;
             if(prev>=0){jumpSum+=std::abs(n.pitch-prev);++jumps;} prev=n.pitch;
             if(activeChord>=0){
-                ++padCompared;
-                const int pc=(n.pitch%12+12)%12;
                 const auto& chord=pads.steps[activeChord];
-                for(int cn=0;cn<chord.noteCount;++cn){
-                    if(((chord.notes[cn].pitch%12+12)%12)==pc){
-                        ++padMatched; break;
+                for(int sn=0;sn<st.noteCount;++sn){
+                    ++padCompared;
+                    const int pc=(st.notes[sn].pitch%12+12)%12;
+                    for(int cn=0;cn<chord.noteCount;++cn){
+                        if(((chord.notes[cn].pitch%12+12)%12)==pc){
+                            ++padMatched; break;
+                        }
                     }
                 }
             }
@@ -513,6 +517,7 @@ static SynthSweepMetrics measureSynth(const Phrase& guitar,const Phrase& bass,co
     m.avgJump=jumps?static_cast<double>(jumpSum)/jumps:0.0; m.avgPitch=pitchSum/hc;
     m.motifPitchAgreement=motifCompared?static_cast<double>(motifMatched)/motifCompared:0.0;
     m.padChordToneShare=padCompared?static_cast<double>(padMatched)/padCompared:0.0;
+    m.dyadShare=dyads/hc;
     return m;
 }
 static void printSynthSweepLine(const char* label,double value,const SynthSweepMetrics& m){
@@ -521,7 +526,8 @@ static void printSynthSweepLine(const char* label,double value,const SynthSweepM
              <<" offbeat="<<m.offbeatShare*100.0<<"%"
              <<" avgJump="<<m.avgJump<<" avgPitch="<<m.avgPitch
              <<" motifMatch="<<m.motifPitchAgreement*100.0<<"%"
-             <<" chordTone="<<m.padChordToneShare*100.0<<"%\n";
+             <<" chordTone="<<m.padChordToneShare*100.0<<"%"
+             <<" dyad="<<m.dyadShare*100.0<<"%\n";
 }
 
 

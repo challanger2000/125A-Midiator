@@ -87,6 +87,44 @@ int nearestPadChordPitch(const PadPhrase& pads, int step, int around) {
     return best;
 }
 
+int secondPadChordPitch(const PadPhrase& pads, int step, int firstPitch, int around) {
+    if (pads.usedSteps() <= 0)
+        return -1;
+
+    const int used = pads.usedSteps();
+    const int idx = ((step % used) + used) % used;
+    int chordStep = -1;
+    for (int delta = 0; delta < used; ++delta) {
+        const int candidate = (idx - delta + used) % used;
+        if (pads.steps[candidate].noteCount > 0) {
+            chordStep = candidate;
+            break;
+        }
+    }
+    if (chordStep < 0)
+        return -1;
+
+    const int firstPc = wrap12(firstPitch);
+    const auto& chord = pads.steps[chordStep];
+    int best = -1;
+    int bestDistance = 999;
+    for (int n = 0; n < chord.noteCount; ++n) {
+        const int pc = wrap12(chord.notes[n].pitch);
+        if (pc == firstPc)
+            continue;
+        for (int p = 48; p <= 96; ++p) {
+            if (wrap12(p) != pc)
+                continue;
+            const int d = std::abs(p - around);
+            if (d < bestDistance && std::abs(p - firstPitch) <= 12) {
+                best = p;
+                bestDistance = d;
+            }
+        }
+    }
+    return best;
+}
+
 } // namespace
 
 Phrase SynthBrain::generate(const Phrase& guitar,
@@ -110,6 +148,7 @@ Phrase SynthBrain::generate(const Phrase& guitar,
     Rng pitchRng(seed ^ 0x50495443u);
     Rng lengthRng(seed ^ 0x4C454E47u);
     Rng harmonyRng(seed ^ 0x4841524Du);
+    Rng gestureRng(seed ^ 0x47455354u);
 
     std::array<int,8> motifDegree{{0,2,4,1,0,3,2,5}};
     std::array<int,8> motifHit{{1,0,1,1,0,1,0,1}};
@@ -181,13 +220,51 @@ Phrase SynthBrain::generate(const Phrase& guitar,
         if(s.style==StyleId::HeavyIndustrial) velocity+=5;
         else if(s.style==StyleId::DarkRockGothic) velocity-=4;
 
+        // Synth gestures stay deliberately short: arp/ostinato notes and
+        // compact phrase fragments, not long lead lines.
         int len=1;
-        if(lengthRng.chance(0.12f+0.65f*s.sustain))
+        if(lengthRng.chance(0.10f+0.55f*s.sustain))
             len=2;
-        if(s.sustain>0.75f && lengthRng.chance(0.30f))
-            len=4;
 
         st.notes[0]={pitch,std::clamp(velocity,1,126),len};
+
+        // Occasional short two-note chord stabs. The gesture decision has its
+        // own RNG stream so Movement/Repetition/Sustain cannot rewrite whether
+        // a step is a stab. Prefer a second active Pad chord tone.
+        float stabChance = 0.0f;
+        if ((local % 4) == 0) {
+            if (s.style==StyleId::NDHIndustrial)
+                stabChance=0.22f;
+            else if (s.style==StyleId::DarkRockGothic)
+                stabChance=0.12f;
+            else
+                stabChance=0.28f;
+        } else if (s.style==StyleId::HeavyIndustrial) {
+            stabChance=0.06f;
+        }
+
+        if (gestureRng.chance(stabChance)) {
+            int second=secondPadChordPitch(pads,step,pitch,pitch+5);
+            if(second<0) {
+                second=pitchFromDegree(degree+2,s,pitch+4);
+                if(second==pitch || std::abs(second-pitch)>12)
+                    second=-1;
+            }
+
+            if(second>=48 && second<=96 &&
+               second!=pitch &&
+               RiffEngine::isScaleTone(second,s.rootPitchClass,s.scale)) {
+                st.noteCount=2;
+                const int stabLen=gestureRng.chance(0.72f)?1:2;
+                st.notes[0].lengthSteps=stabLen;
+                st.notes[1]={
+                    second,
+                    std::clamp(velocity-5,1,126),
+                    stabLen
+                };
+            }
+        }
+
         previousPitch=pitch;
     }
 

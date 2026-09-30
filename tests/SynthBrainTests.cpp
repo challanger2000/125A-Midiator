@@ -21,7 +21,7 @@ void makeContext(Phrase& g,Phrase& b,PadPhrase& p){
     p=PadBrain::generate(g,b,ps,0x51594E33u);
 }
 
-void testDeterministicMonophonicScaleSafe(){
+void testDeterministicCompactGestureScaleSafe(){
     Phrase g{},b{}; PadPhrase p{}; makeContext(g,b,p);
     SynthSettings s{};
     const auto a=SynthBrain::generate(g,b,p,s,123u);
@@ -30,17 +30,19 @@ void testDeterministicMonophonicScaleSafe(){
     int hits=0;
     for(int i=0;i<a.usedSteps();++i){
         require(a.steps[i].noteCount==z.steps[i].noteCount,"Synth topology must be deterministic");
-        require(a.steps[i].noteCount<=1,"Synth foundation must remain monophonic");
+        require(a.steps[i].noteCount<=2,"Synth gestures must stay compact at maximum two simultaneous notes");
         if(a.steps[i].noteCount<=0) continue;
         ++hits;
-        const auto& n=a.steps[i].notes[0];
-        require(n.pitch==z.steps[i].notes[0].pitch &&
-                n.velocity==z.steps[i].notes[0].velocity &&
-                n.lengthSteps==z.steps[i].notes[0].lengthSteps,
-                "Synth notes must be deterministic");
-        require(n.pitch>=48&&n.pitch<=96,"Synth pitch must remain in melodic register");
-        require(RiffEngine::isScaleTone(n.pitch,s.rootPitchClass,s.scale),
-                "Synth must remain scale-safe");
+        for(int nidx=0;nidx<a.steps[i].noteCount;++nidx){
+            const auto& n=a.steps[i].notes[nidx];
+            require(n.pitch==z.steps[i].notes[nidx].pitch &&
+                    n.velocity==z.steps[i].notes[nidx].velocity &&
+                    n.lengthSteps==z.steps[i].notes[nidx].lengthSteps,
+                    "Synth notes must be deterministic");
+            require(n.pitch>=48&&n.pitch<=96,"Synth pitch must remain in melodic register");
+            require(RiffEngine::isScaleTone(n.pitch,s.rootPitchClass,s.scale),
+                    "Synth must remain scale-safe");
+        }
     }
     require(hits>4,"Synth must generate a usable melodic part");
 }
@@ -81,7 +83,7 @@ void testPitchAndLengthControlsDoNotRewriteRhythm(){
     auto sameTopology=[](const Phrase& a,const Phrase& z){
         if(a.usedSteps()!=z.usedSteps()) return false;
         for(int i=0;i<a.usedSteps();++i)
-            if((a.steps[i].noteCount>0)!=(z.steps[i].noteCount>0)) return false;
+            if(a.steps[i].noteCount!=z.steps[i].noteCount) return false;
         return true;
     };
 
@@ -163,6 +165,36 @@ void testHarmonicFollowTargetsPadChordTones(){
             "Synth Harmonic Follow must materially increase pad-chord-tone targeting");
 }
 
+void testShortChordStabsOccur(){
+    Phrase g{},b{}; PadPhrase p{}; makeContext(g,b,p);
+    long long hits=0,dyads=0;
+
+    for(unsigned seed=1;seed<=512;++seed){
+        SynthSettings s{};
+        const auto q=SynthBrain::generate(g,b,p,s,80000u+seed);
+        for(int i=0;i<q.usedSteps();++i){
+            const auto& st=q.steps[i];
+            if(st.noteCount<=0) continue;
+            ++hits;
+            if(st.noteCount==2){
+                ++dyads;
+                require(st.notes[0].lengthSteps<=2 && st.notes[1].lengthSteps<=2,
+                        "Synth chord stabs must remain short");
+                require(st.notes[0].pitch!=st.notes[1].pitch,
+                        "Synth chord stab notes must be distinct");
+            }
+            for(int n=0;n<st.noteCount;++n)
+                require(st.notes[n].lengthSteps<=2,
+                        "Synth arp/phrase notes must remain short");
+        }
+    }
+
+    require(dyads>0,"Synth must generate occasional short two-note chord stabs");
+    const double share=hits?static_cast<double>(dyads)/hits:0.0;
+    require(share<0.30,
+            "Synth chord stabs must remain occasional rather than dominating the role");
+}
+
 void testStylesDiffer(){
     Phrase g{},b{}; PadPhrase p{}; makeContext(g,b,p);
     auto avgPitch=[&](StyleId style){
@@ -183,12 +215,13 @@ void testStylesDiffer(){
 }
 
 int main(){
-    testDeterministicMonophonicScaleSafe();
+    testDeterministicCompactGestureScaleSafe();
     testActivityRaisesHitCount();
     testSustainRaisesLongNoteShare();
     testPitchAndLengthControlsDoNotRewriteRhythm();
     testRepetitionPreservesMotifPitchIdentity();
     testHarmonicFollowTargetsPadChordTones();
+    testShortChordStabsOccur();
     testStylesDiffer();
     std::cout<<"Midiator Synth Brain tests: PASS\n";
     return 0;
