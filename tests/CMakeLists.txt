@@ -45,6 +45,7 @@ add_executable(MidiatorProcessorLiveTests
     ../src/PluginProcessor.cpp
     ../src/GuitarBrain.cpp
     ../src/BassBrain.cpp
+    ../src/DrumBrain.cpp
 )
 
 target_include_directories(MidiatorProcessorLiveTests PRIVATE ../src)
