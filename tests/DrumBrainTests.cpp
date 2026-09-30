@@ -227,11 +227,55 @@ void testStylesHaveDistinctDrumLanguages() {
 
 void testMappingLayerIndependentOfComposition() {
     const auto gm = DrumMidiMap::preset(DrumMapId::GeneralMidi);
+    require(gm.midiNote(DrumVoice::Kick) == 36, "GM kick mapping must be 36");
+    require(gm.midiNote(DrumVoice::Snare) == 38, "GM snare mapping must be 38");
+    require(gm.midiNote(DrumVoice::ClosedHat) == 42, "GM closed hat must be 42");
+    require(gm.midiNote(DrumVoice::OpenHat) == 46, "GM open hat must be 46");
+    require(gm.midiNote(DrumVoice::Crash) == 49, "GM crash must be 49");
+    require(gm.midiNote(DrumVoice::Ride) == 51, "GM ride must be 51");
+    require(gm.midiNote(DrumVoice::GhostSnare) == 38,
+            "GM ghost snare must use acoustic snare pitch with lower velocity");
+    require(DrumMidiMap::presetIsVerified(DrumMapId::GeneralMidi),
+            "General MIDI preset must be marked verified");
+
     const auto ez = DrumMidiMap::preset(DrumMapId::EZdrummer3);
-    require(gm.midiNote(DrumVoice::Kick) == 36, "GM kick mapping must be C1/36");
-    require(gm.midiNote(DrumVoice::Snare) == 38, "GM snare mapping must be D1/38");
-    require(ez.midiNote(DrumVoice::Kick) == gm.midiNote(DrumVoice::Kick),
-            "initial Toontrack core mapping must preserve principal kick note");
+    require(ez.midiNote(DrumVoice::Kick) == 36, "EZD3 standard kick must be 36");
+    require(ez.midiNote(DrumVoice::Snare) == 38, "EZD3 standard snare center must be 38");
+    require(ez.midiNote(DrumVoice::ClosedHat) == 42, "EZD3 closed-tip hat must be 42");
+    require(ez.midiNote(DrumVoice::OpenHat) == 46, "EZD3 open-edge hat must be 46");
+    require(ez.midiNote(DrumVoice::Crash) == 55, "EZD3 Crash 1 must be 55");
+    require(ez.midiNote(DrumVoice::Ride) == 52, "EZD3 Ride Edge must be 52");
+    require(ez.midiNote(DrumVoice::LowTom) == 41, "EZD3 floor tom must be 41");
+    require(ez.midiNote(DrumVoice::MidTom) == 47, "EZD3 rack tom 2 must be 47");
+    require(ez.midiNote(DrumVoice::HighTom) == 48, "EZD3 rack tom 1 must be 48");
+    require(ez.midiNote(DrumVoice::GhostSnare) == 38,
+            "EZD3 ghost snare must retain Snare Center and use velocity");
+    require(DrumMidiMap::presetIsVerified(DrumMapId::EZdrummer3),
+            "EZD3 standard preset must be marked verified");
+
+    const auto pd = DrumMidiMap::preset(DrumMapId::PerfectDrums);
+    require(pd.midiNote(DrumVoice::Kick) == 36, "Perfect Drums kick center must be 36");
+    require(pd.midiNote(DrumVoice::Snare) == 38, "Perfect Drums snare center must be 38");
+    require(pd.midiNote(DrumVoice::ClosedHat) == 64,
+            "Perfect Drums closed-tip hi-hat must be E3/64");
+    require(pd.midiNote(DrumVoice::OpenHat) == 47,
+            "Perfect Drums open hi-hat must be B1/47");
+    require(pd.midiNote(DrumVoice::Crash) == 50,
+            "Perfect Drums Crash 1 edge must be D2/50");
+    require(pd.midiNote(DrumVoice::Ride) == 52,
+            "Perfect Drums Ride tip must be E2/52");
+    require(pd.midiNote(DrumVoice::LowTom) == 41, "Perfect Drums Tom 3 must be F1/41");
+    require(pd.midiNote(DrumVoice::MidTom) == 43, "Perfect Drums Tom 2 must be G1/43");
+    require(pd.midiNote(DrumVoice::HighTom) == 45, "Perfect Drums Tom 1 must be A1/45");
+    require(pd.midiNote(DrumVoice::GhostSnare) == 38,
+            "Perfect Drums ghost snare must use Snare Center with lower velocity");
+    require(DrumMidiMap::presetIsVerified(DrumMapId::PerfectDrums),
+            "Perfect Drums default preset must be marked verified");
+
+    require(!DrumMidiMap::presetIsVerified(DrumMapId::SuperiorDrummer3),
+            "SD3 must not be claimed as a universal verified static map");
+    require(!DrumMidiMap::presetIsVerified(DrumMapId::SSD55),
+            "SSD5.5 must not be claimed as a universal verified static map");
 }
 
 } // namespace

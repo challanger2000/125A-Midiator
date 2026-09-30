@@ -50,41 +50,79 @@ int humanizedVelocity(Rng& rng, int base, float humanize) {
 DrumMidiMap DrumMidiMap::preset(DrumMapId id) {
     DrumMidiMap m{};
 
-    // Start from General MIDI. Vendor presets are intentionally explicit
-    // adapters, so the composition engine never depends on note numbers.
+    // Verified General MIDI principal-kit mapping. GhostSnare deliberately
+    // shares the acoustic snare note: ghost notes are a velocity/articulation
+    // treatment of the same drum, not an electric-snare substitution.
     m.note = {
         36, // Kick
         38, // Snare
         42, // Closed Hat
         46, // Open Hat
-        49, // Crash
-        51, // Ride
-        41, // Low Tom
-        47, // Mid Tom
+        49, // Crash 1
+        51, // Ride Cymbal 1
+        41, // Low Floor Tom
+        47, // Low-Mid Tom
         50, // High Tom
-        40  // Ghost Snare / secondary snare articulation
+        38  // Ghost Snare -> same acoustic snare, lower velocity
     };
 
     switch (id) {
         case DrumMapId::GeneralMidi:
             break;
+
         case DrumMapId::EZdrummer3:
-        case DrumMapId::SuperiorDrummer3:
-            // Toontrack core mapping is GM-compatible for the principal kit
-            // pieces used by the first Drum Brain.
+            // Toontrack EZdrummer 3 Standard Layout:
+            // Kick Hit 36, Snare Center 38, Hi-Hat Closed Tip 42,
+            // Hi-Hat Open Edge 2 46, Crash 1 Crash 55, Ride Edge 52,
+            // Floortom 2 Center 41, Racktom 2 Center 47,
+            // Racktom 1 Center 48.
+            m.note = {
+                36, 38, 42, 46, 55, 52, 41, 47, 48, 38
+            };
             break;
-        case DrumMapId::SSD55:
-            // SSD core kick/snare/hat/tom layout is also GM-like enough for
-            // these principal voices; specialized articulations come later.
-            break;
+
         case DrumMapId::PerfectDrums:
-            // Keep principal-kit GM mapping in V1; expose Custom for deviations.
+            // Perfect Drums default layout (manual section 7.3):
+            // C1 kick=36, D1 snare=38, E3 closed-tip hat=64,
+            // B1 open hat=47, D2 Crash 1 edge=50, E2 Ride tip=52,
+            // F1/G1/A1 Tom 3/2/1 centers=41/43/45.
+            m.note = {
+                36, 38, 64, 47, 50, 52, 41, 43, 45, 38
+            };
             break;
+
+        case DrumMapId::SuperiorDrummer3:
+            // Compatibility fallback only. SD3 exposes its current MIDI
+            // Mapping Layout and mappings can vary with library/preset.
+            // Do not present this fallback as a verified universal SD3 map.
+            break;
+
+        case DrumMapId::SSD55:
+            // Compatibility fallback only. SSD5.5's global Map tab is
+            // user/preset configurable, so no single factory-independent
+            // static mapping is claimed here.
+            break;
+
         case DrumMapId::Custom:
         case DrumMapId::Count:
             break;
     }
     return m;
+}
+
+bool DrumMidiMap::presetIsVerified(DrumMapId id) {
+    switch (id) {
+        case DrumMapId::GeneralMidi:
+        case DrumMapId::EZdrummer3:
+        case DrumMapId::PerfectDrums:
+            return true;
+        case DrumMapId::SuperiorDrummer3:
+        case DrumMapId::SSD55:
+        case DrumMapId::Custom:
+        case DrumMapId::Count:
+            return false;
+    }
+    return false;
 }
 
 DrumPhrase DrumBrain::generate(const Phrase& guitar,

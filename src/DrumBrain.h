@@ -70,6 +70,7 @@ struct DrumMidiMap {
     }
 
     static DrumMidiMap preset(DrumMapId id);
+    static bool presetIsVerified(DrumMapId id);
 };
 
 class DrumBrain {
