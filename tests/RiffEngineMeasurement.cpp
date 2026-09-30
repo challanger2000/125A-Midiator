@@ -353,6 +353,7 @@ struct PadSweepMetrics {
     double avgSpanSemitones = 0.0;
     double avgVoiceJump = 0.0;
     double fourVoiceShare = 0.0;
+    double colorVoiceShare = 0.0;
 };
 
 static PadSweepMetrics measurePads(const Phrase& guitar,
@@ -361,7 +362,7 @@ static PadSweepMetrics measurePads(const Phrase& guitar,
                                    unsigned seedBase,
                                    int samples = 256) {
     PadSweepMetrics m{};
-    long long chords=0, voices=0, durations=0, fourVoice=0;
+    long long chords=0, voices=0, durations=0, fourVoice=0, colorVoices=0;
     long long spans=0, jumps=0, jumpSum=0;
     for(int sidx=0;sidx<samples;++sidx){
         const auto p=PadBrain::generate(guitar,bass,settings,seedBase+static_cast<unsigned>(sidx));
@@ -372,6 +373,21 @@ static PadSweepMetrics measurePads(const Phrase& guitar,
             ++chords;
             voices+=st.noteCount;
             if(st.noteCount==4) ++fourVoice;
+
+            // PadBrain's highest voice is the color voice. Reconstruct the
+            // expected diatonic top pitch class and count deliberate adjacent
+            // scale-degree substitutions introduced by Tension.
+            static constexpr std::array<int,8> progression{{0,5,2,6,0,3,1,4}};
+            const auto& scale = RiffEngine::scaleDefinition(settings.scale);
+            const int chordIndex = i / 8; // upper bound works for both 8/16-step cadence
+            const int rootDegree = progression[static_cast<size_t>(chordIndex % progression.size())] %
+                                   std::max(1, scale.count);
+            const int topDegree = (rootDegree + (st.noteCount == 4 ? 6 : 4)) % scale.count;
+            int expectedPc = (settings.rootPitchClass + scale.intervals[topDegree]) % 12;
+            if (expectedPc < 0) expectedPc += 12;
+            const int actualPc = (st.notes[st.noteCount-1].pitch % 12 + 12) % 12;
+            if (actualPc != expectedPc) ++colorVoices;
+
             int lo=127,hi=0;
             for(int n=0;n<st.noteCount;++n){
                 const auto& note=st.notes[n];
@@ -395,6 +411,7 @@ static PadSweepMetrics measurePads(const Phrase& guitar,
     m.avgSpanSemitones=spans/chordCount;
     m.avgVoiceJump=jumps>0?static_cast<double>(jumpSum)/jumps:0.0;
     m.fourVoiceShare=fourVoice/chordCount;
+    m.colorVoiceShare=colorVoices/chordCount;
     return m;
 }
 
@@ -405,7 +422,8 @@ static void printPadSweepLine(const char* label,double value,const PadSweepMetri
              <<" duration="<<m.avgDurationSteps
              <<" span="<<m.avgSpanSemitones
              <<" voiceJump="<<m.avgVoiceJump
-             <<" fourVoice="<<m.fourVoiceShare*100.0<<"%\n";
+             <<" fourVoice="<<m.fourVoiceShare*100.0<<"%"
+             <<" colorVoice="<<m.colorVoiceShare*100.0<<"%\n";
 }
 
 int main() {

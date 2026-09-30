@@ -170,6 +170,45 @@ void testMovementProgressivelyAddsHarmonicEvents() {
             "Pad Movement 100% must add harmonic activity over 50%");
 }
 
+void testTensionProgressivelyAddsColorVoices() {
+    Phrase guitar{}, bass{};
+    makeContext(guitar, bass);
+
+    auto changedTopVoices = [&](float tension) {
+        long long changed = 0;
+        long long compared = 0;
+        for (unsigned seed = 1; seed <= 256; ++seed) {
+            PadSettings base{};
+            base.tension = 0.0f;
+            PadSettings test = base;
+            test.tension = tension;
+
+            const auto a = PadBrain::generate(guitar, bass, base, 91000u + seed);
+            const auto b = PadBrain::generate(guitar, bass, test, 91000u + seed);
+
+            for (int i = 0; i < a.usedSteps(); ++i) {
+                if (a.steps[i].noteCount <= 0 || b.steps[i].noteCount <= 0)
+                    continue;
+                const auto& an = a.steps[i].notes[a.steps[i].noteCount - 1];
+                const auto& bn = b.steps[i].notes[b.steps[i].noteCount - 1];
+                ++compared;
+                if ((an.pitch % 12 + 12) % 12 != (bn.pitch % 12 + 12) % 12)
+                    ++changed;
+            }
+        }
+        return compared > 0 ? static_cast<double>(changed) / compared : 0.0;
+    };
+
+    const double low = changedTopVoices(0.25f);
+    const double mid = changedTopVoices(0.50f);
+    const double high = changedTopVoices(1.0f);
+
+    require(mid > low + 0.05,
+            "Pad Tension 50% must add more color-voice changes than 25%");
+    require(high > mid + 0.10,
+            "Pad Tension 100% must add materially more color-voice changes than 50%");
+}
+
 void testVoiceLeadingAvoidsWildJumps() {
     Phrase guitar{}, bass{};
     makeContext(guitar, bass);
@@ -200,6 +239,7 @@ int main() {
     testMovementIncreasesHarmonicActivity();
     testSpreadProgressivelyWidensVoicings();
     testMovementProgressivelyAddsHarmonicEvents();
+    testTensionProgressivelyAddsColorVoices();
     testVoiceLeadingAvoidsWildJumps();
     std::cout << "Midiator Pad Brain tests: PASS\n";
     return 0;
