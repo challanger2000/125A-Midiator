@@ -1,6 +1,7 @@
 #pragma once
 
 #include "RiffEngine.h"
+#include "PadBrain.h"
 
 #include <array>
 #include <algorithm>
