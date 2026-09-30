@@ -123,6 +123,59 @@ void testFollowControlsKickLock() {
             "Drum Follow must materially increase kick lock to guitar/bass context");
 }
 
+
+void testDensityAndComplexityHaveDistinctMaterialEffects() {
+    Phrase guitar{}, bass{};
+    makeContext(guitar, bass);
+
+    auto measure = [&](float density, float complexity) {
+        long long hits = 0;
+        long long toms = 0;
+        long long ghost = 0;
+        long long oddHats = 0;
+
+        for (unsigned seed = 1; seed <= 256; ++seed) {
+            DrumSettings s{};
+            s.density = density;
+            s.complexity = complexity;
+            const auto d = DrumBrain::generate(guitar, bass, s, 65000u + seed);
+
+            for (int i = 0; i < d.usedSteps(); ++i) {
+                const int local = i % kStepsPerBar;
+                for (int h = 0; h < d.steps[i].hitCount; ++h) {
+                    ++hits;
+                    const auto voice = d.steps[i].hits[h].voice;
+                    if (voice == DrumVoice::LowTom ||
+                        voice == DrumVoice::MidTom ||
+                        voice == DrumVoice::HighTom)
+                        ++toms;
+                    if (voice == DrumVoice::GhostSnare)
+                        ++ghost;
+                    if ((voice == DrumVoice::ClosedHat || voice == DrumVoice::OpenHat) &&
+                        (local % 2) != 0)
+                        ++oddHats;
+                }
+            }
+        }
+        return std::array<long long,4>{hits,toms,ghost,oddHats};
+    };
+
+    const auto densityLow = measure(0.0f, 0.30f);
+    const auto densityHigh = measure(1.0f, 0.30f);
+    require(densityHigh[0] > densityLow[0] + 2000,
+            "Drum Density must materially increase total activity");
+
+    const auto complexityLow = measure(0.48f, 0.0f);
+    const auto complexityHigh = measure(0.48f, 1.0f);
+    require(complexityHigh[1] > complexityLow[1] + 300,
+            "Drum Complexity must materially increase tom movement");
+    require(complexityHigh[2] > complexityLow[2] + 200,
+            "Drum Complexity must materially increase ghost-note detail");
+    require(complexityHigh[3] > complexityLow[3] + 600,
+            "Drum Complexity must materially increase 16th-hat motion");
+}
+
+
 void testHumanizeChangesVelocityNotPattern() {
     Phrase guitar{}, bass{};
     makeContext(guitar, bass);
@@ -324,6 +377,7 @@ int main() {
     testDeterministicAndBounded();
     testBackbeatAndStructuralCrash();
     testFollowControlsKickLock();
+    testDensityAndComplexityHaveDistinctMaterialEffects();
     testHumanizeChangesVelocityNotPattern();
     testStylesHaveDistinctDrumLanguages();
     testVerifiedMapsNeverEmitSamePitchTwicePerStep();
