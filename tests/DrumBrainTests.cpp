@@ -3,6 +3,8 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <cmath>
+#include <algorithm>
 
 using namespace midiator;
 
@@ -49,18 +51,23 @@ void testDeterministicAndBounded() {
     }
 }
 
-void testBackbeatAndDownbeatCrash() {
+void testBackbeatAndStructuralCrash() {
     Phrase guitar{}, bass{};
     makeContext(guitar, bass);
     DrumSettings s{};
     s.crashOnDownbeat = true;
     const auto d = DrumBrain::generate(guitar, bass, s, 99u);
 
+    bool openingCrash = false;
+    for (int h = 0; h < d.steps[0].hitCount; ++h)
+        openingCrash |= d.steps[0].hits[h].voice == DrumVoice::Crash;
+    require(openingCrash, "Drum phrase must punctuate phrase opening with crash when enabled");
+
+    int crashCount = 0;
     for (int bar = 0; bar < d.bars; ++bar) {
-        bool crash = false;
-        for (int h = 0; h < d.steps[bar * kStepsPerBar].hitCount; ++h)
-            crash |= d.steps[bar * kStepsPerBar].hits[h].voice == DrumVoice::Crash;
-        require(crash, "Drum phrase must punctuate each bar downbeat with crash when enabled");
+        const auto& down = d.steps[bar * kStepsPerBar];
+        for (int h = 0; h < down.hitCount; ++h)
+            crashCount += down.hits[h].voice == DrumVoice::Crash ? 1 : 0;
 
         for (int local : {4, 12}) {
             bool snare = false;
@@ -70,6 +77,9 @@ void testBackbeatAndDownbeatCrash() {
             require(snare, "Drum Brain must maintain stable 2/4 backbeat");
         }
     }
+
+    require(crashCount < d.bars,
+            "Crash must remain structural punctuation rather than hit every bar");
 }
 
 void testFollowControlsKickLock() {
@@ -113,6 +123,40 @@ void testFollowControlsKickLock() {
             "Drum Follow must materially increase kick lock to guitar/bass context");
 }
 
+void testHumanizeIncreasesVelocitySpread() {
+    Phrase guitar{}, bass{};
+    makeContext(guitar, bass);
+
+    DrumSettings dry{};
+    dry.humanize = 0.0f;
+    DrumSettings human = dry;
+    human.humanize = 1.0f;
+
+    auto spread = [&](const DrumSettings& s) {
+        double sum = 0.0, sumSq = 0.0;
+        long long n = 0;
+        for (unsigned seed = 1; seed <= 128; ++seed) {
+            const auto d = DrumBrain::generate(guitar, bass, s, 80000u + seed);
+            for (int i = 0; i < d.usedSteps(); ++i) {
+                for (int h = 0; h < d.steps[i].hitCount; ++h) {
+                    const double v = d.steps[i].hits[h].velocity;
+                    sum += v;
+                    sumSq += v * v;
+                    ++n;
+                }
+            }
+        }
+        const double mean = sum / std::max<long long>(1, n);
+        const double variance = sumSq / std::max<long long>(1, n) - mean * mean;
+        return variance > 0.0 ? std::sqrt(variance) : 0.0;
+    };
+
+    const double lowSpread = spread(dry);
+    const double highSpread = spread(human);
+    require(highSpread > lowSpread + 1.5,
+            "Drum Humanize must materially increase velocity spread");
+}
+
 void testMappingLayerIndependentOfComposition() {
     const auto gm = DrumMidiMap::preset(DrumMapId::GeneralMidi);
     const auto ez = DrumMidiMap::preset(DrumMapId::EZdrummer3);
@@ -126,8 +170,9 @@ void testMappingLayerIndependentOfComposition() {
 
 int main() {
     testDeterministicAndBounded();
-    testBackbeatAndDownbeatCrash();
+    testBackbeatAndStructuralCrash();
     testFollowControlsKickLock();
+    testHumanizeIncreasesVelocitySpread();
     testMappingLayerIndependentOfComposition();
 
     std::cout << "Midiator Drum Brain tests: PASS\n";

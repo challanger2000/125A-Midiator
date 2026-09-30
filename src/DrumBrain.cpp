@@ -149,9 +149,20 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
             rng.chance(0.05f + 0.32f * s.complexity))
             addHit(ds, DrumVoice::GhostSnare, humanizedVelocity(rng, 48, s.humanize));
 
-        // Phrase opening and controlled section punctuation.
-        if (s.crashOnDownbeat && downbeat)
-            addHit(ds, DrumVoice::Crash, humanizedVelocity(rng, 118, s.humanize));
+        // Crash is structural punctuation, not a mandatory bar marker.
+        // Always mark the phrase opening; later downbeats only punctuate
+        // larger 4-bar sections or occasional 2-bar transitions.
+        if (s.crashOnDownbeat && downbeat) {
+            const int bar = step / kStepsPerBar;
+            const bool phraseOpening = bar == 0;
+            const bool sectionOpening = (bar % 4) == 0;
+            const bool transitionAccent =
+                (bar % 2) == 0 && bar > 0 &&
+                rng.chance(0.08f + 0.22f * s.complexity);
+            if (phraseOpening || sectionOpening || transitionAccent)
+                addHit(ds, DrumVoice::Crash,
+                       humanizedVelocity(rng, 118, s.humanize));
+        }
 
         // Simple tom fill language on the final beat of every second bar.
         const int bar = step / kStepsPerBar;

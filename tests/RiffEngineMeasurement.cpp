@@ -286,6 +286,7 @@ struct DrumSweepMetrics {
     double toms = 0.0;
     double crashes = 0.0;
     double avgVelocity = 0.0;
+    double velocityStdDev = 0.0;
 };
 
 static DrumSweepMetrics measureDrums(const Phrase& guitar,
@@ -294,7 +295,7 @@ static DrumSweepMetrics measureDrums(const Phrase& guitar,
                                      unsigned seedBase,
                                      int samples = 256) {
     DrumSweepMetrics m{};
-    long long hits=0,kicks=0,locked=0,snares=0,hats=0,ghosts=0,toms=0,crashes=0,vel=0;
+    long long hits=0,kicks=0,locked=0,snares=0,hats=0,ghosts=0,toms=0,crashes=0,vel=0,velSq=0;
     for(int sidx=0;sidx<samples;++sidx){
         const auto d=DrumBrain::generate(guitar,bass,settings,seedBase+static_cast<unsigned>(sidx));
         for(int i=0;i<d.usedSteps();++i){
@@ -303,7 +304,7 @@ static DrumSweepMetrics measureDrums(const Phrase& guitar,
                 (i<bass.usedSteps() && bass.steps[i].noteCount>0);
             for(int n=0;n<d.steps[i].hitCount;++n){
                 const auto& hit=d.steps[i].hits[n];
-                ++hits; vel+=hit.velocity;
+                ++hits; vel+=hit.velocity; velSq+=hit.velocity*hit.velocity;
                 switch(hit.voice){
                     case DrumVoice::Kick: ++kicks; if(contextHit) ++locked; break;
                     case DrumVoice::Snare: ++snares; break;
@@ -325,6 +326,11 @@ static DrumSweepMetrics measureDrums(const Phrase& guitar,
     m.hits=hits/phrases; m.kicks=kicks/phrases; m.kickLock=locked/kcount;
     m.snares=snares/phrases; m.hats=hats/phrases; m.ghosts=ghosts/phrases;
     m.toms=toms/phrases; m.crashes=crashes/phrases; m.avgVelocity=vel/hcount;
+    {
+        const double mean = m.avgVelocity;
+        const double variance = static_cast<double>(velSq) / hcount - mean * mean;
+        m.velocityStdDev = variance > 0.0 ? std::sqrt(variance) : 0.0;
+    }
     return m;
 }
 
@@ -334,7 +340,8 @@ static void printDrumSweepLine(const char* label,double value,const DrumSweepMet
              <<" kickLock="<<m.kickLock*100.0<<"%"
              <<" snare="<<m.snares<<" hats="<<m.hats
              <<" ghost="<<m.ghosts<<" toms="<<m.toms
-             <<" crash="<<m.crashes<<" avgVel="<<m.avgVelocity<<"\n";
+             <<" crash="<<m.crashes<<" avgVel="<<m.avgVelocity
+             <<" velStd="<<m.velocityStdDev<<"\n";
 }
 
 int main() {
