@@ -1,6 +1,7 @@
 #pragma once
 
 #include "RiffEngine.h"
+#include "BassBrain.h"
 
 #include "public.sdk/source/vst/vstaudioeffect.h"
 #include "public.sdk/source/vst/vsteditcontroller.h"
@@ -77,10 +78,13 @@ private:
         bool noteOn = false;
         int pitch = 0;
         int velocity = 0;
+        int32 busIndex = kGuitarOutBus;
     };
 
     midiator::GeneratorSettings settings_{};
     midiator::Phrase phrase_{};
+    midiator::BassSettings bassSettings_{};
+    midiator::Phrase bassPhrase_{};
     uint32_t seed_ = 0x125A2026u;
 
     double sampleRate_ = 44100.0;
@@ -89,7 +93,7 @@ private:
     double expectedProjectTimeQn_ = 0.0;
     bool haveTransportAnchor_ = false;
     double transportAnchorQn_ = 0.0;
-    std::array<bool, 128> activePitches_{};
+    std::array<std::array<bool, 128>, kEventOutputBusCount> activePitchesByBus_{};
 
     float variationAmount_ = 0.35f;
     bool phraseChangedNeedsFlush_ = false;
@@ -100,6 +104,7 @@ private:
 
     void generateNew();
     void generateVariation();
+    void regenerateBass();
     void resizePhraseBars(int newBars);
     void applyPowerChordMode(bool enabled);
     void transposePhraseToRoot(int newRootPitchClass);

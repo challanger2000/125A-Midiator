@@ -185,6 +185,39 @@ void testDedicatedInstrumentOutputBuses() {
     processor.terminate();
 }
 
+void testGuitarAndBassUseSeparateOutputBuses() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "processor must start");
+
+    auto context = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 192000);
+    require(processor.process(data) == kResultOk,
+            "multi-out routing process must succeed");
+
+    int guitarOns = 0;
+    int bassOns = 0;
+    int unexpectedOns = 0;
+    for (const auto& e : output.events) {
+        if (e.type != Event::kNoteOnEvent)
+            continue;
+        if (e.busIndex == kGuitarOutBus)
+            ++guitarOns;
+        else if (e.busIndex == kBassOutBus) {
+            ++bassOns;
+            require(e.noteOn.pitch >= 24 && e.noteOn.pitch <= 60,
+                    "Bass Out notes must stay in the bass register");
+        } else {
+            ++unexpectedOns;
+        }
+    }
+
+    require(guitarOns > 0, "Guitar Out must emit guitar notes");
+    require(bassOns > 0, "Bass Out must emit bass notes");
+    require(unexpectedOns == 0,
+            "inactive Drums/Pad/Synth buses must not emit placeholder notes");
+}
+
 void testNewRiffChangesRhythmMask() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
@@ -197,7 +230,7 @@ void testNewRiffChangesRhythmMask() {
 
         std::array<bool, 32> hits{};
         for (const auto& event : output.events) {
-            if (event.type != Event::kNoteOnEvent)
+            if (event.type != Event::kNoteOnEvent || event.busIndex != kGuitarOutBus)
                 continue;
             const double localQn = event.ppqPosition - startQn;
             const int step = static_cast<int>(std::lround(localQn / 0.25));
@@ -253,7 +286,7 @@ void testNewRiffToggleZeroValueStillCommands() {
         require(processor.process(data) == kResultOk, "toggle command capture must succeed");
         std::array<bool, 32> hits{};
         for (const auto& e : output.events) {
-            if (e.type != Event::kNoteOnEvent)
+            if (e.type != Event::kNoteOnEvent || e.busIndex != kGuitarOutBus)
                 continue;
             const int step = static_cast<int>(std::lround((e.ppqPosition - startQn) / 0.25));
             if (step >= 0 && step < 32)
@@ -304,7 +337,7 @@ void testHeavyIndustrialStaysLockedToHostGrid() {
     auto assertGrid = [](const EventList& out, double anchorQn) {
         int noteOns = 0;
         for (const auto& e : out.events) {
-            if (e.type != Event::kNoteOnEvent)
+            if (e.type != Event::kNoteOnEvent || e.busIndex != kGuitarOutBus)
                 continue;
             ++noteOns;
             const double steps = (e.ppqPosition - anchorQn) / 0.25;
@@ -357,7 +390,7 @@ void testRepeatedNewRiffStaysDistinct() {
         require(processor.process(data) == kResultOk, "repeated NEW capture must succeed");
         std::array<bool, 32> hits{};
         for (const auto& e : output.events) {
-            if (e.type != Event::kNoteOnEvent)
+            if (e.type != Event::kNoteOnEvent || e.busIndex != kGuitarOutBus)
                 continue;
             const int step = static_cast<int>(std::lround((e.ppqPosition - startQn) / 0.25));
             if (step >= 0 && step < 32)
@@ -418,7 +451,7 @@ void testBarsResizePreservesExistingRiff() {
 
         std::vector<std::pair<int, int>> notes;
         for (const auto& e : output.events) {
-            if (e.type != Event::kNoteOnEvent)
+            if (e.type != Event::kNoteOnEvent || e.busIndex != kGuitarOutBus)
                 continue;
             const int step = static_cast<int>(std::lround((e.ppqPosition - startQn) / 0.25));
             notes.emplace_back(step, e.noteOn.pitch);
@@ -487,7 +520,7 @@ void testPowerChordTogglePreservesRiffOnsetsAndPitches() {
         std::vector<std::pair<int, int>> primary;
         std::vector<double> seenTimes;
         for (const auto& e : output.events) {
-            if (e.type != Event::kNoteOnEvent)
+            if (e.type != Event::kNoteOnEvent || e.busIndex != kGuitarOutBus)
                 continue;
             const int step = static_cast<int>(std::lround((e.ppqPosition - startQn) / 0.25));
             bool already = false;
@@ -544,6 +577,8 @@ void testLargeOfflineBlockKeepsNoteEventsBalanced() {
     int noteOns = 0;
     int noteOffs = 0;
     for (const auto& e : output.events) {
+        if (e.busIndex != kGuitarOutBus)
+            continue;
         if (e.type == Event::kNoteOnEvent) {
             ++balance[static_cast<size_t>(e.noteOn.pitch)];
             ++noteOns;
@@ -603,12 +638,14 @@ void testGeneratedNoteLengthsAffectMidiOutput() {
                 "note-length scheduling process must succeed");
 
         for (const auto& on : output.events) {
-            if (on.type != Event::kNoteOnEvent)
+            if (on.type != Event::kNoteOnEvent || on.busIndex != kGuitarOutBus)
                 continue;
 
             double bestOff = -1.0;
             for (const auto& off : output.events) {
-                if (off.type != Event::kNoteOffEvent || off.noteOff.pitch != on.noteOn.pitch)
+                if (off.type != Event::kNoteOffEvent ||
+                    off.busIndex != kGuitarOutBus ||
+                    off.noteOff.pitch != on.noteOn.pitch)
                     continue;
                 if (off.ppqPosition + 1e-9 < on.ppqPosition)
                     continue;
@@ -867,6 +904,7 @@ void testTransportJumpFlushesHeldNotes() {
 } // namespace
 
 int main() {
+    testGuitarAndBassUseSeparateOutputBuses();
     testDedicatedInstrumentOutputBuses();
     testNewRiffChangesRhythmMask();
     testNewRiffToggleZeroValueStillCommands();
