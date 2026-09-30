@@ -141,8 +141,8 @@ MidiatorProcessor::MidiatorProcessor() {
                               .needTimeSignature()
                               .needTransportState();
 
+    // generateNew() already regenerates Bass -> Drums -> Pad -> Synth.
     generateNew();
-    regenerateBass();
 }
 
 tresult PLUGIN_API MidiatorProcessor::initialize(FUnknown* context) {
@@ -740,9 +740,15 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     // atomics; phrase state is mutated here on the processing thread.
     const uint32_t newCount = pendingNewRiffCommands_.exchange(0, std::memory_order_acq_rel);
     const uint32_t variationCount = pendingVariationCommands_.exchange(0, std::memory_order_acq_rel);
-    for (uint32_t i = 0; i < std::min<uint32_t>(newCount, 32u); ++i)
+
+    // Coalesce same-block GUI bursts. Intermediate compositions cannot be
+    // observed by the host before this process call returns, so calculating
+    // many complete five-role arrangements in one audio block only wastes
+    // realtime budget. Separate clicks delivered in separate blocks remain
+    // separate commands.
+    if (newCount > 0)
         generateNew();
-    for (uint32_t i = 0; i < std::min<uint32_t>(variationCount, 32u); ++i)
+    if (variationCount > 0)
         generateVariation();
 
     if (!data.outputEvents)

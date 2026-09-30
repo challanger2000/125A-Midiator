@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -115,6 +116,25 @@ struct ParameterChanges final : FObject, IParameterChanges {
     END_DEFINE_INTERFACES(FObject)
     REFCOUNT_METHODS(FObject)
 };
+
+struct TestMessage final : FObject, IMessage {
+    explicit TestMessage(const char* messageId) : id(messageId ? messageId : "") {}
+
+    FIDString PLUGIN_API getMessageID() SMTG_OVERRIDE { return id.c_str(); }
+    void PLUGIN_API setMessageID(FIDString messageId) SMTG_OVERRIDE {
+        id = messageId ? messageId : "";
+    }
+    IAttributeList* PLUGIN_API getAttributes() SMTG_OVERRIDE { return nullptr; }
+
+    std::string id;
+
+    OBJ_METHODS(TestMessage, FObject)
+    DEFINE_INTERFACES
+        DEF_INTERFACE(IMessage)
+    END_DEFINE_INTERFACES(FObject)
+    REFCOUNT_METHODS(FObject)
+};
+
 
 ProcessContext makeContext(double projectTimeQn, bool playing) {
     ProcessContext context {};
@@ -1005,6 +1025,75 @@ void testTransportJumpFlushesHeldNotes() {
             "timeline jump must flush notes that belong to the previous position");
 }
 
+
+
+std::vector<std::pair<int,int>> captureGuitarPhrase(MidiatorProcessor& processor,
+                                                    double startQn) {
+    auto context = makeContext(startQn, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 192000);
+    require(processor.process(data) == kResultOk,
+            "burst-coalescing phrase capture must succeed");
+
+    std::vector<std::pair<int,int>> notes;
+    for (const auto& e : output.events) {
+        if (e.type != Event::kNoteOnEvent || e.busIndex != kGuitarOutBus)
+            continue;
+        const int step = static_cast<int>(
+            std::lround((e.ppqPosition - startQn) / 0.25));
+        notes.emplace_back(step, e.noteOn.pitch);
+    }
+    return notes;
+}
+
+void consumeStoppedBlock(MidiatorProcessor& processor, double qn) {
+    auto context = makeContext(qn, false);
+    EventList output;
+    auto data = makeProcessData(context, output, 64);
+    require(processor.process(data) == kResultOk,
+            "burst-coalescing stopped block must succeed");
+}
+
+void testGuiMessageBurstsAreCoalescedPerBlock() {
+    MidiatorProcessor singleNew;
+    MidiatorProcessor burstNew;
+    require(singleNew.setProcessing(true) == kResultOk &&
+            burstNew.setProcessing(true) == kResultOk,
+            "NEW RIFF burst fixtures must start");
+
+    TestMessage newMessage("125A.Midiator.NewRiff");
+    require(singleNew.notify(&newMessage) == kResultOk,
+            "single NEW RIFF message must be accepted");
+    for (int i = 0; i < 10; ++i)
+        require(burstNew.notify(&newMessage) == kResultOk,
+                "burst NEW RIFF message must be accepted");
+
+    consumeStoppedBlock(singleNew, 0.0);
+    consumeStoppedBlock(burstNew, 0.0);
+    require(captureGuitarPhrase(singleNew, 0.0) ==
+            captureGuitarPhrase(burstNew, 0.0),
+            "same-block NEW RIFF message bursts must coalesce to one composition");
+
+    MidiatorProcessor singleVariation;
+    MidiatorProcessor burstVariation;
+    require(singleVariation.setProcessing(true) == kResultOk &&
+            burstVariation.setProcessing(true) == kResultOk,
+            "VARIATION burst fixtures must start");
+
+    TestMessage variationMessage("125A.Midiator.Variation");
+    require(singleVariation.notify(&variationMessage) == kResultOk,
+            "single VARIATION message must be accepted");
+    for (int i = 0; i < 10; ++i)
+        require(burstVariation.notify(&variationMessage) == kResultOk,
+                "burst VARIATION message must be accepted");
+
+    consumeStoppedBlock(singleVariation, 0.0);
+    consumeStoppedBlock(burstVariation, 0.0);
+    require(captureGuitarPhrase(singleVariation, 0.0) ==
+            captureGuitarPhrase(burstVariation, 0.0),
+            "same-block VARIATION message bursts must coalesce to one composition");
+}
+
 } // namespace
 
 int main() {
@@ -1027,6 +1116,7 @@ int main() {
     testNewRiffFlushesHeldNotes();
     testVariationPressReleaseFlushesHeldNotes();
     testTransportJumpFlushesHeldNotes();
+    testGuiMessageBurstsAreCoalescedPerBlock();
 
     std::cout << "Midiator live processor tests: PASS\n";
     return 0;
