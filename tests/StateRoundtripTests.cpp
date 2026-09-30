@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 using namespace Steinberg;
@@ -372,6 +373,34 @@ int main() {
         MidiatorProcessor target;
         require(target.setState(&damaged) != kResultOk, message);
     };
+
+    // Current V5 header values are exact too. Invalid enums/ranges,
+    // non-boolean flags and non-finite controls must be rejected.
+    expectRejectedPatch(8, 99,
+                        "V5 invalid Root must be rejected");
+    expectRejectedPatch(12, 99,
+                        "V5 invalid Scale must be rejected");
+    expectRejectedPatch(16, 3,
+                        "V5 invalid Bars must be rejected");
+    expectRejectedPatch(48, 99,
+                        "V5 invalid Manual Root must be rejected");
+    expectRejectedPatch(52, 2,
+                        "V5 invalid Root Source must be rejected");
+    expectRejectedPatch(56, 99,
+                        "V5 invalid Style must be rejected");
+    expectRejectedPatch(60, 2,
+                        "V5 invalid Power Chords Enabled flag must be rejected");
+
+    {
+        MemoryStream damaged;
+        damaged.bytes() = first.bytes();
+        const float nanValue = std::numeric_limits<float>::quiet_NaN();
+        patchFixtureValue(damaged, 20, nanValue);
+        damaged.rewind();
+        MidiatorProcessor target;
+        require(target.setState(&damaged) != kResultOk,
+                "V5 NaN Density must be rejected");
+    }
 
     // Current V5 states are exact payloads. Structural corruption must be
     // rejected instead of silently clamped into a different arrangement.

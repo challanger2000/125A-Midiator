@@ -239,12 +239,33 @@ bool readStateHeader(IBStream* state,
         return false;
     }
 
+    const bool strictCurrent = version >= 5u;
+    const bool validBars =
+        bars == 1 || bars == 2 || bars == 4 || bars == 8;
+    const bool validScale =
+        scale >= 0 && scale < static_cast<int32>(midiator::ScaleId::Count);
+    const bool validUnitFloats =
+        std::isfinite(settings.density) && settings.density >= 0.0f && settings.density <= 1.0f &&
+        std::isfinite(settings.complexity) && settings.complexity >= 0.0f && settings.complexity <= 1.0f &&
+        std::isfinite(settings.repetition) && settings.repetition >= 0.0f && settings.repetition <= 1.0f &&
+        std::isfinite(settings.powerChordChance) && settings.powerChordChance >= 0.0f && settings.powerChordChance <= 1.0f &&
+        std::isfinite(settings.palmMuteChance) && settings.palmMuteChance >= 0.0f && settings.palmMuteChance <= 1.0f &&
+        std::isfinite(variationAmount) && variationAmount >= 0.0f && variationAmount <= 1.0f;
+
+    if (strictCurrent &&
+        (root < 0 || root > 11 || !validScale || !validBars || !validUnitFloats))
+        return false;
+
     settings.rootPitchClass = std::clamp<int32>(root, 0, 11);
 
     if (version >= 2u) {
         int32 storedManualRoot = settings.rootPitchClass;
         int32 storedRootSource = 1;
         if (!readValue(state, storedManualRoot) || !readValue(state, storedRootSource))
+            return false;
+        if (strictCurrent &&
+            (storedManualRoot < 0 || storedManualRoot > 11 ||
+             (storedRootSource != 0 && storedRootSource != 1)))
             return false;
         manualRootPitchClass = std::clamp<int32>(storedManualRoot, 0, 11);
         midiRootSource = storedRootSource != 0;
@@ -253,8 +274,12 @@ bool readStateHeader(IBStream* state,
             int32 storedStyle = 0;
             if (!readValue(state, storedStyle))
                 return false;
+            const int32 maxStyle =
+                static_cast<int32>(midiator::StyleId::Count) - 1;
+            if (strictCurrent && (storedStyle < 0 || storedStyle > maxStyle))
+                return false;
             settings.style = static_cast<midiator::StyleId>(
-                std::clamp<int32>(storedStyle, 0, static_cast<int32>(midiator::StyleId::Count) - 1));
+                std::clamp<int32>(storedStyle, 0, maxStyle));
         } else {
             settings.style = midiator::StyleId::NDHIndustrial;
         }
@@ -262,6 +287,9 @@ bool readStateHeader(IBStream* state,
         if (version >= 4u) {
             int32 storedPowerChordsEnabled = 1;
             if (!readValue(state, storedPowerChordsEnabled))
+                return false;
+            if (strictCurrent &&
+                (storedPowerChordsEnabled != 0 && storedPowerChordsEnabled != 1))
                 return false;
             powerChordsEnabled = storedPowerChordsEnabled != 0;
             settings.powerChordsEnabled = powerChordsEnabled;
