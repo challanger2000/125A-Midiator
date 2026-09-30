@@ -84,6 +84,10 @@ void testFollowControlsKickLock() {
     long long lowKick = 0, highKick = 0;
     long long lowLocked = 0, highLocked = 0;
 
+    auto contextHit = [](const Phrase& p, int step) {
+        return step >= 0 && step < p.usedSteps() && p.steps[step].noteCount > 0;
+    };
+
     auto measure = [&](const DrumPhrase& d, long long& kicks, long long& locked) {
         for (int i = 0; i < d.usedSteps(); ++i) {
             bool kick = false;
@@ -91,7 +95,7 @@ void testFollowControlsKickLock() {
                 kick |= d.steps[i].hits[h].voice == DrumVoice::Kick;
             if (!kick) continue;
             ++kicks;
-            if (phraseHit(guitar, i) || phraseHit(bass, i))
+            if (contextHit(guitar, i) || contextHit(bass, i))
                 ++locked;
         }
     };
