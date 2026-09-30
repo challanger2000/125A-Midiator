@@ -19,7 +19,7 @@ namespace {
 constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 8192;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 5u;
+constexpr uint32_t kStateVersion = 6u;
 constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
 constexpr const char* kMsgVariation = "125A.Midiator.Variation";
 
@@ -222,7 +222,8 @@ bool readStateHeader(IBStream* state,
                      uint32_t& seed,
                      int& manualRootPitchClass,
                      bool& midiRootSource,
-                     bool& powerChordsEnabled) {
+                     bool& powerChordsEnabled,
+                     midiator::DrumMapId& drumMapId) {
     uint32_t magic = 0;
     uint32_t version = 0;
     int32 root = 0;
@@ -297,6 +298,21 @@ bool readStateHeader(IBStream* state,
             powerChordsEnabled = true;
             settings.powerChordsEnabled = true;
         }
+
+        if (version >= 6u) {
+            int32 storedDrumMap = static_cast<int32>(midiator::DrumMapId::GeneralMidi);
+            if (!readValue(state, storedDrumMap))
+                return false;
+            const bool verifiedMap =
+                storedDrumMap == static_cast<int32>(midiator::DrumMapId::GeneralMidi) ||
+                storedDrumMap == static_cast<int32>(midiator::DrumMapId::EZdrummer3) ||
+                storedDrumMap == static_cast<int32>(midiator::DrumMapId::PerfectDrums);
+            if (!verifiedMap)
+                return false;
+            drumMapId = static_cast<midiator::DrumMapId>(storedDrumMap);
+        } else {
+            drumMapId = midiator::DrumMapId::GeneralMidi;
+        }
     } else {
         // V1 had only one fixed root and therefore maps naturally to Manual.
         manualRootPitchClass = settings.rootPitchClass;
@@ -304,6 +320,7 @@ bool readStateHeader(IBStream* state,
         settings.style = midiator::StyleId::NDHIndustrial;
         powerChordsEnabled = true;
         settings.powerChordsEnabled = true;
+        drumMapId = midiator::DrumMapId::GeneralMidi;
     }
 
     settings.scale = static_cast<midiator::ScaleId>(
@@ -425,8 +442,10 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
     const int32 rootSource = midiRootSource_ ? 1 : 0;
     const int32 style = static_cast<int32>(settings_.style);
     const int32 powerChordsEnabled = settings_.powerChordsEnabled ? 1 : 0;
+    const int32 drumMap = static_cast<int32>(drumMapId_);
     if (!writeValue(state, manualRoot) || !writeValue(state, rootSource) ||
-        !writeValue(state, style) || !writeValue(state, powerChordsEnabled))
+        !writeValue(state, style) || !writeValue(state, powerChordsEnabled) ||
+        !writeValue(state, drumMap))
         return kResultFalse;
 
     if (!writePhraseState(state, phrase_) ||
@@ -450,11 +469,12 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     int restoredManualRoot = manualRootPitchClass_;
     bool restoredMidiRootSource = midiRootSource_;
     bool restoredPowerChordsEnabled = settings_.powerChordsEnabled;
+    midiator::DrumMapId restoredDrumMapId = drumMapId_;
 
     uint32_t restoredStateVersion = 0;
     if (!readStateHeader(state, restoredStateVersion, restored, restoredVariation, restoredSeed,
                          restoredManualRoot, restoredMidiRootSource,
-                         restoredPowerChordsEnabled))
+                         restoredPowerChordsEnabled, restoredDrumMapId))
         return kResultFalse;
 
     midiator::Phrase restoredPhrase{};
@@ -482,6 +502,8 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     manualRootPitchClass_ = restoredManualRoot;
     midiRootSource_ = restoredMidiRootSource;
     settings_.powerChordsEnabled = restoredPowerChordsEnabled;
+    drumMapId_ = restoredDrumMapId;
+    drumMap_ = midiator::DrumMidiMap::preset(drumMapId_);
     phrase_ = restoredPhrase;
 
     if (restoredStateVersion >= 5u) {
@@ -784,6 +806,8 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         midiator::StyleId style = midiator::StyleId::NDHIndustrial;
         bool hasRootSource = false;
         bool midiRootSource = true;
+        bool hasDrumMap = false;
+        midiator::DrumMapId drumMap = midiator::DrumMapId::GeneralMidi;
         bool newRiff = false;
         bool variation = false;
     } pending;
@@ -867,6 +891,15 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
                 pending.hasRootSource = true;
                 pending.midiRootSource = v > 0.5;
                 break;
+            case kDrumMapId: {
+                pending.hasDrumMap = true;
+                const int index = normalizedIndex(v, 3);
+                pending.drumMap = index == 0
+                    ? midiator::DrumMapId::GeneralMidi
+                    : (index == 1 ? midiator::DrumMapId::EZdrummer3
+                                  : midiator::DrumMapId::PerfectDrums);
+                break;
+            }
             default:
                 break;
         }
@@ -889,6 +922,11 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         settings_.palmMuteChance = pending.palmMute;
     if (pending.hasVariationAmount)
         variationAmount_ = pending.variationAmount;
+    if (pending.hasDrumMap && pending.drumMap != drumMapId_) {
+        drumMapId_ = pending.drumMap;
+        drumMap_ = midiator::DrumMidiMap::preset(drumMapId_);
+        phraseChangedNeedsFlush_ = true;
+    }
 
     const auto oldScale = settings_.scale;
     const auto oldStyle = settings_.style;
@@ -1398,6 +1436,14 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     addPercent(STR16("Density"), kDensityId, 56.0);
     addPercent(STR16("Complexity"), kComplexityId, 42.0);
     addPercent(STR16("Repetition"), kRepetitionId, 72.0);
+    auto* drumMap = new StringListParameter(STR16("Drum Map"), kDrumMapId);
+    drumMap->appendString(STR16("General MIDI"));
+    drumMap->appendString(STR16("EZdrummer 3"));
+    drumMap->appendString(STR16("Perfect Drums"));
+    drumMap->getInfo().defaultNormalizedValue = 0.0;
+    drumMap->setNormalized(0.0);
+    parameters.addParameter(drumMap);
+
     auto* powerChordsEnabled = new StringListParameter(STR16("Power Chords"), kPowerChordsEnabledId);
     powerChordsEnabled->appendString(STR16("OFF"));
     powerChordsEnabled->appendString(STR16("ON"));
@@ -1461,9 +1507,10 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     int manualRoot = restored.rootPitchClass;
     bool midiRootSource = true;
     bool powerChordsEnabled = true;
+    midiator::DrumMapId drumMapId = midiator::DrumMapId::GeneralMidi;
     uint32_t restoredStateVersion = 0;
     if (!readStateHeader(state, restoredStateVersion, restored, variationAmount, seed,
-                         manualRoot, midiRootSource, powerChordsEnabled))
+                         manualRoot, midiRootSource, powerChordsEnabled, drumMapId))
         return kResultFalse;
 
     auto barsIndex = [](int bars) -> double {
@@ -1479,6 +1526,10 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     setParamNormalized(kRootId, static_cast<double>(manualRoot) / 11.0);
     setParamNormalized(kRootSourceId, midiRootSource ? 1.0 : 0.0);
     setParamNormalized(kPowerChordsEnabledId, powerChordsEnabled ? 1.0 : 0.0);
+    const double drumMapNormalized =
+        drumMapId == midiator::DrumMapId::GeneralMidi ? 0.0 :
+        (drumMapId == midiator::DrumMapId::EZdrummer3 ? 0.5 : 1.0);
+    setParamNormalized(kDrumMapId, drumMapNormalized);
     setParamNormalized(kStyleId, static_cast<double>(static_cast<int>(restored.style)) /
                                  static_cast<double>(static_cast<int>(midiator::StyleId::Count) - 1));
     setParamNormalized(kScaleId, static_cast<double>(static_cast<int>(restored.scale)) /
