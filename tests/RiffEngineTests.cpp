@@ -505,6 +505,117 @@ void testFourBarRoleDevelopment() {
     require(phraseCount == 256, "four-bar role test must execute all samples");
 }
 
+
+void testRepetitionControlBehavior() {
+    midiator::GeneratorSettings low{};
+    low.bars = 4;
+    low.repetition = 0.0f;
+
+    midiator::GeneratorSettings high = low;
+    high.repetition = 1.0f;
+
+    long long lowRoot = 0, highRoot = 0;
+    long long lowNotes = 0, highNotes = 0;
+    long long lowDistinctTotal = 0, highDistinctTotal = 0;
+    double lowJaccard = 0.0, highJaccard = 0.0;
+    int lowPairs = 0, highPairs = 0;
+
+    auto accumulate = [](const midiator::Phrase& p, int root,
+                         long long& roots, long long& notes,
+                         long long& distinctTotal, double& jaccard, int& pairs) {
+        bool pcs[12] = {};
+        for (int i = 0; i < p.usedSteps(); ++i) {
+            const auto& st = p.steps[i];
+            if (st.noteCount <= 0) continue;
+            ++notes;
+            const int pc = (st.notes[0].pitch % 12 + 12) % 12;
+            pcs[pc] = true;
+            if (pc == root) ++roots;
+        }
+        int distinct = 0;
+        for (bool used : pcs) distinct += used ? 1 : 0;
+        distinctTotal += distinct;
+
+        for (int bar = 1; bar < p.bars; ++bar) {
+            int intersection = 0, unionCount = 0;
+            for (int i = 0; i < midiator::kStepsPerBar; ++i) {
+                const bool a = p.steps[(bar - 1) * midiator::kStepsPerBar + i].noteCount > 0;
+                const bool b = p.steps[bar * midiator::kStepsPerBar + i].noteCount > 0;
+                if (a || b) ++unionCount;
+                if (a && b) ++intersection;
+            }
+            jaccard += unionCount > 0 ? static_cast<double>(intersection) / unionCount : 1.0;
+            ++pairs;
+        }
+    };
+
+    for (unsigned seed = 1; seed <= 256; ++seed) {
+        const auto a = midiator::RiffEngine::generate(low, 300000u + seed);
+        const auto b = midiator::RiffEngine::generate(high, 300000u + seed);
+        accumulate(a, low.rootPitchClass, lowRoot, lowNotes, lowDistinctTotal, lowJaccard, lowPairs);
+        accumulate(b, high.rootPitchClass, highRoot, highNotes, highDistinctTotal, highJaccard, highPairs);
+    }
+
+    const double lowRootShare = static_cast<double>(lowRoot) / std::max<long long>(1, lowNotes);
+    const double highRootShare = static_cast<double>(highRoot) / std::max<long long>(1, highNotes);
+    require(highRootShare > lowRootShare + 0.12,
+            "Repetition must materially increase pedal/root-note focus");
+    require(highDistinctTotal < lowDistinctTotal,
+            "Repetition must reduce average pitch-class variety");
+    require((highJaccard / highPairs) > (lowJaccard / lowPairs) + 0.10,
+            "Repetition must materially increase adjacent-bar groove similarity");
+}
+
+void testComplexityControlBehavior() {
+    midiator::GeneratorSettings low{};
+    low.bars = 4;
+    low.complexity = 0.0f;
+
+    midiator::GeneratorSettings high = low;
+    high.complexity = 1.0f;
+
+    long long lowJump = 0, highJump = 0;
+    long long lowJumpCount = 0, highJumpCount = 0;
+    int lowFast = 0, highFast = 0;
+
+    auto measure = [](const midiator::Phrase& p,
+                      long long& jumpSum, long long& jumpCount, int& fastCount) {
+        int previous = -1;
+        int run = 0;
+        bool fast = false;
+        for (int i = 0; i < p.usedSteps(); ++i) {
+            const auto& st = p.steps[i];
+            if (st.noteCount <= 0) {
+                run = 0;
+                continue;
+            }
+            ++run;
+            if (run >= 4) fast = true;
+            const int pitch = st.notes[0].pitch;
+            if (previous >= 0) {
+                jumpSum += std::abs(pitch - previous);
+                ++jumpCount;
+            }
+            previous = pitch;
+        }
+        if (fast) ++fastCount;
+    };
+
+    for (unsigned seed = 1; seed <= 256; ++seed) {
+        measure(midiator::RiffEngine::generate(low, 310000u + seed),
+                lowJump, lowJumpCount, lowFast);
+        measure(midiator::RiffEngine::generate(high, 310000u + seed),
+                highJump, highJumpCount, highFast);
+    }
+
+    const double lowAvgJump = static_cast<double>(lowJump) / std::max<long long>(1, lowJumpCount);
+    const double highAvgJump = static_cast<double>(highJump) / std::max<long long>(1, highJumpCount);
+    require(highAvgJump > lowAvgJump + 0.70,
+            "Complexity must materially increase registral/pitch movement");
+    require(highFast > lowFast,
+            "Complexity must increase fast/busy riff activity");
+}
+
 } // namespace
 
 int main() {
@@ -523,6 +634,8 @@ int main() {
     testFastSixteenthBurstsExist();
     testStyleEnginesHaveDistinctRhythmLanguages();
     testFourBarRoleDevelopment();
+    testRepetitionControlBehavior();
+    testComplexityControlBehavior();
 
     std::cout << "Midiator core tests: PASS\n";
     return 0;

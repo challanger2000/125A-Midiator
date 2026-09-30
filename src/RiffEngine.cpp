@@ -312,6 +312,9 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
     GeneratorSettings s = in;
     s.bars = std::clamp(s.bars, 1, kMaxBars);
     s.density = std::clamp(s.density, 0.0f, 1.0f);
+    // Complexity controls riff movement/busyness (register shifts, characteristic
+    // tones, burst activity and bar development). It intentionally does not mean
+    // "more different pitch classes", which would fight the pedal-riff identity.
     s.complexity = std::clamp(s.complexity, 0.0f, 1.0f);
     s.repetition = std::clamp(s.repetition, 0.0f, 1.0f);
     s.powerChordChance = std::clamp(s.powerChordChance, 0.0f, 1.0f);
