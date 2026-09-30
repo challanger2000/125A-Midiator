@@ -659,7 +659,8 @@ void testSchedulerOverflowIsExplicit() {
     require(processor.setProcessing(true) == kResultOk, "processor must start");
 
     // Force the densest/shortest topology so a very large offline host block
-    // exceeds the fixed realtime-safe staging buffer.
+    // exceeds the fixed realtime-safe staging buffer. Fifty million samples at
+    // 120 BPM span more than 500 one-bar cycles, comfortably beyond 8192 events.
     ParameterChanges setup;
     int32 qi = 0, pi = 0;
     auto* bars = setup.addParameterData(kBarsId, qi);
@@ -680,7 +681,7 @@ void testSchedulerOverflowIsExplicit() {
 
     auto context = makeContext(0.0, true);
     EventList output;
-    auto data = makeProcessData(context, output, 5000000);
+    auto data = makeProcessData(context, output, 50000000);
     data.processMode = kOffline;
 
     const auto result = processor.process(data);
