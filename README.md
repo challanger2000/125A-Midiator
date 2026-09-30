@@ -61,11 +61,11 @@ The processor requests VST3 musical timeline, tempo, time signature and transpor
 
 ## State
 
-State V5 stores the shared musical settings plus the exact generated Guitar, Bass, Drum, Pad and Synth phrases. This freezes project recall even if generation algorithms change later. Legacy V1-V4 states remain supported; their missing companion roles are regenerated once during migration and are then preserved by the next V5 save.
+State V7 stores the shared musical settings, verified Drum Map selection, the eight exposed role-shaping controls and the exact generated Guitar, Bass, Drum, Pad and Synth phrases. This freezes project recall even if generation algorithms change later. Legacy V1-V4 states remain supported by regenerating missing companion roles once during migration; V5 preserves its exact five-role payload, and V6 additionally preserves its verified Drum Map. All migrated states are then saved in V7 format.
 
 ## Automated verification
 
-The development branch checks deterministic generation, scale safety, phrase integrity, role-specific controls, style behavior, Pad voice-leading/context-follow, Synth motif/harmony follow, Drum Humanize invariance, verified drum maps, five dedicated event output buses, per-bus balance/flush, large offline blocks with cycle-chunked scheduling, state roundtrip plus frozen V1-V4 migration fixtures, GUI/editor lifecycle, Steinberg Validator and statistical measurement reports.
+The development branch checks deterministic generation, scale safety, phrase integrity, role-specific controls, style behavior, Pad voice-leading/context-follow, Synth motif/harmony follow, Drum Humanize invariance, verified drum maps, five dedicated event output buses, per-bus balance/flush, large offline blocks with cycle-chunked scheduling, state roundtrip plus frozen V1-V6 migration fixtures, GUI/editor lifecycle, Steinberg Validator and statistical measurement reports.
 
 A frozen deterministic **golden five-role arrangement fingerprint** protects a known NDH / A Phrygian four-bar reference so unintended musical changes fail CI immediately.
 
