@@ -156,6 +156,35 @@ ProcessData makeProcessData(ProcessContext& context,
     return data;
 }
 
+void testDedicatedInstrumentOutputBuses() {
+    MidiatorProcessor processor;
+    require(processor.initialize(nullptr) == kResultOk,
+            "processor initialization must succeed for bus inspection");
+
+    require(processor.getBusCount(kEvent, kOutput) == kEventOutputBusCount,
+            "Midiator must expose one dedicated event output bus per instrument role");
+
+    struct ExpectedBus { int32 index; const char16_t* name; };
+    const ExpectedBus expected[] = {
+        {kGuitarOutBus, STR16("Guitar Out")},
+        {kBassOutBus,   STR16("Bass Out")},
+        {kDrumsOutBus,  STR16("Drums Out")},
+        {kPadOutBus,    STR16("Pad Out")},
+        {kSynthOutBus,  STR16("Synth Out")}
+    };
+
+    for (const auto& item : expected) {
+        BusInfo info{};
+        require(processor.getBusInfo(kEvent, kOutput, item.index, info) == kResultOk,
+                "dedicated output bus must be queryable");
+        require(std::char_traits<char16_t>::compare(info.name, item.name,
+                    std::char_traits<char16_t>::length(item.name)) == 0,
+                "dedicated output bus must keep its role-specific name");
+    }
+
+    processor.terminate();
+}
+
 void testNewRiffChangesRhythmMask() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
@@ -838,6 +867,7 @@ void testTransportJumpFlushesHeldNotes() {
 } // namespace
 
 int main() {
+    testDedicatedInstrumentOutputBuses();
     testNewRiffChangesRhythmMask();
     testNewRiffToggleZeroValueStillCommands();
     testHeavyIndustrialStaysLockedToHostGrid();

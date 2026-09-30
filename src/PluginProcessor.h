@@ -44,6 +44,15 @@ enum : ParamID {
 static const FUID ProcessorUID(0x125A4001, 0x6D494449, 0x41544F52, 0x00000100);
 static const FUID ControllerUID(0x125A4002, 0x6D494449, 0x41544F52, 0x00000100);
 
+enum EventOutputBus : int32 {
+    kGuitarOutBus = 0,
+    kBassOutBus = 1,
+    kDrumsOutBus = 2,
+    kPadOutBus = 3,
+    kSynthOutBus = 4,
+    kEventOutputBusCount = 5
+};
+
 class MidiatorProcessor final : public AudioEffect {
 public:
     MidiatorProcessor();
