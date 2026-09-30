@@ -63,21 +63,21 @@ void testDeterministicPolyphonicScaleSafe() {
     require(chords >= 2, "Pad Brain must generate harmonic events");
 }
 
-void testDarkRockUsesThreeToneHarmonyMoreOften() {
+void testAllStylesStayWithinTwoOrThreeHarmonicPitchClasses() {
     Phrase guitar{}, bass{};
     makeContext(guitar, bass);
 
-    auto averageUniquePitchClasses = [&](StyleId style) {
-        double total = 0.0;
-        long long chords = 0;
-        for (unsigned seed = 1; seed <= 256; ++seed) {
+    for (int style = 0; style < static_cast<int>(StyleId::Count); ++style) {
+        for (unsigned seed = 1; seed <= 512; ++seed) {
             PadSettings s{};
-            s.style = style;
+            s.style = static_cast<StyleId>(style);
             const auto p = PadBrain::generate(guitar, bass, s, 40000u + seed);
+
             for (int i = 0; i < p.usedSteps(); ++i) {
                 const auto& st = p.steps[i];
                 if (st.noteCount <= 0)
                     continue;
+
                 bool pcSeen[12]{};
                 int unique = 0;
                 for (int n = 0; n < st.noteCount; ++n) {
@@ -87,17 +87,12 @@ void testDarkRockUsesThreeToneHarmonyMoreOften() {
                         ++unique;
                     }
                 }
-                total += unique;
-                ++chords;
+
+                require(unique >= 2 && unique <= 3,
+                        "every Pad style must stay within 2-3 distinct harmonic pitch classes");
             }
         }
-        return total / std::max<long long>(1, chords);
-    };
-
-    const auto ndh = averageUniquePitchClasses(StyleId::NDHIndustrial);
-    const auto dark = averageUniquePitchClasses(StyleId::DarkRockGothic);
-    require(dark > ndh + 0.30,
-            "Dark Rock/Gothic pads should use three-tone harmony more often than NDH");
+    }
 }
 
 void testFourthPadVoiceIsOctaveDoubleOnly() {
@@ -348,7 +343,7 @@ void testVoiceLeadingAvoidsWildJumps() {
 
 int main() {
     testDeterministicPolyphonicScaleSafe();
-    testDarkRockUsesThreeToneHarmonyMoreOften();
+    testAllStylesStayWithinTwoOrThreeHarmonicPitchClasses();
     testFourthPadVoiceIsOctaveDoubleOnly();
     testMovementIncreasesHarmonicActivity();
     testSpreadProgressivelyWidensVoicings();

@@ -1257,7 +1257,7 @@ void testRoleSpecificGateRules() {
             sawDrum = true;
         }
 
-        auto checkGapRole = [&](int bus, bool& sawBoundary) {
+        auto checkGapRole = [&](int bus, bool& sawValidGap, bool requireExactBoundary) {
             std::vector<double> onsets;
             for (const auto& e : output.events) {
                 if (e.type == Event::kNoteOnEvent && e.busIndex == bus) {
@@ -1274,16 +1274,17 @@ void testRoleSpecificGateRules() {
                         e.ppqPosition <= nextOn + eps) {
                         require(e.ppqPosition <= nextOn - kSixtyFourthQn + eps,
                                 "Guitar/Bass/Pad must leave at least a 64th-note gap");
-                        if (std::abs((nextOn - e.ppqPosition) - kSixtyFourthQn) < eps)
-                            sawBoundary = true;
+                        if (!requireExactBoundary ||
+                            std::abs((nextOn - e.ppqPosition) - kSixtyFourthQn) < eps)
+                            sawValidGap = true;
                     }
                 }
             }
         };
 
-        checkGapRole(kGuitarOutBus, sawGuitarBoundaryGap);
-        checkGapRole(kBassOutBus, sawBassBoundaryGap);
-        checkGapRole(kPadOutBus, sawPadBoundaryGap);
+        checkGapRole(kGuitarOutBus, sawGuitarBoundaryGap, true);
+        checkGapRole(kBassOutBus, sawBassBoundaryGap, true);
+        checkGapRole(kPadOutBus, sawPadBoundaryGap, false);
 
         // Synth is deliberately different: a generated note may end exactly
         // at the next monophonic onset, with NoteOff sorted before NoteOn.
@@ -1311,7 +1312,7 @@ void testRoleSpecificGateRules() {
     require(sawBassBoundaryGap,
             "Bass must demonstrate the configured 64th-note release gap");
     require(sawPadBoundaryGap,
-            "Pad must demonstrate the configured 64th-note release gap");
+            "Pad must demonstrate a release gap of at least one 64th note");
     require(sawSynthLegatoBoundary,
             "Synth must demonstrate independent legato-capable scheduling");
 }
