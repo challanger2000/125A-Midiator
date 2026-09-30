@@ -10,6 +10,7 @@ add_test(NAME MidiatorCoreTests COMMAND MidiatorCoreTests)
 add_executable(MidiatorMeasure
     RiffEngineMeasurement.cpp
     ../src/GuitarBrain.cpp
+    ../src/BassBrain.cpp
 )
 
 target_include_directories(MidiatorMeasure PRIVATE ../src)

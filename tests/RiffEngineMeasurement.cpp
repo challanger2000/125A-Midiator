@@ -1,4 +1,5 @@
 #include "RiffEngine.h"
+#include "BassBrain.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -202,6 +203,74 @@ static void printSweepLine(const char* label, double value, const SweepMetrics& 
               << " barJaccard=" << m.adjacentBarJaccard * 100.0 << "%"
               << " fast4=" << m.fast4Share * 100.0 << "%"
               << " longRest=" << m.longRestShare * 100.0 << "%"
+              << "\n";
+}
+
+
+struct BassSweepMetrics {
+    double hits = 0.0;
+    double rootShare = 0.0;
+    double guitarCoincidence = 0.0;
+    double longNoteShare = 0.0;
+    double octaveShare = 0.0;
+    double avgAbsJump = 0.0;
+    double avgPitch = 0.0;
+};
+
+static BassSweepMetrics measureBass(const Phrase& guitar,
+                                    const BassSettings& settings,
+                                    unsigned seedBase,
+                                    int samples = 256) {
+    BassSweepMetrics m{};
+    long long hits = 0, roots = 0, coincident = 0, longNotes = 0;
+    long long octaves = 0, jumps = 0, jumpSum = 0, pitchSum = 0;
+
+    for (int sidx = 0; sidx < samples; ++sidx) {
+        const auto bass = BassBrain::generate(
+            guitar, settings, seedBase + static_cast<unsigned>(sidx));
+        int previous = -1;
+
+        for (int i = 0; i < bass.usedSteps(); ++i) {
+            const auto& st = bass.steps[i];
+            if (st.noteCount <= 0) continue;
+
+            ++hits;
+            const auto& n = st.notes[0];
+            const int pc = (n.pitch % 12 + 12) % 12;
+            if (pc == settings.rootPitchClass) ++roots;
+            if (guitar.steps[i].noteCount > 0) ++coincident;
+            if (n.lengthSteps > 1) ++longNotes;
+            if (n.pitch >= 40) ++octaves;
+            pitchSum += n.pitch;
+
+            if (previous >= 0) {
+                jumpSum += std::abs(n.pitch - previous);
+                ++jumps;
+            }
+            previous = n.pitch;
+        }
+    }
+
+    const double h = std::max(1.0, static_cast<double>(hits));
+    m.hits = hits / static_cast<double>(samples);
+    m.rootShare = roots / h;
+    m.guitarCoincidence = coincident / h;
+    m.longNoteShare = longNotes / h;
+    m.octaveShare = octaves / h;
+    m.avgAbsJump = jumps > 0 ? static_cast<double>(jumpSum) / jumps : 0.0;
+    m.avgPitch = pitchSum / h;
+    return m;
+}
+
+static void printBassSweepLine(const char* label, double value, const BassSweepMetrics& m) {
+    std::cout << label << " " << std::setw(5) << value * 100.0 << "%:"
+              << " hits=" << m.hits
+              << " root=" << m.rootShare * 100.0 << "%"
+              << " guitarLock=" << m.guitarCoincidence * 100.0 << "%"
+              << " longNotes=" << m.longNoteShare * 100.0 << "%"
+              << " upperRegister=" << m.octaveShare * 100.0 << "%"
+              << " avgJump=" << m.avgAbsJump
+              << " avgPitch=" << m.avgPitch
               << "\n";
 }
 
@@ -453,6 +522,50 @@ int main() {
         x.style = static_cast<StyleId>(style);
         const auto m = measureSettings(x, 550000u + static_cast<unsigned>(style * 10000), 512);
         printSweepLine(styleNames[style], 0.0, m);
+    }
+
+
+    std::cout << "\nBass Brain control sweep diagnostics (256 phrases per point)\n";
+    std::cout << "---------------------------------------------------------\n";
+
+    GeneratorSettings bassGuitarSettings = s;
+    bassGuitarSettings.bars = 4;
+    bassGuitarSettings.style = StyleId::NDHIndustrial;
+    const auto bassGuitarFixture = RiffEngine::generate(bassGuitarSettings, 0xB455F17u);
+
+    for (float v : sweepValues) {
+        BassSettings b{};
+        b.follow = v;
+        printBassSweepLine("Follow    ", v, measureBass(
+            bassGuitarFixture, b, 600000u + static_cast<unsigned>(v * 1000.0f)));
+    }
+    std::cout << "\n";
+    for (float v : sweepValues) {
+        BassSettings b{};
+        b.movement = v;
+        printBassSweepLine("Movement  ", v, measureBass(
+            bassGuitarFixture, b, 610000u + static_cast<unsigned>(v * 1000.0f)));
+    }
+    std::cout << "\n";
+    for (float v : sweepValues) {
+        BassSettings b{};
+        b.passing = v;
+        printBassSweepLine("Passing   ", v, measureBass(
+            bassGuitarFixture, b, 620000u + static_cast<unsigned>(v * 1000.0f)));
+    }
+    std::cout << "\n";
+    for (float v : sweepValues) {
+        BassSettings b{};
+        b.sustain = v;
+        printBassSweepLine("Sustain   ", v, measureBass(
+            bassGuitarFixture, b, 630000u + static_cast<unsigned>(v * 1000.0f)));
+    }
+    std::cout << "\n";
+    for (float v : sweepValues) {
+        BassSettings b{};
+        b.octaveChance = v;
+        printBassSweepLine("Octave    ", v, measureBass(
+            bassGuitarFixture, b, 640000u + static_cast<unsigned>(v * 1000.0f)));
     }
 
     GeneratorSettings exampleSettings = s;
