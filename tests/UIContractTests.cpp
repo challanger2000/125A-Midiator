@@ -33,8 +33,8 @@ int main() {
             "centered MIDIATOR title must exist");
     require(xml.find("title=\"125A  MIDIATOR\"") == std::string::npos,
             "125A must not be duplicated in the Midiator title");
-    require(xml.find("minSize=\"645, 420\"") != std::string::npos &&
-            xml.find("maxSize=\"1720, 1120\"") != std::string::npos,
+    require(xml.find("minSize=\"645, 548\"") != std::string::npos &&
+            xml.find("maxSize=\"1720, 1460\"") != std::string::npos,
             "resizable editor contract must expose non-identical min/max sizes");
 
     for (int tag = 100; tag <= 122; ++tag) {
