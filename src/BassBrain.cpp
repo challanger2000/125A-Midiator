@@ -120,7 +120,17 @@ int chooseBassPitch(Rng& rng,
     if (rng.chance(octaveChance) && target <= 48)
         target += 12;
 
-    return std::clamp(target, 24, 60);
+    // Keep the final register correction pitch-class preserving. A hard clamp
+    // to 24/60 can turn an otherwise scale-safe note chromatic at the edge.
+    while (target > 60)
+        target -= 12;
+    while (target < 24)
+        target += 12;
+
+    if (!RiffEngine::isScaleTone(target, s.rootPitchClass, s.scale))
+        target = nearestScalePitch(target, s.rootPitchClass, s.scale);
+
+    return target;
 }
 
 void sanitizeMonophonic(Phrase& p) {
