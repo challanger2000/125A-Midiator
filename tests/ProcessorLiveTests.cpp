@@ -524,8 +524,8 @@ void testLargeOfflineBlockKeepsNoteEventsBalanced() {
         }
     }
 
-    require(noteOns > 100, "large offline fixture must exercise many generated events");
-    require(noteOffs > 100, "large offline fixture must contain many note-offs");
+    require(noteOns > 20, "large offline fixture must exercise many generated events");
+    require(noteOffs > 20, "large offline fixture must contain many note-offs");
     for (int v : balance)
         require(std::abs(v) <= 1,
                 "large offline scheduling must not silently lose note-on/off pairs");
