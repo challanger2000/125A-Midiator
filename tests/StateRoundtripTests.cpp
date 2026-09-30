@@ -131,7 +131,8 @@ MemoryStream makeLegacyStateFixture(uint32_t version,
                                     int32 root,
                                     int32 manualRoot,
                                     bool midiRootSource,
-                                    int32 style) {
+                                    int32 style,
+                                    bool powerChordsEnabled = true) {
     MemoryStream stream;
     constexpr uint32_t magic = 0x4D445231u; // MDR1
 
@@ -165,9 +166,12 @@ MemoryStream makeLegacyStateFixture(uint32_t version,
     }
     if (version >= 3u)
         appendFixtureValue(stream, style);
+    if (version >= 4u) {
+        const int32 enabled = powerChordsEnabled ? 1 : 0;
+        appendFixtureValue(stream, enabled);
+    }
 
-    // Legacy versions predate the V4 power-chord enabled flag.
-    // The phrase payload format itself is already the fixed 128-step layout.
+    // V1-V4 stored only the Guitar phrase in the fixed 128-step layout.
     const int32 phraseBars = 2;
     appendFixtureValue(stream, phraseBars);
     for (int i = 0; i < midiator::kMaxSteps; ++i) {
@@ -194,9 +198,10 @@ void verifyLegacyControllerMigration(uint32_t version,
                                      int32 style,
                                      double expectedRootNormalized,
                                      double expectedSourceNormalized,
-                                     double expectedStyleNormalized) {
+                                     double expectedStyleNormalized,
+                                     bool expectedPowerChordsEnabled = true) {
     auto fixture = makeLegacyStateFixture(
-        version, root, manualRoot, midiRootSource, style);
+        version, root, manualRoot, midiRootSource, style, expectedPowerChordsEnabled);
 
     MidiatorController controller;
     require(controller.initialize(nullptr) == kResultOk,
@@ -210,8 +215,9 @@ void verifyLegacyControllerMigration(uint32_t version,
             "legacy root-source migration must preserve/default correctly");
     require(std::abs(controller.getParamNormalized(kStyleId) - expectedStyleNormalized) < 1e-9,
             "legacy style migration must preserve/default correctly");
-    require(controller.getParamNormalized(kPowerChordsEnabledId) > 0.999,
-            "legacy states must default Power Chords Enabled to ON");
+    const double expectedPower = expectedPowerChordsEnabled ? 1.0 : 0.0;
+    require(std::abs(controller.getParamNormalized(kPowerChordsEnabledId) - expectedPower) < 1e-9,
+            "legacy Power Chords Enabled migration must preserve/default correctly");
 
     fixture.rewind();
     MidiatorProcessor processor;
@@ -333,6 +339,11 @@ int main() {
     verifyLegacyControllerMigration(
         3u, 9, 5, false, static_cast<int32>(midiator::StyleId::HeavyIndustrial),
         5.0 / 11.0, 0.0, 1.0);
+
+    // V4: exact pre-V5 layout includes Power Chords Enabled but only Guitar payload.
+    verifyLegacyControllerMigration(
+        4u, 9, 8, true, static_cast<int32>(midiator::StyleId::DarkRockGothic),
+        8.0 / 11.0, 1.0, 0.5, false);
 
     std::cout << "Midiator processor-state roundtrip test: PASS\n";
     return 0;

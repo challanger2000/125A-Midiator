@@ -19,7 +19,7 @@ namespace {
 constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 8192;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 4u;
+constexpr uint32_t kStateVersion = 5u;
 constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
 constexpr const char* kMsgVariation = "125A.Midiator.Variation";
 
@@ -41,7 +41,151 @@ bool readValue(IBStream* stream, T& value) {
            read == static_cast<int32>(sizeof(T));
 }
 
+
+bool writePhraseState(IBStream* state, const midiator::Phrase& phrase) {
+    const int32 phraseBars = phrase.bars;
+    if (!writeValue(state, phraseBars))
+        return false;
+
+    for (int i = 0; i < midiator::kMaxSteps; ++i) {
+        const auto& step = phrase.steps[i];
+        const int32 noteCount = std::clamp(step.noteCount, 0, midiator::kMaxNotesPerStep);
+        if (!writeValue(state, noteCount))
+            return false;
+
+        for (int n = 0; n < midiator::kMaxNotesPerStep; ++n) {
+            const int32 pitch = step.notes[n].pitch;
+            const int32 velocity = step.notes[n].velocity;
+            const int32 lengthSteps = step.notes[n].lengthSteps;
+            if (!writeValue(state, pitch) || !writeValue(state, velocity) ||
+                !writeValue(state, lengthSteps))
+                return false;
+        }
+    }
+    return true;
+}
+
+bool readPhraseState(IBStream* state, midiator::Phrase& phrase, int fallbackBars) {
+    int32 phraseBars = 0;
+    if (!readValue(state, phraseBars))
+        return false;
+    phrase.bars = (phraseBars == 1 || phraseBars == 2 || phraseBars == 4 || phraseBars == 8)
+        ? phraseBars : fallbackBars;
+
+    for (int i = 0; i < midiator::kMaxSteps; ++i) {
+        int32 noteCount = 0;
+        if (!readValue(state, noteCount))
+            return false;
+        phrase.steps[i].noteCount =
+            std::clamp<int32>(noteCount, 0, midiator::kMaxNotesPerStep);
+
+        for (int n = 0; n < midiator::kMaxNotesPerStep; ++n) {
+            int32 pitch = 0, velocity = 0, lengthSteps = 1;
+            if (!readValue(state, pitch) || !readValue(state, velocity) ||
+                !readValue(state, lengthSteps))
+                return false;
+            phrase.steps[i].notes[n].pitch = std::clamp<int32>(pitch, 0, 127);
+            phrase.steps[i].notes[n].velocity = std::clamp<int32>(velocity, 0, 126);
+            phrase.steps[i].notes[n].lengthSteps = std::clamp<int32>(lengthSteps, 1, 16);
+        }
+    }
+    return true;
+}
+
+bool writeDrumPhraseState(IBStream* state, const midiator::DrumPhrase& phrase) {
+    const int32 bars = phrase.bars;
+    if (!writeValue(state, bars))
+        return false;
+
+    for (int i = 0; i < midiator::kMaxSteps; ++i) {
+        const auto& step = phrase.steps[i];
+        const int32 hitCount = std::clamp(step.hitCount, 0, midiator::kMaxDrumHitsPerStep);
+        if (!writeValue(state, hitCount))
+            return false;
+        for (int n = 0; n < midiator::kMaxDrumHitsPerStep; ++n) {
+            const int32 voice = static_cast<int32>(step.hits[n].voice);
+            const int32 velocity = step.hits[n].velocity;
+            if (!writeValue(state, voice) || !writeValue(state, velocity))
+                return false;
+        }
+    }
+    return true;
+}
+
+bool readDrumPhraseState(IBStream* state, midiator::DrumPhrase& phrase, int fallbackBars) {
+    int32 bars = 0;
+    if (!readValue(state, bars))
+        return false;
+    phrase.bars = (bars == 1 || bars == 2 || bars == 4 || bars == 8) ? bars : fallbackBars;
+
+    for (int i = 0; i < midiator::kMaxSteps; ++i) {
+        int32 hitCount = 0;
+        if (!readValue(state, hitCount))
+            return false;
+        phrase.steps[i].hitCount =
+            std::clamp<int32>(hitCount, 0, midiator::kMaxDrumHitsPerStep);
+        for (int n = 0; n < midiator::kMaxDrumHitsPerStep; ++n) {
+            int32 voice = 0, velocity = 100;
+            if (!readValue(state, voice) || !readValue(state, velocity))
+                return false;
+            phrase.steps[i].hits[n].voice = static_cast<midiator::DrumVoice>(
+                std::clamp<int32>(voice, 0, static_cast<int32>(midiator::DrumVoice::Count) - 1));
+            phrase.steps[i].hits[n].velocity = std::clamp<int32>(velocity, 1, 126);
+        }
+    }
+    return true;
+}
+
+bool writePadPhraseState(IBStream* state, const midiator::PadPhrase& phrase) {
+    const int32 bars = phrase.bars;
+    if (!writeValue(state, bars))
+        return false;
+
+    for (int i = 0; i < midiator::kMaxSteps; ++i) {
+        const auto& step = phrase.steps[i];
+        const int32 noteCount = std::clamp(step.noteCount, 0, midiator::kMaxPadVoices);
+        if (!writeValue(state, noteCount))
+            return false;
+        for (int n = 0; n < midiator::kMaxPadVoices; ++n) {
+            const int32 pitch = step.notes[n].pitch;
+            const int32 velocity = step.notes[n].velocity;
+            const int32 lengthSteps = step.notes[n].lengthSteps;
+            if (!writeValue(state, pitch) || !writeValue(state, velocity) ||
+                !writeValue(state, lengthSteps))
+                return false;
+        }
+    }
+    return true;
+}
+
+bool readPadPhraseState(IBStream* state, midiator::PadPhrase& phrase, int fallbackBars) {
+    int32 bars = 0;
+    if (!readValue(state, bars))
+        return false;
+    phrase.bars = (bars == 1 || bars == 2 || bars == 4 || bars == 8) ? bars : fallbackBars;
+
+    for (int i = 0; i < midiator::kMaxSteps; ++i) {
+        int32 noteCount = 0;
+        if (!readValue(state, noteCount))
+            return false;
+        phrase.steps[i].noteCount =
+            std::clamp<int32>(noteCount, 0, midiator::kMaxPadVoices);
+        for (int n = 0; n < midiator::kMaxPadVoices; ++n) {
+            int32 pitch = 60, velocity = 76, lengthSteps = 1;
+            if (!readValue(state, pitch) || !readValue(state, velocity) ||
+                !readValue(state, lengthSteps))
+                return false;
+            phrase.steps[i].notes[n].pitch = std::clamp<int32>(pitch, 0, 127);
+            phrase.steps[i].notes[n].velocity = std::clamp<int32>(velocity, 0, 126);
+            phrase.steps[i].notes[n].lengthSteps =
+                std::clamp<int32>(lengthSteps, 1, midiator::kMaxSteps);
+        }
+    }
+    return true;
+}
+
 bool readStateHeader(IBStream* state,
+                     uint32_t& stateVersion,
                      midiator::GeneratorSettings& settings,
                      float& variationAmount,
                      uint32_t& seed,
@@ -112,6 +256,7 @@ bool readStateHeader(IBStream* state,
     settings.powerChordChance = std::clamp(settings.powerChordChance, 0.0f, 1.0f);
     settings.palmMuteChance = std::clamp(settings.palmMuteChance, 0.0f, 1.0f);
     variationAmount = std::clamp(variationAmount, 0.0f, 1.0f);
+    stateVersion = version;
     return true;
 }
 
@@ -225,23 +370,12 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
         !writeValue(state, style) || !writeValue(state, powerChordsEnabled))
         return kResultFalse;
 
-    const int32 phraseBars = phrase_.bars;
-    if (!writeValue(state, phraseBars))
+    if (!writePhraseState(state, phrase_) ||
+        !writePhraseState(state, bassPhrase_) ||
+        !writeDrumPhraseState(state, drumPhrase_) ||
+        !writePadPhraseState(state, padPhrase_) ||
+        !writePhraseState(state, synthPhrase_)) {
         return kResultFalse;
-
-    for (int i = 0; i < midiator::kMaxSteps; ++i) {
-        const auto& step = phrase_.steps[i];
-        const int32 noteCount = std::clamp(step.noteCount, 0, midiator::kMaxNotesPerStep);
-        if (!writeValue(state, noteCount))
-            return kResultFalse;
-
-        for (int n = 0; n < midiator::kMaxNotesPerStep; ++n) {
-            const int32 pitch = step.notes[n].pitch;
-            const int32 velocity = step.notes[n].velocity;
-            const int32 lengthSteps = step.notes[n].lengthSteps;
-            if (!writeValue(state, pitch) || !writeValue(state, velocity) || !writeValue(state, lengthSteps))
-                return kResultFalse;
-        }
     }
 
     return kResultOk;
@@ -258,35 +392,27 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     bool restoredMidiRootSource = midiRootSource_;
     bool restoredPowerChordsEnabled = settings_.powerChordsEnabled;
 
-    if (!readStateHeader(state, restored, restoredVariation, restoredSeed,
+    uint32_t restoredStateVersion = 0;
+    if (!readStateHeader(state, restoredStateVersion, restored, restoredVariation, restoredSeed,
                          restoredManualRoot, restoredMidiRootSource,
                          restoredPowerChordsEnabled))
         return kResultFalse;
 
-    int32 phraseBars = 0;
-    if (!readValue(state, phraseBars))
+    midiator::Phrase restoredPhrase{};
+    if (!readPhraseState(state, restoredPhrase, restored.bars))
         return kResultFalse;
 
-    midiator::Phrase restoredPhrase{};
-    restoredPhrase.bars = (phraseBars == 1 || phraseBars == 2 || phraseBars == 4 || phraseBars == 8)
-        ? phraseBars : restored.bars;
+    midiator::Phrase restoredBassPhrase{};
+    midiator::DrumPhrase restoredDrumPhrase{};
+    midiator::PadPhrase restoredPadPhrase{};
+    midiator::Phrase restoredSynthPhrase{};
 
-    for (int i = 0; i < midiator::kMaxSteps; ++i) {
-        int32 noteCount = 0;
-        if (!readValue(state, noteCount))
+    if (restoredStateVersion >= 5u) {
+        if (!readPhraseState(state, restoredBassPhrase, restored.bars) ||
+            !readDrumPhraseState(state, restoredDrumPhrase, restored.bars) ||
+            !readPadPhraseState(state, restoredPadPhrase, restored.bars) ||
+            !readPhraseState(state, restoredSynthPhrase, restored.bars)) {
             return kResultFalse;
-        restoredPhrase.steps[i].noteCount = std::clamp<int32>(noteCount, 0, midiator::kMaxNotesPerStep);
-
-        for (int n = 0; n < midiator::kMaxNotesPerStep; ++n) {
-            int32 pitch = 0;
-            int32 velocity = 0;
-            int32 lengthSteps = 1;
-            if (!readValue(state, pitch) || !readValue(state, velocity) || !readValue(state, lengthSteps))
-                return kResultFalse;
-
-            restoredPhrase.steps[i].notes[n].pitch = std::clamp<int32>(pitch, 0, 127);
-            restoredPhrase.steps[i].notes[n].velocity = std::clamp<int32>(velocity, 0, 126);
-            restoredPhrase.steps[i].notes[n].lengthSteps = std::clamp<int32>(lengthSteps, 1, 16);
         }
     }
 
@@ -297,7 +423,18 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     midiRootSource_ = restoredMidiRootSource;
     settings_.powerChordsEnabled = restoredPowerChordsEnabled;
     phrase_ = restoredPhrase;
-    regenerateBass();
+
+    if (restoredStateVersion >= 5u) {
+        bassPhrase_ = restoredBassPhrase;
+        drumPhrase_ = restoredDrumPhrase;
+        padPhrase_ = restoredPadPhrase;
+        synthPhrase_ = restoredSynthPhrase;
+    } else {
+        // V1-V4 stored only Guitar. Recreate companion roles once during
+        // migration; subsequent V5 saves freeze the exact generated result.
+        regenerateBass();
+    }
+
     // If state is restored while processing, preserve knowledge of currently
     // active notes so the next process call can emit proper NoteOff events.
     phraseChangedNeedsFlush_ = true;
@@ -1131,7 +1268,8 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     int manualRoot = restored.rootPitchClass;
     bool midiRootSource = true;
     bool powerChordsEnabled = true;
-    if (!readStateHeader(state, restored, variationAmount, seed,
+    uint32_t restoredStateVersion = 0;
+    if (!readStateHeader(state, restoredStateVersion, restored, variationAmount, seed,
                          manualRoot, midiRootSource, powerChordsEnabled))
         return kResultFalse;
 
