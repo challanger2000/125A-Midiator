@@ -9,6 +9,8 @@ smtg_add_vst3plugin(Midiator
     DrumBrain.h
     PadBrain.cpp
     PadBrain.h
+    SynthBrain.cpp
+    SynthBrain.h
     RiffEngine.h
 )
 
