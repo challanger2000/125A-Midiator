@@ -90,6 +90,9 @@ struct Phrase {
     }
 };
 
+// Stable musical-engine facade. The current implementation is the Guitar Brain;
+// future Bass/Drum/Pad brains should use the shared Phrase/Step/Note types above
+// instead of adding instrument conditionals to the guitar generator.
 class RiffEngine {
 public:
     static const ScaleDefinition& scaleDefinition(ScaleId id);

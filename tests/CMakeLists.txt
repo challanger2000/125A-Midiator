@@ -1,6 +1,6 @@
 add_executable(MidiatorCoreTests
     RiffEngineTests.cpp
-    ../src/RiffEngine.cpp
+    ../src/GuitarBrain.cpp
 )
 
 target_include_directories(MidiatorCoreTests PRIVATE ../src)
@@ -9,7 +9,7 @@ add_test(NAME MidiatorCoreTests COMMAND MidiatorCoreTests)
 
 add_executable(MidiatorMeasure
     RiffEngineMeasurement.cpp
-    ../src/RiffEngine.cpp
+    ../src/GuitarBrain.cpp
 )
 
 target_include_directories(MidiatorMeasure PRIVATE ../src)
@@ -27,7 +27,7 @@ add_test(NAME MidiatorUIContractTests COMMAND MidiatorUIContractTests)
 add_executable(MidiatorStateRoundtripTests
     StateRoundtripTests.cpp
     ../src/PluginProcessor.cpp
-    ../src/RiffEngine.cpp
+    ../src/GuitarBrain.cpp
 )
 
 target_include_directories(MidiatorStateRoundtripTests PRIVATE ../src)
@@ -39,7 +39,7 @@ add_test(NAME MidiatorStateRoundtripTests COMMAND MidiatorStateRoundtripTests)
 add_executable(MidiatorProcessorLiveTests
     ProcessorLiveTests.cpp
     ../src/PluginProcessor.cpp
-    ../src/RiffEngine.cpp
+    ../src/GuitarBrain.cpp
 )
 
 target_include_directories(MidiatorProcessorLiveTests PRIVATE ../src)
