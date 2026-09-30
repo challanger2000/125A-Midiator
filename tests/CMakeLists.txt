@@ -58,3 +58,13 @@ add_executable(MidiatorBassBrainTests
 
 target_include_directories(MidiatorBassBrainTests PRIVATE ../src)
 add_test(NAME MidiatorBassBrainTests COMMAND MidiatorBassBrainTests)
+
+add_executable(MidiatorDrumBrainTests
+    DrumBrainTests.cpp
+    ../src/GuitarBrain.cpp
+    ../src/BassBrain.cpp
+    ../src/DrumBrain.cpp
+)
+
+target_include_directories(MidiatorDrumBrainTests PRIVATE ../src)
+add_test(NAME MidiatorDrumBrainTests COMMAND MidiatorDrumBrainTests)

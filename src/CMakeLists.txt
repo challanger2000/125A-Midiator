@@ -5,6 +5,8 @@ smtg_add_vst3plugin(Midiator
     GuitarBrain.cpp
     BassBrain.cpp
     BassBrain.h
+    DrumBrain.cpp
+    DrumBrain.h
     RiffEngine.h
 )
 
