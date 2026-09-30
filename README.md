@@ -38,7 +38,14 @@ Bass is style-aware; Drums derive kick pressure from Guitar/Bass context; Pads u
 
 Root / Root Source, Scale / Mode, Bars, Style, Density, Complexity, Repetition, Power Chords on/off and amount, Palm Mute, Variation Amount, NEW RIFF and VARIATION.
 
-Bass, Drum, Pad and Synth control layers are implemented internally but are not yet fully exposed as dedicated GUI parameter sections. Their current settings are derived deterministically from the shared musical frame and internal defaults.
+The GUI exposes a deliberately small role-shaping layer instead of every internal generator parameter:
+
+- Bass: Follow, Movement
+- Drums: Density, Complexity
+- Pads: Spread, Tension
+- Synth: Activity, Movement
+
+Less essential controls (for example Bass Sustain, Drum Humanize, Pad Context Follow and Synth Harmonic Follow) remain internal defaults for V1 so the workflow stays compact and musically predictable.
 
 ## Drum mapping
 
