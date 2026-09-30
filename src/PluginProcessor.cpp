@@ -786,13 +786,16 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
 
     std::array<ScheduledEvent, kMaxScheduledEvents> scheduled{};
     int scheduledCount = 0;
+    bool schedulerOverflow = false;
 
     auto addScheduled = [&](double eventQn, bool noteOn, int pitch, int velocity, int32 busIndex) {
         constexpr double eps = 1e-9;
         if (eventQn + eps < blockStartQn || eventQn >= blockEndQn - eps)
             return;
-        if (scheduledCount >= kMaxScheduledEvents)
+        if (scheduledCount >= kMaxScheduledEvents) {
+            schedulerOverflow = true;
             return;
+        }
 
         const double relSamples = (eventQn - blockStartQn) / qnPerSample;
         ScheduledEvent e{};
@@ -880,6 +883,15 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         }
     };
     scheduleDrums();
+
+    if (schedulerOverflow) {
+        // Never silently drop scheduled MIDI. A host-sized block that exceeds
+        // the fixed realtime-safe staging buffer is reported explicitly.
+        // Also release any notes carried in from the previous block so failure
+        // cannot leave downstream instruments hanging.
+        flushActiveNotes(data.outputEvents, blockStartQn);
+        return kResultFalse;
+    }
 
     std::sort(scheduled.begin(), scheduled.begin() + scheduledCount,
               [](const ScheduledEvent& a, const ScheduledEvent& b) {

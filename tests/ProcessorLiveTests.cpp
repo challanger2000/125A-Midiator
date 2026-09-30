@@ -654,6 +654,40 @@ void testStopFlushesEveryActiveInstrumentBus() {
             "transport stop must not fabricate flushes on inactive buses");
 }
 
+void testSchedulerOverflowIsExplicit() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "processor must start");
+
+    // Force the densest/shortest topology so a very large offline host block
+    // exceeds the fixed realtime-safe staging buffer.
+    ParameterChanges setup;
+    int32 qi = 0, pi = 0;
+    auto* bars = setup.addParameterData(kBarsId, qi);
+    require(bars && bars->addPoint(0, 0.0, pi) == kResultOk,
+            "1-bar scheduler stress setup must be accepted");
+    auto* density = setup.addParameterData(kDensityId, qi);
+    require(density && density->addPoint(0, 1.0, pi) == kResultOk,
+            "maximum Density scheduler stress setup must be accepted");
+    auto* complexity = setup.addParameterData(kComplexityId, qi);
+    require(complexity && complexity->addPoint(0, 1.0, pi) == kResultOk,
+            "maximum Complexity scheduler stress setup must be accepted");
+
+    auto stoppedContext = makeContext(0.0, false);
+    EventList stopped;
+    auto stoppedData = makeProcessData(stoppedContext, stopped, 64, &setup);
+    require(processor.process(stoppedData) == kResultOk,
+            "scheduler stress setup block must succeed");
+
+    auto context = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 5000000);
+    data.processMode = kOffline;
+
+    const auto result = processor.process(data);
+    require(result == kResultFalse,
+            "scheduler overflow must be reported explicitly instead of silently dropping MIDI");
+}
+
 void testGeneratedNoteLengthsAffectMidiOutput() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
@@ -973,6 +1007,7 @@ int main() {
     testPowerChordTogglePreservesRiffOnsetsAndPitches();
     testLargeOfflineBlockKeepsNoteEventsBalanced();
     testStopFlushesEveryActiveInstrumentBus();
+    testSchedulerOverflowIsExplicit();
     testGeneratedNoteLengthsAffectMidiOutput();
     testMidiRootSourceTransposesRiff();
     testManualRootSourceIgnoresMidiRootNotes();
