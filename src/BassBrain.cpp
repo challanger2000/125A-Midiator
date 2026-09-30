@@ -55,7 +55,7 @@ int alignedRoot(int pitchClass, int around) {
 int nearestScalePitch(int wanted, int rootPitchClass, ScaleId scale) {
     for (int distance = 0; distance <= 12; ++distance) {
         const int up = wanted + distance;
-        if (up <= 60 && RiffEngine::isScaleTone(up, rootPitchClass, scale))
+        if (up >= 24 && up <= 60 && RiffEngine::isScaleTone(up, rootPitchClass, scale))
             return up;
         const int down = wanted - distance;
         if (down >= 24 && down <= 60 &&
