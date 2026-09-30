@@ -55,7 +55,7 @@ int degreePc(const PadSettings& s, int degree) {
 int nearestScaleTone(int pitch, const PadSettings& s) {
     int best = pitch;
     int bestDistance = 999;
-    for (int p = std::max(36, pitch - 6); p <= std::min(96, pitch + 6); ++p) {
+    for (int p = std::max(45, pitch - 6); p <= std::min(88, pitch + 6); ++p) {
         if (!RiffEngine::isScaleTone(p, s.rootPitchClass, s.scale))
             continue;
         const int d = std::abs(p - pitch);
