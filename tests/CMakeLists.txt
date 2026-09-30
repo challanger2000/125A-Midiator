@@ -46,3 +46,12 @@ target_include_directories(MidiatorProcessorLiveTests PRIVATE ../src)
 target_compile_definitions(MidiatorProcessorLiveTests PRIVATE MIDIATOR_NO_FACTORY=1)
 target_link_libraries(MidiatorProcessorLiveTests PRIVATE sdk vstgui_support)
 add_test(NAME MidiatorProcessorLiveTests COMMAND MidiatorProcessorLiveTests)
+
+add_executable(MidiatorBassBrainTests
+    BassBrainTests.cpp
+    ../src/GuitarBrain.cpp
+    ../src/BassBrain.cpp
+)
+
+target_include_directories(MidiatorBassBrainTests PRIVATE ../src)
+add_test(NAME MidiatorBassBrainTests COMMAND MidiatorBassBrainTests)
