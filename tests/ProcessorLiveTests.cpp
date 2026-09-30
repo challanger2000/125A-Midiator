@@ -684,39 +684,67 @@ void testStopFlushesEveryActiveInstrumentBus() {
     require(flushed[kSynthOutBus], "transport stop must flush Synth Out");
 }
 
-void testSchedulerOverflowIsExplicit() {
+void testHugeOfflineBlockChunksSchedulerSafely() {
     MidiatorProcessor processor;
-    require(processor.setProcessing(true) == kResultOk, "processor must start");
+    require(processor.setProcessing(true) == kResultOk,
+            "huge offline scheduler fixture must start");
 
-    // Force the densest/shortest topology so a very large offline host block
-    // exceeds the fixed realtime-safe staging buffer. Fifty million samples at
-    // 120 BPM span more than 500 one-bar cycles, comfortably beyond 8192 events.
+    // Use a one-bar dense phrase so this block emits far more than the old
+    // fixed 8192-event whole-block staging limit.
     ParameterChanges setup;
-    int32 qi = 0, pi = 0;
+    int32 qi = 0;
     auto* bars = setup.addParameterData(kBarsId, qi);
+    int32 pi = 0;
     require(bars && bars->addPoint(0, 0.0, pi) == kResultOk,
-            "1-bar scheduler stress setup must be accepted");
+            "one-bar setup must be accepted");
     auto* density = setup.addParameterData(kDensityId, qi);
     require(density && density->addPoint(0, 1.0, pi) == kResultOk,
-            "maximum Density scheduler stress setup must be accepted");
+            "dense setup must be accepted");
     auto* complexity = setup.addParameterData(kComplexityId, qi);
     require(complexity && complexity->addPoint(0, 1.0, pi) == kResultOk,
-            "maximum Complexity scheduler stress setup must be accepted");
+            "complex setup must be accepted");
 
-    auto stoppedContext = makeContext(0.0, false);
-    EventList stopped;
-    auto stoppedData = makeProcessData(stoppedContext, stopped, 64, &setup);
+    auto stopped = makeContext(0.0, false);
+    EventList stoppedOutput;
+    auto stoppedData = makeProcessData(stopped, stoppedOutput, 64, &setup);
     require(processor.process(stoppedData) == kResultOk,
-            "scheduler stress setup block must succeed");
+            "huge offline setup block must succeed");
 
     auto context = makeContext(0.0, true);
     EventList output;
     auto data = makeProcessData(context, output, 50000000);
     data.processMode = kOffline;
 
-    const auto result = processor.process(data);
-    require(result == kResultFalse,
-            "scheduler overflow must be reported explicitly instead of silently dropping MIDI");
+    require(processor.process(data) == kResultOk,
+            "huge offline block must be chunked instead of overflowing");
+    require(output.events.size() > 8192,
+            "huge offline fixture must exceed the former whole-block staging capacity");
+
+    std::array<long long, kEventOutputBusCount> ons{};
+    std::array<long long, kEventOutputBusCount> offs{};
+    for (const auto& e : output.events) {
+        require(e.busIndex >= 0 && e.busIndex < kEventOutputBusCount,
+                "chunked scheduler must emit only valid role buses");
+        if (e.type == Event::kNoteOnEvent)
+            ++ons[static_cast<size_t>(e.busIndex)];
+        else if (e.type == Event::kNoteOffEvent)
+            ++offs[static_cast<size_t>(e.busIndex)];
+    }
+
+    for (int bus = 0; bus < kEventOutputBusCount; ++bus) {
+        require(ons[static_cast<size_t>(bus)] > 0,
+                "huge offline block must emit every musical role");
+        require(std::llabs(ons[static_cast<size_t>(bus)] -
+                           offs[static_cast<size_t>(bus)]) <= 128,
+                "chunked huge-block note balance must remain bounded by active pitches");
+    }
+
+    auto endContext = makeContext(
+        static_cast<double>(data.numSamples) * 120.0 / (60.0 * 48000.0), false);
+    EventList endOutput;
+    auto endData = makeProcessData(endContext, endOutput, 64);
+    require(processor.process(endData) == kResultOk,
+            "stop after huge offline block must succeed");
 }
 
 void testGeneratedNoteLengthsAffectMidiOutput() {
@@ -1107,7 +1135,7 @@ int main() {
     testPowerChordTogglePreservesRiffOnsetsAndPitches();
     testLargeOfflineBlockKeepsNoteEventsBalanced();
     testStopFlushesEveryActiveInstrumentBus();
-    testSchedulerOverflowIsExplicit();
+    testHugeOfflineBlockChunksSchedulerSafely();
     testGeneratedNoteLengthsAffectMidiOutput();
     testMidiRootSourceTransposesRiff();
     testManualRootSourceIgnoresMidiRootNotes();

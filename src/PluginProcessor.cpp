@@ -838,150 +838,156 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
 
     const double localBlockStartQn = blockStartQn - transportAnchorQn_;
     const double localBlockEndQn = blockEndQn - transportAnchorQn_;
-    const long long firstCycle = static_cast<long long>(std::floor(localBlockStartQn / patternLengthQn)) - 1;
-    const long long lastCycle = static_cast<long long>(std::floor(localBlockEndQn / patternLengthQn)) + 1;
+    const long long firstCycle =
+        static_cast<long long>(std::floor(localBlockStartQn / patternLengthQn)) - 1;
+    const long long lastCycle =
+        static_cast<long long>(std::floor(localBlockEndQn / patternLengthQn)) + 1;
 
-    auto schedulePhrase = [&](const midiator::Phrase& phrase, int32 busIndex) {
-        for (long long cycle = firstCycle; cycle <= lastCycle; ++cycle) {
-            const double cycleStartQn =
-                transportAnchorQn_ + static_cast<double>(cycle) * patternLengthQn;
-            const int usedSteps = phrase.usedSteps();
-            constexpr double kSustainGapQn = 1.0 / 16.0;
+    auto schedulePhraseCycle = [&](const midiator::Phrase& phrase,
+                                   int32 busIndex,
+                                   double cycleStartQn) {
+        const int usedSteps = phrase.usedSteps();
+        constexpr double kSustainGapQn = 1.0 / 16.0;
 
-            for (int stepIndex = 0; stepIndex < usedSteps; ++stepIndex) {
-                const auto& step = phrase.steps[stepIndex];
-                if (step.noteCount <= 0)
-                    continue;
+        for (int stepIndex = 0; stepIndex < usedSteps; ++stepIndex) {
+            const auto& step = phrase.steps[stepIndex];
+            if (step.noteCount <= 0)
+                continue;
 
-                int stepsToNextHit = usedSteps;
-                for (int delta = 1; delta <= usedSteps; ++delta) {
-                    const int nextIndex = (stepIndex + delta) % usedSteps;
-                    if (phrase.steps[nextIndex].noteCount > 0) {
-                        stepsToNextHit = delta;
-                        break;
-                    }
+            int stepsToNextHit = usedSteps;
+            for (int delta = 1; delta <= usedSteps; ++delta) {
+                const int nextIndex = (stepIndex + delta) % usedSteps;
+                if (phrase.steps[nextIndex].noteCount > 0) {
+                    stepsToNextHit = delta;
+                    break;
                 }
+            }
 
-                const double onQn =
-                    cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
-                const double nextOnQn =
-                    onQn + static_cast<double>(stepsToNextHit) * kStepQuarterNotes;
-                const double latestOffQn =
-                    std::max(onQn, nextOnQn - kSustainGapQn);
+            const double onQn =
+                cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
+            const double nextOnQn =
+                onQn + static_cast<double>(stepsToNextHit) * kStepQuarterNotes;
+            const double latestOffQn =
+                std::max(onQn, nextOnQn - kSustainGapQn);
 
-                for (int n = 0; n < step.noteCount; ++n) {
-                    const auto& note = step.notes[n];
-                    const double requestedOffQn =
-                        onQn + static_cast<double>(std::max(1, note.lengthSteps)) *
-                                   kStepQuarterNotes - kSustainGapQn;
-                    const double offQn =
-                        std::max(onQn, std::min(latestOffQn, requestedOffQn));
-                    addScheduled(onQn, true, note.pitch, note.velocity, busIndex);
-                    addScheduled(offQn, false, note.pitch, 0, busIndex);
-                }
+            for (int n = 0; n < step.noteCount; ++n) {
+                const auto& note = step.notes[n];
+                const double requestedOffQn =
+                    onQn + static_cast<double>(std::max(1, note.lengthSteps)) *
+                               kStepQuarterNotes - kSustainGapQn;
+                const double offQn =
+                    std::max(onQn, std::min(latestOffQn, requestedOffQn));
+                addScheduled(onQn, true, note.pitch, note.velocity, busIndex);
+                addScheduled(offQn, false, note.pitch, 0, busIndex);
             }
         }
     };
 
-    schedulePhrase(phrase_, kGuitarOutBus);
-    schedulePhrase(bassPhrase_, kBassOutBus);
-
-    auto scheduleDrums = [&]() {
+    auto scheduleDrumCycle = [&](double cycleStartQn) {
         constexpr double kDrumGateQn = 1.0 / 16.0;
-        for (long long cycle = firstCycle; cycle <= lastCycle; ++cycle) {
-            const double cycleStartQn =
-                transportAnchorQn_ + static_cast<double>(cycle) * patternLengthQn;
-            for (int stepIndex = 0; stepIndex < drumPhrase_.usedSteps(); ++stepIndex) {
-                const auto& step = drumPhrase_.steps[stepIndex];
-                if (step.hitCount <= 0)
-                    continue;
-                const double onQn =
-                    cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
-                const double offQn = onQn + kDrumGateQn;
-                for (int n = 0; n < step.hitCount; ++n) {
-                    const auto& hit = step.hits[n];
-                    const int pitch = drumMap_.midiNote(hit.voice);
-                    addScheduled(onQn, true, pitch, hit.velocity, kDrumsOutBus);
-                    addScheduled(offQn, false, pitch, 0, kDrumsOutBus);
-                }
+        for (int stepIndex = 0; stepIndex < drumPhrase_.usedSteps(); ++stepIndex) {
+            const auto& step = drumPhrase_.steps[stepIndex];
+            if (step.hitCount <= 0)
+                continue;
+            const double onQn =
+                cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
+            const double offQn = onQn + kDrumGateQn;
+            for (int n = 0; n < step.hitCount; ++n) {
+                const auto& hit = step.hits[n];
+                const int pitch = drumMap_.midiNote(hit.voice);
+                addScheduled(onQn, true, pitch, hit.velocity, kDrumsOutBus);
+                addScheduled(offQn, false, pitch, 0, kDrumsOutBus);
             }
         }
     };
-    scheduleDrums();
 
-    auto schedulePads = [&]() {
+    auto schedulePadCycle = [&](double cycleStartQn) {
         constexpr double kPadReleaseGapQn = 1.0 / 64.0;
-        for (long long cycle = firstCycle; cycle <= lastCycle; ++cycle) {
-            const double cycleStartQn =
-                transportAnchorQn_ + static_cast<double>(cycle) * patternLengthQn;
-            for (int stepIndex = 0; stepIndex < padPhrase_.usedSteps(); ++stepIndex) {
-                const auto& step = padPhrase_.steps[stepIndex];
-                if (step.noteCount <= 0)
-                    continue;
-                const double onQn =
-                    cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
-                for (int n = 0; n < step.noteCount; ++n) {
-                    const auto& note = step.notes[n];
-                    const double durationQn =
-                        static_cast<double>(std::max(1, note.lengthSteps)) *
-                        kStepQuarterNotes;
-                    const double offQn =
-                        std::max(onQn, onQn + durationQn - kPadReleaseGapQn);
-                    addScheduled(onQn, true, note.pitch, note.velocity, kPadOutBus);
-                    addScheduled(offQn, false, note.pitch, 0, kPadOutBus);
-                }
+        for (int stepIndex = 0; stepIndex < padPhrase_.usedSteps(); ++stepIndex) {
+            const auto& step = padPhrase_.steps[stepIndex];
+            if (step.noteCount <= 0)
+                continue;
+            const double onQn =
+                cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
+            for (int n = 0; n < step.noteCount; ++n) {
+                const auto& note = step.notes[n];
+                const double durationQn =
+                    static_cast<double>(std::max(1, note.lengthSteps)) *
+                    kStepQuarterNotes;
+                const double offQn =
+                    std::max(onQn, onQn + durationQn - kPadReleaseGapQn);
+                addScheduled(onQn, true, note.pitch, note.velocity, kPadOutBus);
+                addScheduled(offQn, false, note.pitch, 0, kPadOutBus);
             }
         }
     };
-    schedulePads();
-    schedulePhrase(synthPhrase_, kSynthOutBus);
 
-    if (schedulerOverflow) {
-        // Never silently drop scheduled MIDI. A host-sized block that exceeds
-        // the fixed realtime-safe staging buffer is reported explicitly.
-        // Also release any notes carried in from the previous block so failure
-        // cannot leave downstream instruments hanging.
-        flushActiveNotes(data.outputEvents, blockStartQn);
-        return kResultFalse;
-    }
+    auto emitScheduled = [&]() {
+        std::sort(scheduled.begin(), scheduled.begin() + scheduledCount,
+                  [](const ScheduledEvent& a, const ScheduledEvent& b) {
+                      if (a.sampleOffset != b.sampleOffset)
+                          return a.sampleOffset < b.sampleOffset;
+                      if (a.noteOn != b.noteOn)
+                          return !a.noteOn;
+                      if (a.busIndex != b.busIndex)
+                          return a.busIndex < b.busIndex;
+                      return a.pitch < b.pitch;
+                  });
 
-    std::sort(scheduled.begin(), scheduled.begin() + scheduledCount,
-              [](const ScheduledEvent& a, const ScheduledEvent& b) {
-                  if (a.sampleOffset != b.sampleOffset)
-                      return a.sampleOffset < b.sampleOffset;
-                  if (a.noteOn != b.noteOn)
-                      return !a.noteOn;
-                  if (a.busIndex != b.busIndex)
-                      return a.busIndex < b.busIndex;
-                  return a.pitch < b.pitch;
-              });
+        for (int i = 0; i < scheduledCount; ++i) {
+            const auto& s = scheduled[i];
+            Event e{};
+            e.busIndex = s.busIndex;
+            e.sampleOffset = s.sampleOffset;
+            e.ppqPosition = s.ppqPosition;
 
-    for (int i = 0; i < scheduledCount; ++i) {
-        const auto& s = scheduled[i];
-        Event e{};
-        e.busIndex = s.busIndex;
-        e.sampleOffset = s.sampleOffset;
-        e.ppqPosition = s.ppqPosition;
-
-        if (s.noteOn) {
-            e.type = Event::kNoteOnEvent;
-            e.noteOn.channel = 0;
-            e.noteOn.pitch = static_cast<int16>(s.pitch);
-            e.noteOn.velocity = static_cast<float>(s.velocity) / 127.0f;
-            e.noteOn.length = 0;
-            e.noteOn.tuning = 0.0f;
-            e.noteOn.noteId = -1;
-            data.outputEvents->addEvent(e);
-            activePitchesByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = true;
-        } else {
-            e.type = Event::kNoteOffEvent;
-            e.noteOff.channel = 0;
-            e.noteOff.pitch = static_cast<int16>(s.pitch);
-            e.noteOff.velocity = 0.0f;
-            e.noteOff.noteId = -1;
-            data.outputEvents->addEvent(e);
-            activePitchesByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = false;
+            if (s.noteOn) {
+                e.type = Event::kNoteOnEvent;
+                e.noteOn.channel = 0;
+                e.noteOn.pitch = static_cast<int16>(s.pitch);
+                e.noteOn.velocity = static_cast<float>(s.velocity) / 127.0f;
+                e.noteOn.length = 0;
+                e.noteOn.tuning = 0.0f;
+                e.noteOn.noteId = -1;
+                data.outputEvents->addEvent(e);
+                activePitchesByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = true;
+            } else {
+                e.type = Event::kNoteOffEvent;
+                e.noteOff.channel = 0;
+                e.noteOff.pitch = static_cast<int16>(s.pitch);
+                e.noteOff.velocity = 0.0f;
+                e.noteOff.noteId = -1;
+                data.outputEvents->addEvent(e);
+                activePitchesByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = false;
+            }
         }
+    };
+
+    // Stage and emit one musical cycle at a time. The fixed array therefore
+    // bounds realtime memory by per-cycle musical complexity rather than by
+    // the host's offline block length. Extremely large offline blocks can span
+    // arbitrarily many cycles without accumulating all events in one buffer.
+    for (long long cycle = firstCycle; cycle <= lastCycle; ++cycle) {
+        scheduledCount = 0;
+        schedulerOverflow = false;
+
+        const double cycleStartQn =
+            transportAnchorQn_ + static_cast<double>(cycle) * patternLengthQn;
+
+        schedulePhraseCycle(phrase_, kGuitarOutBus, cycleStartQn);
+        schedulePhraseCycle(bassPhrase_, kBassOutBus, cycleStartQn);
+        scheduleDrumCycle(cycleStartQn);
+        schedulePadCycle(cycleStartQn);
+        schedulePhraseCycle(synthPhrase_, kSynthOutBus, cycleStartQn);
+
+        if (schedulerOverflow) {
+            // This now represents excessive complexity inside one single
+            // musical cycle, not merely a large host block.
+            flushActiveNotes(data.outputEvents, blockStartQn);
+            return kResultFalse;
+        }
+
+        emitScheduled();
     }
 
     return kResultOk;
