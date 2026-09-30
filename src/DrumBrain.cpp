@@ -97,6 +97,45 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
     s.complexity = std::clamp(s.complexity, 0.0f, 1.0f);
     s.humanize = std::clamp(s.humanize, 0.0f, 1.0f);
 
+    float kickContextFactor = 1.0f;
+    float independentKickFactor = 1.0f;
+    float hatSixteenthFactor = 1.0f;
+    float ghostFactor = 1.0f;
+    float fillFactor = 1.0f;
+    float openHatFactor = 1.0f;
+
+    switch (s.style) {
+        case StyleId::NDHIndustrial:
+            // Mechanical, riff-locked, restrained fills.
+            kickContextFactor = 1.08f;
+            independentKickFactor = 0.82f;
+            hatSixteenthFactor = 0.90f;
+            ghostFactor = 0.75f;
+            fillFactor = 0.70f;
+            openHatFactor = 0.75f;
+            break;
+        case StyleId::DarkRockGothic:
+            // More breathing room and cymbal movement, fewer machine kicks.
+            kickContextFactor = 0.82f;
+            independentKickFactor = 0.72f;
+            hatSixteenthFactor = 0.72f;
+            ghostFactor = 1.18f;
+            fillFactor = 1.15f;
+            openHatFactor = 1.35f;
+            break;
+        case StyleId::HeavyIndustrial:
+            // Aggressive kick reinforcement and faster upper-kit pressure.
+            kickContextFactor = 1.15f;
+            independentKickFactor = 1.25f;
+            hatSixteenthFactor = 1.30f;
+            ghostFactor = 0.90f;
+            fillFactor = 1.10f;
+            openHatFactor = 0.90f;
+            break;
+        case StyleId::Count:
+            break;
+    }
+
     DrumPhrase out{};
     out.bars = std::clamp(std::max(guitar.bars, bass.bars), 1, kMaxBars);
     Rng rng(seed);
@@ -117,9 +156,14 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
 
         // Hat backbone: stable 8ths at low density, with controlled 16ths as
         // density/complexity rise.
-        if (eighth || rng.chance(0.10f + 0.55f * s.density * s.complexity)) {
+        if (eighth || rng.chance(
+                std::clamp((0.10f + 0.55f * s.density * s.complexity) *
+                               hatSixteenthFactor,
+                           0.0f, 1.0f))) {
             const bool open = (local == 14 || local == 6) &&
-                              rng.chance(0.10f + 0.30f * s.complexity);
+                              rng.chance(std::clamp(
+                                  (0.10f + 0.30f * s.complexity) * openHatFactor,
+                                  0.0f, 1.0f));
             addHit(ds,
                    open ? DrumVoice::OpenHat : DrumVoice::ClosedHat,
                    humanizedVelocity(velocityRng, eighth ? 86 : 70, s.humanize));
@@ -136,11 +180,18 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
         bool kick = false;
         if (guitarHit || bassHit) {
             const float context = (guitarHit && bassHit) ? 1.0f : 0.78f;
-            kick = rng.chance((0.24f + 0.68f * s.follow) * context);
+            kick = rng.chance(std::clamp(
+                (0.24f + 0.68f * s.follow) * context * kickContextFactor,
+                0.0f, 1.0f));
         }
         if (!kick && quarter)
-            kick = rng.chance(0.22f + 0.34f * (1.0f - s.follow));
-        if (!kick && !quarter && rng.chance(0.03f + 0.16f * s.density))
+            kick = rng.chance(std::clamp(
+                (0.22f + 0.34f * (1.0f - s.follow)) * independentKickFactor,
+                0.0f, 1.0f));
+        if (!kick && !quarter &&
+            rng.chance(std::clamp(
+                (0.03f + 0.16f * s.density) * independentKickFactor,
+                0.0f, 1.0f)))
             kick = true;
 
         // Do not stack kick blindly under every backbeat at low density.
@@ -149,7 +200,9 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
 
         // Ghost notes before/after backbeats.
         if ((local == 3 || local == 11) &&
-            rng.chance(0.05f + 0.32f * s.complexity))
+            rng.chance(std::clamp(
+                (0.05f + 0.32f * s.complexity) * ghostFactor,
+                0.0f, 1.0f)))
             addHit(ds, DrumVoice::GhostSnare, humanizedVelocity(velocityRng, 48, s.humanize));
 
         // Crash is structural punctuation, not a mandatory bar marker.
@@ -170,7 +223,9 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
         // Simple tom fill language on the final beat of every second bar.
         const int bar = step / kStepsPerBar;
         if ((bar % 2) == 1 && local >= 12 && s.complexity > 0.35f) {
-            const float p = 0.10f + 0.42f * s.complexity;
+            const float p = std::clamp(
+                (0.10f + 0.42f * s.complexity) * fillFactor,
+                0.0f, 1.0f);
             if (rng.chance(p)) {
                 DrumVoice tom = DrumVoice::LowTom;
                 if (local >= 14) tom = DrumVoice::MidTom;

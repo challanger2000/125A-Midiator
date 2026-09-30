@@ -44,6 +44,7 @@ struct DrumPhrase {
 };
 
 struct DrumSettings {
+    StyleId style = StyleId::NDHIndustrial;
     float follow = 0.72f;      // lock kick accents to guitar/bass context
     float density = 0.48f;     // overall activity
     float complexity = 0.30f;  // fills, hat motion, tom movement

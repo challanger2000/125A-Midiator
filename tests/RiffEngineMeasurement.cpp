@@ -647,22 +647,33 @@ int main() {
 
     for (float v : sweepValues) {
         DrumSettings ds{}; ds.follow=v;
-        printDrumSweepLine("Follow    ",v,measureDrums(drumGuitar,drumBass,ds,700000u+static_cast<unsigned>(v*1000.0f)));
+        printDrumSweepLine("Follow    ",v,measureDrums(drumGuitar,drumBass,ds,700000u));
     }
     std::cout<<"\n";
     for (float v : sweepValues) {
         DrumSettings ds{}; ds.density=v;
-        printDrumSweepLine("Density   ",v,measureDrums(drumGuitar,drumBass,ds,710000u+static_cast<unsigned>(v*1000.0f)));
+        printDrumSweepLine("Density   ",v,measureDrums(drumGuitar,drumBass,ds,710000u));
     }
     std::cout<<"\n";
     for (float v : sweepValues) {
         DrumSettings ds{}; ds.complexity=v;
-        printDrumSweepLine("Complexity",v,measureDrums(drumGuitar,drumBass,ds,720000u+static_cast<unsigned>(v*1000.0f)));
+        printDrumSweepLine("Complexity",v,measureDrums(drumGuitar,drumBass,ds,720000u));
     }
     std::cout<<"\n";
     for (float v : sweepValues) {
         DrumSettings ds{}; ds.humanize=v;
-        printDrumSweepLine("Humanize  ",v,measureDrums(drumGuitar,drumBass,ds,730000u+static_cast<unsigned>(v*1000.0f)));
+        printDrumSweepLine("Humanize  ",v,measureDrums(drumGuitar,drumBass,ds,730000u));
+    }
+
+
+    std::cout << "\nDrum style diagnostics (512 phrases per style)\n";
+    std::cout << "----------------------------------------------\n";
+    for (int style = 0; style < static_cast<int>(StyleId::Count); ++style) {
+        DrumSettings ds{};
+        ds.style = static_cast<StyleId>(style);
+        const auto dm = measureDrums(drumGuitar, drumBass, ds,
+                                     740000u + static_cast<unsigned>(style) * 10000u, 512);
+        printDrumSweepLine(styleNames[style], 1.0, dm);
     }
 
     GeneratorSettings exampleSettings = s;

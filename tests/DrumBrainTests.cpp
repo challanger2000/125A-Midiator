@@ -164,6 +164,67 @@ void testHumanizeChangesVelocityNotPattern() {
             "High Humanize must create a musically material velocity deviation");
 }
 
+void testStylesHaveDistinctDrumLanguages() {
+    Phrase guitar{}, bass{};
+    makeContext(guitar, bass);
+
+    struct Metrics {
+        long long kicks = 0;
+        long long hats16 = 0;
+        long long openHats = 0;
+        long long toms = 0;
+    };
+
+    auto measure = [&](StyleId style) {
+        Metrics m{};
+        DrumSettings s{};
+        s.style = style;
+        s.complexity = 0.65f;
+        s.density = 0.60f;
+        for (unsigned seed = 1; seed <= 256; ++seed) {
+            const auto d = DrumBrain::generate(guitar, bass, s, 90000u + seed);
+            for (int i = 0; i < d.usedSteps(); ++i) {
+                const int local = i % kStepsPerBar;
+                for (int h = 0; h < d.steps[i].hitCount; ++h) {
+                    switch (d.steps[i].hits[h].voice) {
+                        case DrumVoice::Kick:
+                            ++m.kicks;
+                            break;
+                        case DrumVoice::ClosedHat:
+                            if ((local % 2) != 0) ++m.hats16;
+                            break;
+                        case DrumVoice::OpenHat:
+                            ++m.openHats;
+                            if ((local % 2) != 0) ++m.hats16;
+                            break;
+                        case DrumVoice::LowTom:
+                        case DrumVoice::MidTom:
+                        case DrumVoice::HighTom:
+                            ++m.toms;
+                            break;
+                        default:
+                            break;
+                    }
+                }
+            }
+        }
+        return m;
+    };
+
+    const auto ndh = measure(StyleId::NDHIndustrial);
+    const auto dark = measure(StyleId::DarkRockGothic);
+    const auto heavy = measure(StyleId::HeavyIndustrial);
+
+    require(heavy.kicks > dark.kicks + 400,
+            "Heavy Industrial drums must use materially more kick pressure than Dark Rock");
+    require(heavy.hats16 > ndh.hats16,
+            "Heavy Industrial drums must use more 16th-hat pressure than NDH");
+    require(dark.openHats > ndh.openHats,
+            "Dark Rock drums must breathe more through open hats than NDH");
+    require(dark.toms > ndh.toms,
+            "Dark Rock drums must permit more tom movement than NDH");
+}
+
 void testMappingLayerIndependentOfComposition() {
     const auto gm = DrumMidiMap::preset(DrumMapId::GeneralMidi);
     const auto ez = DrumMidiMap::preset(DrumMapId::EZdrummer3);
@@ -180,6 +241,7 @@ int main() {
     testBackbeatAndStructuralCrash();
     testFollowControlsKickLock();
     testHumanizeChangesVelocityNotPattern();
+    testStylesHaveDistinctDrumLanguages();
     testMappingLayerIndependentOfComposition();
 
     std::cout << "Midiator Drum Brain tests: PASS\n";

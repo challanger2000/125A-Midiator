@@ -418,6 +418,7 @@ void MidiatorProcessor::regenerateBass() {
 }
 
 void MidiatorProcessor::regenerateDrums() {
+    drumSettings_.style = settings_.style;
     drumPhrase_ = midiator::DrumBrain::generate(
         phrase_, bassPhrase_, drumSettings_, seed_ ^ 0xD12A2026u);
 }
