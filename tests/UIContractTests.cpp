@@ -37,10 +37,10 @@ int main() {
             xml.find("maxSize=\"1720, 1120\"") != std::string::npos,
             "resizable editor contract must expose non-identical min/max sizes");
 
-    for (int tag = 100; tag <= 114; ++tag) {
+    for (int tag = 100; tag <= 122; ++tag) {
         const std::string needle = "tag=\"" + std::to_string(tag) + "\"";
         require(xml.find(needle) != std::string::npos,
-                "all Midiator parameter tags 100..114 must be declared");
+                "all Midiator parameter tags 100..122 must be declared");
     }
 
     const char* theoryIds[] = {
@@ -74,6 +74,13 @@ int main() {
             "POWER CHORDS ON/OFF selector must be bound");
     require(xml.find("control-tag=\"DrumMap\"") != std::string::npos,
             "DRUM MAP selector must be bound");
+    for (const char* roleTag : {"BassFollow", "BassMovement", "DrumDensity",
+                                "DrumComplexity", "PadSpread", "PadTension",
+                                "SynthActivity", "SynthMovement"}) {
+        const std::string needle = std::string("control-tag=\"") + roleTag + "\"";
+        require(xml.find(needle) != std::string::npos,
+                "every focused role control must be bound in the GUI");
+    }
 
     size_t sliderCount = 0;
     size_t pos = 0;
@@ -89,7 +96,7 @@ int main() {
                 "every slider must use the visible native slider drawing");
         pos = end + 2;
     }
-    require(sliderCount == 6, "exactly six visible native sliders are required");
+    require(sliderCount == 14, "exactly fourteen visible native sliders are required");
 
     size_t textEditCount = 0;
     pos = 0;
@@ -97,8 +104,8 @@ int main() {
         ++textEditCount;
         pos += 10;
     }
-    require(textEditCount == 6,
-            "six editable percentage value fields must accompany the six sliders");
+    require(textEditCount == 14,
+            "fourteen editable percentage value fields must accompany the fourteen sliders");
 
     std::cout << "Midiator UI contract test: PASS\n";
     return 0;
