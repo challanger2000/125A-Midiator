@@ -46,6 +46,7 @@
     <control-tag name="RootSource" tag="111"/>
     <control-tag name="Style" tag="112"/>
     <control-tag name="PowerChordsEnabled" tag="113"/>
+    <control-tag name="DrumMap" tag="114"/>
   </control-tags>
 
   <template name="MidiatorView" class="CViewContainer" origin="0, 0" size="860, 560" minSize="645, 420" maxSize="1720, 1120" transparent="false" background-color="Bg">
@@ -81,6 +82,8 @@
     <!-- Riff shape -->
     <view class="CViewContainer" origin="24, 226" size="812, 248" transparent="false" background-color="Panel">
       <view class="CTextLabel" origin="18, 12" size="210, 18" title="RIFF SHAPE" font="Heading" font-color="Accent" transparent="true"/>
+      <view class="CTextLabel" origin="244, 13" size="72, 16" title="DRUM MAP" font="Small" font-color="Dim" transparent="true"/>
+      <view class="COptionMenu" control-tag="DrumMap" origin="318, 7" size="154, 28" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
       <view class="CTextLabel" origin="492, 13" size="50, 16" title="STYLE" font="Small" font-color="Dim" transparent="true"/>
       <view class="COptionMenu" control-tag="Style" origin="544, 7" size="250, 28" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
       <view class="CView" origin="18, 42" size="776, 1" transparent="false" background-color="PanelEdge"/>
