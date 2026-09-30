@@ -185,7 +185,7 @@ void testDedicatedInstrumentOutputBuses() {
     processor.terminate();
 }
 
-void testGuitarAndBassUseSeparateOutputBuses() {
+void testGuitarBassAndDrumsUseSeparateOutputBuses() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
 
@@ -197,6 +197,7 @@ void testGuitarAndBassUseSeparateOutputBuses() {
 
     int guitarOns = 0;
     int bassOns = 0;
+    int drumOns = 0;
     int unexpectedOns = 0;
     for (const auto& e : output.events) {
         if (e.type != Event::kNoteOnEvent)
@@ -207,6 +208,10 @@ void testGuitarAndBassUseSeparateOutputBuses() {
             ++bassOns;
             require(e.noteOn.pitch >= 24 && e.noteOn.pitch <= 60,
                     "Bass Out notes must stay in the bass register");
+        } else if (e.busIndex == kDrumsOutBus) {
+            ++drumOns;
+            require(e.noteOn.pitch >= 0 && e.noteOn.pitch <= 127,
+                    "Drums Out notes must be valid MIDI notes");
         } else {
             ++unexpectedOns;
         }
@@ -214,8 +219,9 @@ void testGuitarAndBassUseSeparateOutputBuses() {
 
     require(guitarOns > 0, "Guitar Out must emit guitar notes");
     require(bassOns > 0, "Bass Out must emit bass notes");
+    require(drumOns > 0, "Drums Out must emit mapped drum notes");
     require(unexpectedOns == 0,
-            "inactive Drums/Pad/Synth buses must not emit placeholder notes");
+            "inactive Pad/Synth buses must not emit placeholder notes");
 }
 
 void testNewRiffChangesRhythmMask() {
@@ -904,7 +910,7 @@ void testTransportJumpFlushesHeldNotes() {
 } // namespace
 
 int main() {
-    testGuitarAndBassUseSeparateOutputBuses();
+    testGuitarBassAndDrumsUseSeparateOutputBuses();
     testDedicatedInstrumentOutputBuses();
     testNewRiffChangesRhythmMask();
     testNewRiffToggleZeroValueStillCommands();

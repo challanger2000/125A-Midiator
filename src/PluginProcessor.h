@@ -2,6 +2,7 @@
 
 #include "RiffEngine.h"
 #include "BassBrain.h"
+#include "DrumBrain.h"
 
 #include "public.sdk/source/vst/vstaudioeffect.h"
 #include "public.sdk/source/vst/vsteditcontroller.h"
@@ -85,6 +86,9 @@ private:
     midiator::Phrase phrase_{};
     midiator::BassSettings bassSettings_{};
     midiator::Phrase bassPhrase_{};
+    midiator::DrumSettings drumSettings_{};
+    midiator::DrumPhrase drumPhrase_{};
+    midiator::DrumMidiMap drumMap_ = midiator::DrumMidiMap::preset(midiator::DrumMapId::GeneralMidi);
     uint32_t seed_ = 0x125A2026u;
 
     double sampleRate_ = 44100.0;
@@ -105,6 +109,7 @@ private:
     void generateNew();
     void generateVariation();
     void regenerateBass();
+    void regenerateDrums();
     void resizePhraseBars(int newBars);
     void applyPowerChordMode(bool enabled);
     void transposePhraseToRoot(int newRootPitchClass);

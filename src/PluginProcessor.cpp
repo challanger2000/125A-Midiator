@@ -414,6 +414,12 @@ void MidiatorProcessor::regenerateBass() {
     bassSettings_.scale = settings_.scale;
     bassPhrase_ = midiator::BassBrain::generate(
         phrase_, bassSettings_, seed_ ^ 0xB4552026u);
+    regenerateDrums();
+}
+
+void MidiatorProcessor::regenerateDrums() {
+    drumPhrase_ = midiator::DrumBrain::generate(
+        phrase_, bassPhrase_, drumSettings_, seed_ ^ 0xD12A2026u);
 }
 
 void MidiatorProcessor::resizePhraseBars(int newBars) {
@@ -850,6 +856,29 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
 
     schedulePhrase(phrase_, kGuitarOutBus);
     schedulePhrase(bassPhrase_, kBassOutBus);
+
+    auto scheduleDrums = [&]() {
+        constexpr double kDrumGateQn = 1.0 / 16.0;
+        for (long long cycle = firstCycle; cycle <= lastCycle; ++cycle) {
+            const double cycleStartQn =
+                transportAnchorQn_ + static_cast<double>(cycle) * patternLengthQn;
+            for (int stepIndex = 0; stepIndex < drumPhrase_.usedSteps(); ++stepIndex) {
+                const auto& step = drumPhrase_.steps[stepIndex];
+                if (step.hitCount <= 0)
+                    continue;
+                const double onQn =
+                    cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
+                const double offQn = onQn + kDrumGateQn;
+                for (int n = 0; n < step.hitCount; ++n) {
+                    const auto& hit = step.hits[n];
+                    const int pitch = drumMap_.midiNote(hit.voice);
+                    addScheduled(onQn, true, pitch, hit.velocity, kDrumsOutBus);
+                    addScheduled(offQn, false, pitch, 0, kDrumsOutBus);
+                }
+            }
+        }
+    };
+    scheduleDrums();
 
     std::sort(scheduled.begin(), scheduled.begin() + scheduledCount,
               [](const ScheduledEvent& a, const ScheduledEvent& b) {

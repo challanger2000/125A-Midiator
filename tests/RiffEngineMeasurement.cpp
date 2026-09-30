@@ -1,5 +1,6 @@
 #include "RiffEngine.h"
 #include "BassBrain.h"
+#include "DrumBrain.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -272,6 +273,68 @@ static void printBassSweepLine(const char* label, double value, const BassSweepM
               << " avgJump=" << m.avgAbsJump
               << " avgPitch=" << m.avgPitch
               << "\n";
+}
+
+
+struct DrumSweepMetrics {
+    double hits = 0.0;
+    double kicks = 0.0;
+    double kickLock = 0.0;
+    double snares = 0.0;
+    double hats = 0.0;
+    double ghosts = 0.0;
+    double toms = 0.0;
+    double crashes = 0.0;
+    double avgVelocity = 0.0;
+};
+
+static DrumSweepMetrics measureDrums(const Phrase& guitar,
+                                     const Phrase& bass,
+                                     const DrumSettings& settings,
+                                     unsigned seedBase,
+                                     int samples = 256) {
+    DrumSweepMetrics m{};
+    long long hits=0,kicks=0,locked=0,snares=0,hats=0,ghosts=0,toms=0,crashes=0,vel=0;
+    for(int sidx=0;sidx<samples;++sidx){
+        const auto d=DrumBrain::generate(guitar,bass,settings,seedBase+static_cast<unsigned>(sidx));
+        for(int i=0;i<d.usedSteps();++i){
+            const bool contextHit =
+                (i<guitar.usedSteps() && guitar.steps[i].noteCount>0) ||
+                (i<bass.usedSteps() && bass.steps[i].noteCount>0);
+            for(int n=0;n<d.steps[i].hitCount;++n){
+                const auto& hit=d.steps[i].hits[n];
+                ++hits; vel+=hit.velocity;
+                switch(hit.voice){
+                    case DrumVoice::Kick: ++kicks; if(contextHit) ++locked; break;
+                    case DrumVoice::Snare: ++snares; break;
+                    case DrumVoice::ClosedHat:
+                    case DrumVoice::OpenHat: ++hats; break;
+                    case DrumVoice::GhostSnare: ++ghosts; break;
+                    case DrumVoice::LowTom:
+                    case DrumVoice::MidTom:
+                    case DrumVoice::HighTom: ++toms; break;
+                    case DrumVoice::Crash: ++crashes; break;
+                    default: break;
+                }
+            }
+        }
+    }
+    const double phrases=static_cast<double>(samples);
+    const double hcount=std::max(1.0,static_cast<double>(hits));
+    const double kcount=std::max(1.0,static_cast<double>(kicks));
+    m.hits=hits/phrases; m.kicks=kicks/phrases; m.kickLock=locked/kcount;
+    m.snares=snares/phrases; m.hats=hats/phrases; m.ghosts=ghosts/phrases;
+    m.toms=toms/phrases; m.crashes=crashes/phrases; m.avgVelocity=vel/hcount;
+    return m;
+}
+
+static void printDrumSweepLine(const char* label,double value,const DrumSweepMetrics& m){
+    std::cout<<label<<" "<<std::setw(5)<<value*100.0<<"%:"
+             <<" hits="<<m.hits<<" kicks="<<m.kicks
+             <<" kickLock="<<m.kickLock*100.0<<"%"
+             <<" snare="<<m.snares<<" hats="<<m.hats
+             <<" ghost="<<m.ghosts<<" toms="<<m.toms
+             <<" crash="<<m.crashes<<" avgVel="<<m.avgVelocity<<"\n";
 }
 
 int main() {
@@ -566,6 +629,33 @@ int main() {
         b.octaveChance = v;
         printBassSweepLine("Octave    ", v, measureBass(
             bassGuitarFixture, b, 640000u + static_cast<unsigned>(v * 1000.0f)));
+    }
+
+
+    std::cout << "\nDrum Brain control sweep diagnostics (256 phrases per point)\n";
+    std::cout << "---------------------------------------------------------\n";
+    const auto drumGuitar = RiffEngine::generate(bassGuitarSettings, 0xD12A1001u);
+    BassSettings drumBassSettings{};
+    const auto drumBass = BassBrain::generate(drumGuitar, drumBassSettings, 0xD12A1002u);
+
+    for (float v : sweepValues) {
+        DrumSettings ds{}; ds.follow=v;
+        printDrumSweepLine("Follow    ",v,measureDrums(drumGuitar,drumBass,ds,700000u+static_cast<unsigned>(v*1000.0f)));
+    }
+    std::cout<<"\n";
+    for (float v : sweepValues) {
+        DrumSettings ds{}; ds.density=v;
+        printDrumSweepLine("Density   ",v,measureDrums(drumGuitar,drumBass,ds,710000u+static_cast<unsigned>(v*1000.0f)));
+    }
+    std::cout<<"\n";
+    for (float v : sweepValues) {
+        DrumSettings ds{}; ds.complexity=v;
+        printDrumSweepLine("Complexity",v,measureDrums(drumGuitar,drumBass,ds,720000u+static_cast<unsigned>(v*1000.0f)));
+    }
+    std::cout<<"\n";
+    for (float v : sweepValues) {
+        DrumSettings ds{}; ds.humanize=v;
+        printDrumSweepLine("Humanize  ",v,measureDrums(drumGuitar,drumBass,ds,730000u+static_cast<unsigned>(v*1000.0f)));
     }
 
     GeneratorSettings exampleSettings = s;

@@ -11,6 +11,7 @@ add_executable(MidiatorMeasure
     RiffEngineMeasurement.cpp
     ../src/GuitarBrain.cpp
     ../src/BassBrain.cpp
+    ../src/DrumBrain.cpp
 )
 
 target_include_directories(MidiatorMeasure PRIVATE ../src)
@@ -30,6 +31,7 @@ add_executable(MidiatorStateRoundtripTests
     ../src/PluginProcessor.cpp
     ../src/GuitarBrain.cpp
     ../src/BassBrain.cpp
+    ../src/DrumBrain.cpp
 )
 
 target_include_directories(MidiatorStateRoundtripTests PRIVATE ../src)
