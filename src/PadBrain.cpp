@@ -276,14 +276,17 @@ PadPhrase PadBrain::generate(const Phrase& guitar,
         // At most one additional pad voice, and only as a true octave
         // doubling of an existing harmonic tone. This adds size without
         // inventing a fourth independent chord degree.
-        float octaveDoubleProbability = 0.04f + 0.18f * s.spread;
+        // Octave doubling is deliberately occasional. Pads normally stay
+        // at 2-3 sounding notes; Spread may make an octave copy more likely,
+        // but even the widest setting must not turn four-note pads into the norm.
+        float octaveDoubleProbability = 0.02f + 0.08f * s.spread;
         if (s.style == StyleId::DarkRockGothic)
-            octaveDoubleProbability += 0.08f;
+            octaveDoubleProbability += 0.04f;
         else if (s.style == StyleId::HeavyIndustrial)
-            octaveDoubleProbability += 0.03f;
+            octaveDoubleProbability += 0.02f;
 
         if (harmonicVoices < kMaxPadVoices &&
-            rng.chance(std::clamp(octaveDoubleProbability, 0.0f, 0.32f))) {
+            rng.chance(std::clamp(octaveDoubleProbability, 0.0f, 0.16f))) {
             const int sourceIndex =
                 (harmonicVoices > 2 && rng.chance(0.35f)) ? harmonicVoices - 1 : 0;
             const auto source = dst.notes[sourceIndex];

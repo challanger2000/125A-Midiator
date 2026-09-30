@@ -10,7 +10,7 @@ Midiator currently generates five independently routable musical roles:
 - **Bass Out** — monophonic bass accompaniment derived from the riff context
 - **Drums Out** — semantic drum patterns with mapping abstraction
 - **Pad Out** — polyphonic sustained harmony with voice-leading
-- **Synth Out** — monophonic hook / arp-oriented melodic material
+- **Synth Out** — compact arps, short phrases and occasional two-note chord stabs
 
 Each role uses its own VST3 event output bus. The roles are not multiplexed onto one MIDI output.
 
@@ -22,7 +22,7 @@ The engine shares root note, scale / mode, style, phrase length, transport posit
 
 Implemented styles: NDH / Industrial, Dark Rock / Gothic and Heavy Industrial.
 
-Bass is style-aware; Drums derive kick pressure from Guitar/Bass context; Pads use voice-leading plus Guitar/Bass context-follow; Synth keeps its own motif while optionally targeting active Pad harmony.
+Bass is style-aware; Drums derive kick pressure from Guitar/Bass context; Pads use 2-3 harmonic tones with occasional octave doubling, voice-leading and Guitar/Bass context-follow; Synth generates compact arp/ostinato notes, short phrase fragments and occasional two-note chord stabs while optionally targeting active Pad harmony.
 
 ## Scales / modes
 
