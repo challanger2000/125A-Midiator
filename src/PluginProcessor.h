@@ -42,7 +42,8 @@ enum : ParamID {
     kVariationId = 110,
     kRootSourceId = 111,
     kStyleId = 112,
-    kPowerChordsEnabledId = 113
+    kPowerChordsEnabledId = 113,
+    kDrumMapId = 114
 };
 
 static const FUID ProcessorUID(0x125A4001, 0x6D494449, 0x41544F52, 0x00000100);
@@ -90,7 +91,8 @@ private:
     midiator::Phrase bassPhrase_{};
     midiator::DrumSettings drumSettings_{};
     midiator::DrumPhrase drumPhrase_{};
-    midiator::DrumMidiMap drumMap_ = midiator::DrumMidiMap::preset(midiator::DrumMapId::GeneralMidi);
+    midiator::DrumMapId drumMapId_ = midiator::DrumMapId::GeneralMidi;
+    midiator::DrumMidiMap drumMap_ = midiator::DrumMidiMap::preset(drumMapId_);
     midiator::PadSettings padSettings_{};
     midiator::PadPhrase padPhrase_{};
     midiator::SynthSettings synthSettings_{};
