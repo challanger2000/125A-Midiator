@@ -225,6 +225,46 @@ void testStylesHaveDistinctDrumLanguages() {
             "Dark Rock drums must permit more tom movement than NDH");
 }
 
+void testVerifiedMapsNeverEmitSamePitchTwicePerStep() {
+    Phrase guitar{}, bass{};
+    makeContext(guitar, bass);
+
+    const DrumMapId maps[] = {
+        DrumMapId::GeneralMidi,
+        DrumMapId::EZdrummer3,
+        DrumMapId::PerfectDrums
+    };
+
+    for (auto mapId : maps) {
+        const auto map = DrumMidiMap::preset(mapId);
+        for (int style = 0; style < static_cast<int>(StyleId::Count); ++style) {
+            for (unsigned seed = 1; seed <= 1024; ++seed) {
+                DrumSettings s{};
+                s.style = static_cast<StyleId>(style);
+                s.complexity = 1.0f;
+                s.density = 1.0f;
+
+                const auto d = DrumBrain::generate(
+                    guitar, bass, s,
+                    120000u + seed + static_cast<unsigned>(style) * 5000u);
+
+                for (int i = 0; i < d.usedSteps(); ++i) {
+                    bool usedPitch[128]{};
+                    const auto& step = d.steps[i];
+                    for (int h = 0; h < step.hitCount; ++h) {
+                        const int pitch = map.midiNote(step.hits[h].voice);
+                        require(pitch >= 0 && pitch < 128,
+                                "verified drum map must stay inside MIDI pitch range");
+                        require(!usedPitch[pitch],
+                                "verified drum map must never emit the same MIDI pitch twice on one step");
+                        usedPitch[pitch] = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
 void testMappingLayerIndependentOfComposition() {
     const auto gm = DrumMidiMap::preset(DrumMapId::GeneralMidi);
     require(gm.midiNote(DrumVoice::Kick) == 36, "GM kick mapping must be 36");
@@ -286,6 +326,7 @@ int main() {
     testFollowControlsKickLock();
     testHumanizeChangesVelocityNotPattern();
     testStylesHaveDistinctDrumLanguages();
+    testVerifiedMapsNeverEmitSamePitchTwicePerStep();
     testMappingLayerIndependentOfComposition();
 
     std::cout << "Midiator Drum Brain tests: PASS\n";
