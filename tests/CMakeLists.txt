@@ -29,6 +29,7 @@ add_executable(MidiatorStateRoundtripTests
     StateRoundtripTests.cpp
     ../src/PluginProcessor.cpp
     ../src/GuitarBrain.cpp
+    ../src/BassBrain.cpp
 )
 
 target_include_directories(MidiatorStateRoundtripTests PRIVATE ../src)
@@ -41,6 +42,7 @@ add_executable(MidiatorProcessorLiveTests
     ProcessorLiveTests.cpp
     ../src/PluginProcessor.cpp
     ../src/GuitarBrain.cpp
+    ../src/BassBrain.cpp
 )
 
 target_include_directories(MidiatorProcessorLiveTests PRIVATE ../src)
