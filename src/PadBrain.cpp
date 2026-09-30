@@ -198,12 +198,20 @@ PadPhrase PadBrain::generate(const Phrase& guitar,
         // A possible fourth voice is added later only as an octave doubling.
         int harmonicVoices = 3;
         const float contextRichness = 1.0f - s.contextFollow;
-        if (s.style == StyleId::NDHIndustrial &&
-            rng.chance(0.55f * contextRichness))
-            harmonicVoices = 2;
-        else if (s.style == StyleId::HeavyIndustrial &&
-                 rng.chance(0.28f * contextRichness))
-            harmonicVoices = 2;
+        if (s.style == StyleId::NDHIndustrial) {
+            // NDH deliberately remains sparse even with strong context-follow.
+            // Context-follow can enrich the voicing, but must not erase the
+            // style's characteristic two-note/power-like pad language.
+            const float twoToneProbability =
+                0.20f + 0.35f * contextRichness;
+            if (rng.chance(twoToneProbability))
+                harmonicVoices = 2;
+        } else if (s.style == StyleId::HeavyIndustrial) {
+            const float twoToneProbability =
+                0.08f + 0.20f * contextRichness;
+            if (rng.chance(twoToneProbability))
+                harmonicVoices = 2;
+        }
 
         auto& dst = out.steps[step];
         dst.noteCount = harmonicVoices;

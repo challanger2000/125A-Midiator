@@ -1236,6 +1236,12 @@ void testRoleSpecificGateRules() {
             if (e.type != Event::kNoteOnEvent || e.busIndex != kDrumsOutBus)
                 continue;
             const double expectedOff = e.ppqPosition + kSixteenthQn;
+            const double blockEndQn =
+                startQn + static_cast<double>(data.numSamples) *
+                context.tempo / (60.0 * context.sampleRate);
+            if (expectedOff >= blockEndQn - eps)
+                continue;
+
             bool foundExactOff = false;
             for (const auto& off : output.events) {
                 if (off.type == Event::kNoteOffEvent &&
