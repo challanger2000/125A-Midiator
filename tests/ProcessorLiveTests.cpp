@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -857,6 +858,59 @@ void testMidiRootSourceTransposesRiff() {
             "MIDI root control note must not be passed through as a played guitar note");
 }
 
+void testMidiRootBurstUsesFinalNote() {
+    MidiatorProcessor single;
+    MidiatorProcessor burst;
+    require(single.setProcessing(true) == kResultOk &&
+            burst.setProcessing(true) == kResultOk,
+            "MIDI-root burst fixtures must start");
+
+    auto addRoot = [](EventList& list, int pitch, int32 sampleOffset) {
+        Event e{};
+        e.busIndex = 0;
+        e.sampleOffset = sampleOffset;
+        e.ppqPosition = 0.0;
+        e.type = Event::kNoteOnEvent;
+        e.noteOn.channel = 0;
+        e.noteOn.pitch = static_cast<int16>(pitch);
+        e.noteOn.velocity = 1.0f;
+        e.noteOn.noteId = -1;
+        require(list.addEvent(e) == kResultOk,
+                "MIDI-root burst event must be accepted");
+    };
+
+    EventList singleInput;
+    addRoot(singleInput, 43, 20); // G
+
+    EventList burstInput;
+    addRoot(burstInput, 36, 0);   // C
+    addRoot(burstInput, 40, 10);  // E
+    addRoot(burstInput, 43, 20);  // G: final command wins
+
+    auto singleContext = makeContext(0.0, true);
+    auto burstContext = makeContext(0.0, true);
+    EventList singleOutput, burstOutput;
+    auto singleData = makeProcessData(singleContext, singleOutput, 192000, nullptr, &singleInput);
+    auto burstData = makeProcessData(burstContext, burstOutput, 192000, nullptr, &burstInput);
+
+    require(single.process(singleData) == kResultOk &&
+            burst.process(burstData) == kResultOk,
+            "MIDI-root burst comparison must process");
+
+    auto capture = [](const EventList& list) {
+        std::vector<std::tuple<int32,int32,int16>> notes;
+        for (const auto& e : list.events) {
+            if (e.type != Event::kNoteOnEvent)
+                continue;
+            notes.emplace_back(e.busIndex, e.sampleOffset, e.noteOn.pitch);
+        }
+        return notes;
+    };
+
+    require(capture(singleOutput) == capture(burstOutput),
+            "same-block MIDI root burst must equal one final-root command across all role buses");
+}
+
 void testManualRootSourceIgnoresMidiRootNotes() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
@@ -1334,6 +1388,7 @@ int main() {
     testGeneratedNoteLengthsAffectMidiOutput();
     testRoleSpecificGateRules();
     testMidiRootSourceTransposesRiff();
+    testMidiRootBurstUsesFinalNote();
     testManualRootSourceIgnoresMidiRootNotes();
     testTransportUsesHostBarGrid();
     testLiveDownbeatAndStopFlush();

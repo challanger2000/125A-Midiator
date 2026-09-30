@@ -674,6 +674,7 @@ void MidiatorProcessor::applyPowerChordMode(bool enabled) {
         for (int i = 0; i < phrase_.usedSteps(); ++i)
             if (phrase_.steps[i].noteCount > 1)
                 phrase_.steps[i].noteCount = 1;
+        regenerateBass();
         phraseChangedNeedsFlush_ = true;
         return;
     }
@@ -723,6 +724,7 @@ void MidiatorProcessor::applyPowerChordMode(bool enabled) {
         }
     }
 
+    regenerateBass();
     phraseChangedNeedsFlush_ = true;
 }
 
@@ -753,6 +755,9 @@ void MidiatorProcessor::applyMidiRootInput(ProcessData& data) {
     if (!midiRootSource_ || !data.inputEvents)
         return;
 
+    int finalPitchClass = -1;
+    int32 finalSampleOffset = -1;
+
     for (int32 i = 0; i < data.inputEvents->getEventCount(); ++i) {
         Event event{};
         if (data.inputEvents->getEvent(i, event) != kResultOk)
@@ -765,10 +770,17 @@ void MidiatorProcessor::applyMidiRootInput(ProcessData& data) {
         if (pitchClass < 0)
             pitchClass += 12;
 
-        // MIDI input is a tonal controller in MIDI-root mode. The source note
-        // itself is intentionally not copied to outputEvents.
-        transposePhraseToRoot(pitchClass);
+        // Only the final root command in an audio block can affect the
+        // arrangement that leaves that block. Coalesce chords/fast MIDI bursts
+        // instead of regenerating Bass->Drums->Pad->Synth for every NoteOn.
+        if (event.sampleOffset >= finalSampleOffset) {
+            finalSampleOffset = event.sampleOffset;
+            finalPitchClass = pitchClass;
+        }
     }
+
+    if (finalPitchClass >= 0)
+        transposePhraseToRoot(finalPitchClass);
 }
 
 void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
