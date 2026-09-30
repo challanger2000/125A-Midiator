@@ -158,12 +158,24 @@ Phrase BassBrain::generate(const Phrase& guitar,
         // Follow establishes the shared groove. Even at low follow values,
         // strong beats retain anchors so the bass does not become random filler.
         bool hit = false;
-        if (guitarHit)
-            hit = strongBeat || rng.chance(0.28f + 0.68f * s.follow);
-        else if (strongBeat)
-            hit = rng.chance(0.20f + 0.22f * (1.0f - s.follow));
-        else if ((local & 1) && rng.chance(0.04f + 0.20f * s.passing))
-            hit = true;
+        if (guitarHit) {
+            // FOLLOW is intentionally a true independence/lock control.
+            // At low values the bass selects only important guitar anchors;
+            // at high values it increasingly locks to the riff's onset grid.
+            if (strongBeat)
+                hit = rng.chance(0.55f + 0.45f * s.follow);
+            else
+                hit = rng.chance(0.16f + 0.80f * s.follow);
+        } else if (strongBeat) {
+            // Low FOLLOW gets its own quarter-note pulse so the bass can act
+            // like a separate player rather than a transposed guitar copy.
+            hit = rng.chance(0.10f + 0.40f * (1.0f - s.follow));
+        } else {
+            const float independentPulse =
+                0.02f + 0.16f * (1.0f - s.follow) + 0.18f * s.passing;
+            if ((local & 1) && rng.chance(independentPulse))
+                hit = true;
+        }
 
         if (!hit)
             continue;
