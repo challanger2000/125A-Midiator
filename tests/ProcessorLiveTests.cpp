@@ -1463,6 +1463,87 @@ void testNormalParameterQueueOrderIsDeterministic() {
             "final normal-parameter state must not depend on VST3 queue ordering");
 }
 
+
+void testGuiAndParameterActionsCoalesceSameBlock() {
+    auto captureNotes = [](MidiatorProcessor& processor, double startQn) {
+        auto context = makeContext(startQn, true);
+        EventList output;
+        auto data = makeProcessData(context, output, 192000);
+        require(processor.process(data) == kResultOk,
+                "mixed-action capture must process");
+
+        std::vector<std::tuple<int32,int32,int16,int>> notes;
+        for (const auto& e : output.events) {
+            if (e.type != Event::kNoteOnEvent)
+                continue;
+            notes.emplace_back(
+                e.busIndex, e.sampleOffset, e.noteOn.pitch,
+                static_cast<int>(std::lround(e.noteOn.velocity * 127.0f)));
+        }
+        return notes;
+    };
+
+    auto runNewCase = [&](bool duplicatePath) {
+        MidiatorProcessor processor;
+        require(processor.setProcessing(true) == kResultOk,
+                "mixed NEW fixture must start");
+
+        TestMessage message("125A.Midiator.NewRiff");
+        require(processor.notify(&message) == kResultOk,
+                "GUI NEW message must be accepted");
+
+        ParameterChanges changes;
+        IParameterChanges* changesPtr = nullptr;
+        if (duplicatePath) {
+            int32 qi = 0, pi = 0;
+            auto* q = changes.addParameterData(kNewRiffId, qi);
+            require(q && q->addPoint(0, 1.0, pi) == kResultOk,
+                    "parameter NEW fallback must be accepted");
+            changesPtr = &changes;
+        }
+
+        auto stopped = makeContext(0.0, false);
+        EventList stoppedOut;
+        auto stoppedData = makeProcessData(stopped, stoppedOut, 64, changesPtr);
+        require(processor.process(stoppedData) == kResultOk,
+                "mixed NEW command block must process");
+        return captureNotes(processor, 0.0);
+    };
+
+    require(runNewCase(false) == runNewCase(true),
+            "GUI NEW plus parameter NEW in one block must coalesce to one composition");
+
+    auto runVariationCase = [&](bool duplicatePath) {
+        MidiatorProcessor processor;
+        require(processor.setProcessing(true) == kResultOk,
+                "mixed VARIATION fixture must start");
+
+        TestMessage message("125A.Midiator.Variation");
+        require(processor.notify(&message) == kResultOk,
+                "GUI VARIATION message must be accepted");
+
+        ParameterChanges changes;
+        IParameterChanges* changesPtr = nullptr;
+        if (duplicatePath) {
+            int32 qi = 0, pi = 0;
+            auto* q = changes.addParameterData(kVariationId, qi);
+            require(q && q->addPoint(0, 1.0, pi) == kResultOk,
+                    "parameter VARIATION fallback must be accepted");
+            changesPtr = &changes;
+        }
+
+        auto stopped = makeContext(0.0, false);
+        EventList stoppedOut;
+        auto stoppedData = makeProcessData(stopped, stoppedOut, 64, changesPtr);
+        require(processor.process(stoppedData) == kResultOk,
+                "mixed VARIATION command block must process");
+        return captureNotes(processor, 0.0);
+    };
+
+    require(runVariationCase(false) == runVariationCase(true),
+            "GUI VARIATION plus parameter VARIATION in one block must coalesce to one variation");
+}
+
 } // namespace
 
 int main() {
@@ -1489,6 +1570,7 @@ int main() {
     testVariationPressReleaseFlushesHeldNotes();
     testTransportJumpFlushesHeldNotes();
     testGuiMessageBurstsAreCoalescedPerBlock();
+    testGuiAndParameterActionsCoalesceSameBlock();
     testParameterQueueOrderCannotChangeCompositionCommands();
 
     std::cout << "Midiator live processor tests: PASS\n";

@@ -755,41 +755,9 @@ void MidiatorProcessor::transposePhraseToRoot(int newRootPitchClass, bool regene
     phraseChangedNeedsFlush_ = true;
 }
 
-void MidiatorProcessor::applyMidiRootInput(ProcessData& data) {
-    if (!midiRootSource_ || !data.inputEvents)
-        return;
-
-    int finalPitchClass = -1;
-    int32 finalSampleOffset = -1;
-
-    for (int32 i = 0; i < data.inputEvents->getEventCount(); ++i) {
-        Event event{};
-        if (data.inputEvents->getEvent(i, event) != kResultOk)
-            continue;
-
-        if (event.type != Event::kNoteOnEvent || event.noteOn.velocity <= 0.0f)
-            continue;
-
-        int pitchClass = static_cast<int>(event.noteOn.pitch) % 12;
-        if (pitchClass < 0)
-            pitchClass += 12;
-
-        // Only the final root command in an audio block can affect the
-        // arrangement that leaves that block. Coalesce chords/fast MIDI bursts
-        // instead of regenerating Bass->Drums->Pad->Synth for every NoteOn.
-        if (event.sampleOffset >= finalSampleOffset) {
-            finalSampleOffset = event.sampleOffset;
-            finalPitchClass = pitchClass;
-        }
-    }
-
-    if (finalPitchClass >= 0)
-        transposePhraseToRoot(finalPitchClass);
-}
-
-void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
-    if (!data.inputParameterChanges)
-        return;
+void MidiatorProcessor::applyParameterChanges(ProcessData& data,
+                                             bool guiNewRiff,
+                                             bool guiVariation) {
 
     struct Pending {
         bool hasRoot = false;
@@ -819,10 +787,13 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
         bool newRiff = false;
         bool variation = false;
     } pending;
+    pending.newRiff = guiNewRiff;
+    pending.variation = guiVariation;
 
     // Phase 1: collect only the final point from every queue. VST3 does not
     // guarantee a semantically meaningful queue order, so no musical state is
     // mutated while queues are being enumerated.
+    if (data.inputParameterChanges) {
     for (int32 i = 0; i < data.inputParameterChanges->getParameterCount(); ++i) {
         auto* queue = data.inputParameterChanges->getParameterData(i);
         if (!queue || queue->getPointCount() <= 0)
@@ -901,6 +872,8 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
         }
     }
 
+    }
+ 
     // Phase 2: establish the final block settings before any phrase operation.
     // This makes Style + Power-Chord Amount + Toggle deterministic regardless
     // of the host's queue ordering.
@@ -930,21 +903,47 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
     const bool finalMidiRootSource =
         pending.hasRootSource ? pending.midiRootSource : midiRootSource_;
 
+    // MIDI root is also a block-level command. Only the final NoteOn matters,
+    // and whether it matters at all is decided from the final Root Source
+    // parameter for this same block.
+    int finalMidiPitchClass = -1;
+    int32 finalMidiSampleOffset = -1;
+    if (finalMidiRootSource && data.inputEvents) {
+        for (int32 i = 0; i < data.inputEvents->getEventCount(); ++i) {
+            Event event{};
+            if (data.inputEvents->getEvent(i, event) != kResultOk)
+                continue;
+            if (event.type != Event::kNoteOnEvent || event.noteOn.velocity <= 0.0f)
+                continue;
+
+            int pitchClass = static_cast<int>(event.noteOn.pitch) % 12;
+            if (pitchClass < 0)
+                pitchClass += 12;
+            if (event.sampleOffset >= finalMidiSampleOffset) {
+                finalMidiSampleOffset = event.sampleOffset;
+                finalMidiPitchClass = pitchClass;
+            }
+        }
+    }
+
     const bool tonalFrameChanged =
         settings_.scale != oldScale || settings_.style != oldStyle;
     const bool freshGeneration = tonalFrameChanged || pending.newRiff;
 
     bool guitarEdited = false;
 
-    // Root Source and manual Root are applied from their final combined state.
-    // Switching to MIDI deliberately keeps the current root until a MIDI NoteOn
-    // arrives; switching to Manual immediately adopts the final manual root.
     midiRootSource_ = finalMidiRootSource;
-    if (!midiRootSource_ && manualRootPitchClass_ != settings_.rootPitchClass) {
+    int finalRootPitchClass = settings_.rootPitchClass;
+    if (!midiRootSource_)
+        finalRootPitchClass = manualRootPitchClass_;
+    else if (finalMidiPitchClass >= 0)
+        finalRootPitchClass = finalMidiPitchClass;
+
+    if (finalRootPitchClass != settings_.rootPitchClass) {
         if (freshGeneration) {
-            settings_.rootPitchClass = manualRootPitchClass_;
+            settings_.rootPitchClass = finalRootPitchClass;
         } else {
-            transposePhraseToRoot(manualRootPitchClass_, false);
+            transposePhraseToRoot(finalRootPitchClass, false);
             guitarEdited = true;
         }
     }
@@ -974,7 +973,7 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data) {
 
     if (freshGeneration) {
         generateNew();
-    } else if (guitarEdited) {
+    } else if (guitarEdited && !pending.variation) {
         // Root/Bars/Power-Chord edits may all occur in one host block. Refresh
         // Bass -> Drums -> Pad -> Synth once from the final Guitar state.
         regenerateBass();
@@ -1030,26 +1029,16 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     if (data.processContext && data.processContext->sampleRate > 0.0)
         sampleRate_ = data.processContext->sampleRate;
 
-    // First consume musical parameter/root changes for this block. A subsequent
-    // NEW RIFF command must use the newest Style/Scale/Density/etc., not the
-    // settings from the previous block.
-    applyParameterChanges(data);
-    applyMidiRootInput(data);
+    // GUI IConnectionPoint messages, parameter queues and MIDI-root NoteOns all
+    // describe the final musical state for this audio block. Consume the GUI
+    // atomics first, then apply the complete block exactly once so mixed command
+    // paths cannot trigger duplicate five-role compositions.
+    const uint32_t newCount =
+        pendingNewRiffCommands_.exchange(0, std::memory_order_acq_rel);
+    const uint32_t variationCount =
+        pendingVariationCommands_.exchange(0, std::memory_order_acq_rel);
 
-    // GUI commands arrive through IConnectionPoint. notify() only increments
-    // atomics; phrase state is mutated here on the processing thread.
-    const uint32_t newCount = pendingNewRiffCommands_.exchange(0, std::memory_order_acq_rel);
-    const uint32_t variationCount = pendingVariationCommands_.exchange(0, std::memory_order_acq_rel);
-
-    // Coalesce same-block GUI bursts. Intermediate compositions cannot be
-    // observed by the host before this process call returns, so calculating
-    // many complete five-role arrangements in one audio block only wastes
-    // realtime budget. Separate clicks delivered in separate blocks remain
-    // separate commands.
-    if (newCount > 0)
-        generateNew();
-    if (variationCount > 0)
-        generateVariation();
+    applyParameterChanges(data, newCount > 0, variationCount > 0);
 
     if (!data.outputEvents)
         return kResultOk;

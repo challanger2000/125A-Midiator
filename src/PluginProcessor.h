@@ -121,8 +121,9 @@ private:
     void resizePhraseBars(int newBars, bool regenerateCompanions = true);
     void applyPowerChordMode(bool enabled, bool regenerateCompanions = true);
     void transposePhraseToRoot(int newRootPitchClass, bool regenerateCompanions = true);
-    void applyParameterChanges(ProcessData& data);
-    void applyMidiRootInput(ProcessData& data);
+    void applyParameterChanges(ProcessData& data,
+                               bool guiNewRiff = false,
+                               bool guiVariation = false);
     void flushActiveNotes(IEventList* output, double ppqPosition = 0.0);
 };
 
