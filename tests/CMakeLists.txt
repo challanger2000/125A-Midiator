@@ -12,6 +12,7 @@ add_executable(MidiatorMeasure
     ../src/GuitarBrain.cpp
     ../src/BassBrain.cpp
     ../src/DrumBrain.cpp
+    ../src/PadBrain.cpp
 )
 
 target_include_directories(MidiatorMeasure PRIVATE ../src)
