@@ -1544,11 +1544,60 @@ void testGuiAndParameterActionsCoalesceSameBlock() {
             "GUI VARIATION plus parameter VARIATION in one block must coalesce to one variation");
 }
 
+
+void testVerifiedDrumMapParameterChangesOutput() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "Drum Map fixture must start");
+
+    auto captureDrumPitches = [&](double startQn) {
+        auto context = makeContext(startQn, true);
+        EventList output;
+        auto data = makeProcessData(context, output, 192000);
+        require(processor.process(data) == kResultOk,
+                "Drum Map capture must process");
+        std::array<bool, 128> pitches{};
+        for (const auto& e : output.events) {
+            if (e.type == Event::kNoteOnEvent && e.busIndex == kDrumsOutBus)
+                pitches[static_cast<size_t>(e.noteOn.pitch)] = true;
+        }
+        return pitches;
+    };
+
+    const auto gm = captureDrumPitches(0.0);
+    require(gm[49],
+            "General MIDI map must emit Crash 1 on note 49");
+
+    auto applyMap = [&](double normalized, double stopQn) {
+        ParameterChanges changes;
+        int32 qi = 0, pi = 0;
+        auto* q = changes.addParameterData(kDrumMapId, qi);
+        require(q && q->addPoint(0, normalized, pi) == kResultOk,
+                "Drum Map parameter value must be accepted");
+        auto stopped = makeContext(stopQn, false);
+        EventList stoppedOut;
+        auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &changes);
+        require(processor.process(stoppedData) == kResultOk,
+                "Drum Map change block must process");
+    };
+
+    applyMap(0.5, 8.0);
+    const auto ezd3 = captureDrumPitches(8.0);
+    require(ezd3[55],
+            "EZdrummer 3 map must emit Crash 1 on note 55");
+
+    applyMap(1.0, 16.0);
+    const auto perfect = captureDrumPitches(16.0);
+    require(perfect[64],
+            "Perfect Drums map must emit closed hi-hat on note 64");
+}
+
 } // namespace
 
 int main() {
     testAllInstrumentRolesUseSeparateOutputBuses();
     testDedicatedInstrumentOutputBuses();
+    testVerifiedDrumMapParameterChangesOutput();
     testNewRiffChangesRhythmMask();
     testNewRiffToggleZeroValueStillCommands();
     testHeavyIndustrialStaysLockedToHostGrid();
