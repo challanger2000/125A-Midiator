@@ -54,6 +54,38 @@ struct EventList final : FObject, IEventList {
     REFCOUNT_METHODS(FObject)
 };
 
+struct RejectingEventList final : FObject, IEventList {
+    explicit RejectingEventList(size_t acceptCount = 0)
+        : acceptCount(acceptCount) {}
+
+    size_t acceptCount = 0;
+    std::vector<Event> events;
+
+    int32 PLUGIN_API getEventCount() SMTG_OVERRIDE {
+        return static_cast<int32>(events.size());
+    }
+
+    tresult PLUGIN_API getEvent(int32 index, Event& event) SMTG_OVERRIDE {
+        if (index < 0 || index >= static_cast<int32>(events.size()))
+            return kInvalidArgument;
+        event = events[static_cast<size_t>(index)];
+        return kResultOk;
+    }
+
+    tresult PLUGIN_API addEvent(Event& event) SMTG_OVERRIDE {
+        if (events.size() >= acceptCount)
+            return kResultFalse;
+        events.push_back(event);
+        return kResultOk;
+    }
+
+    OBJ_METHODS(RejectingEventList, FObject)
+    DEFINE_INTERFACES
+        DEF_INTERFACE(IEventList)
+    END_DEFINE_INTERFACES(FObject)
+    REFCOUNT_METHODS(FObject)
+};
+
 struct ParamQueue final : FObject, IParamValueQueue {
     explicit ParamQueue(ParamID id) : id(id) {}
 
@@ -162,7 +194,7 @@ bool containsType(const EventList& list, Event::EventTypes type) {
 }
 
 ProcessData makeProcessData(ProcessContext& context,
-                            EventList& output,
+                            IEventList& output,
                             int32 numSamples,
                             IParameterChanges* changes = nullptr,
                             IEventList* inputEvents = nullptr) {
@@ -175,6 +207,93 @@ ProcessData makeProcessData(ProcessContext& context,
     data.inputEvents = inputEvents;
     data.inputParameterChanges = changes;
     return data;
+}
+
+void testRejectedFlushIsRetriedWithoutLosingActiveState() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "event-rejection fixture must start");
+
+    auto running = makeContext(0.0, true);
+    EventList first;
+    auto runningData = makeProcessData(running, first, 64);
+    require(processor.process(runningData) == kResultOk,
+            "event-rejection fixture must create active notes");
+    require(containsType(first, Event::kNoteOnEvent),
+            "event-rejection fixture needs at least one active note");
+
+    const double nextQn = 64.0 * 120.0 / (60.0 * 48000.0);
+    auto stopped = makeContext(nextQn, false);
+    RejectingEventList rejected(0);
+    auto rejectedData = makeProcessData(stopped, rejected, 64);
+    require(processor.process(rejectedData) == kResultFalse,
+            "a rejected stop-flush must be reported to the host");
+
+    EventList retry;
+    auto retryData = makeProcessData(stopped, retry, 64);
+    require(processor.process(retryData) == kResultOk,
+            "a rejected stop-flush must be retried on the next process call");
+    require(containsType(retry, Event::kNoteOffEvent),
+            "retry after rejected flush must still emit the pending NoteOffs");
+}
+
+void testRejectedScheduledEventForcesCleanupBeforeContinuing() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "scheduled-event rejection fixture must start");
+
+    auto running = makeContext(0.0, true);
+    RejectingEventList limited(1);
+    auto runningData = makeProcessData(running, limited, 192000);
+    require(processor.process(runningData) == kResultFalse,
+            "rejected scheduled MIDI events must fail the process call");
+    require(limited.events.size() == 1,
+            "scheduled-event rejection fixture must accept exactly one event");
+
+    auto stopped = makeContext(8.0, false);
+    EventList cleanup;
+    auto cleanupData = makeProcessData(stopped, cleanup, 64);
+    require(processor.process(cleanupData) == kResultOk,
+            "cleanup after scheduled-event rejection must succeed");
+    require(containsType(cleanup, Event::kNoteOffEvent),
+            "cleanup after scheduled-event rejection must flush delivered NoteOns");
+}
+
+void testNonFourFourTimeSignatureStaysSilentAndFlushes() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "time-signature fixture must start");
+
+    auto threeFour = makeContext(0.0, true);
+    threeFour.timeSigNumerator = 3;
+    threeFour.timeSigDenominator = 4;
+    EventList silent;
+    auto silentData = makeProcessData(threeFour, silent, 192000);
+    require(processor.process(silentData) == kResultOk,
+            "unsupported 3/4 block must be handled cleanly");
+    require(!containsType(silent, Event::kNoteOnEvent),
+            "V1 must remain silent in a valid non-4/4 time signature");
+
+    auto fourFour = makeContext(0.0, true);
+    EventList active;
+    auto activeData = makeProcessData(fourFour, active, 64);
+    require(processor.process(activeData) == kResultOk,
+            "4/4 block must resume normal generation");
+    require(containsType(active, Event::kNoteOnEvent),
+            "4/4 block must emit generated notes");
+
+    const double nextQn = 64.0 * 120.0 / (60.0 * 48000.0);
+    auto changedToThreeFour = makeContext(nextQn, true);
+    changedToThreeFour.timeSigNumerator = 3;
+    changedToThreeFour.timeSigDenominator = 4;
+    EventList flushed;
+    auto changedData = makeProcessData(changedToThreeFour, flushed, 64);
+    require(processor.process(changedData) == kResultOk,
+            "switching from 4/4 to 3/4 must flush cleanly");
+    require(containsType(flushed, Event::kNoteOffEvent),
+            "switching to unsupported meter must flush active notes");
+    require(!containsType(flushed, Event::kNoteOnEvent),
+            "unsupported meter must not emit new notes while flushing");
 }
 
 void testDedicatedInstrumentOutputBuses() {
@@ -1724,6 +1843,9 @@ void testVerifiedDrumMapParameterChangesOutput() {
 } // namespace
 
 int main() {
+    testRejectedFlushIsRetriedWithoutLosingActiveState();
+    testRejectedScheduledEventForcesCleanupBeforeContinuing();
+    testNonFourFourTimeSignatureStaysSilentAndFlushes();
     testAllInstrumentRolesUseSeparateOutputBuses();
     testDedicatedInstrumentOutputBuses();
     testVerifiedDrumMapParameterChangesOutput();

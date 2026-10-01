@@ -1187,10 +1187,11 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     }
 }
 
-void MidiatorProcessor::flushActiveNotes(IEventList* output, double ppqPosition) {
+bool MidiatorProcessor::flushActiveNotes(IEventList* output, double ppqPosition) {
     if (!output)
-        return;
+        return false;
 
+    bool allDelivered = true;
     for (int bus = 0; bus < kEventOutputBusCount; ++bus) {
         for (int pitch = 0; pitch < 128; ++pitch) {
             if (!activePitchesByBus_[static_cast<size_t>(bus)][pitch])
@@ -1205,10 +1206,18 @@ void MidiatorProcessor::flushActiveNotes(IEventList* output, double ppqPosition)
             e.noteOff.pitch = static_cast<int16>(pitch);
             e.noteOff.velocity = 0.0f;
             e.noteOff.noteId = -1;
-            output->addEvent(e);
-            activePitchesByBus_[static_cast<size_t>(bus)][pitch] = false;
+
+            // The host owns the event list and may reject an event. Only clear
+            // our active-note bookkeeping after the NoteOff was actually
+            // accepted; otherwise retry the flush on the next process call.
+            if (output->addEvent(e) == kResultOk) {
+                activePitchesByBus_[static_cast<size_t>(bus)][pitch] = false;
+            } else {
+                allDelivered = false;
+            }
         }
     }
+    return allDelivered;
 }
 
 tresult PLUGIN_API MidiatorProcessor::notify(IMessage* message) {
@@ -1248,22 +1257,49 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     const auto* context = data.processContext;
     const bool hasTempo = context && (context->state & ProcessContext::kTempoValid) && context->tempo > 0.0;
     const bool hasProjectTime = context && (context->state & ProcessContext::kProjectTimeMusicValid);
+    const bool hasTimeSignature =
+        context && (context->state & ProcessContext::kTimeSigValid);
+    const bool unsupportedTimeSignature =
+        hasTimeSignature &&
+        (context->timeSigNumerator != 4 || context->timeSigDenominator != 4);
     const bool playing = context && (context->state & ProcessContext::kPlaying);
     const double currentPpq = hasProjectTime ? context->projectTimeMusic : 0.0;
 
     if (phraseChangedNeedsFlush_) {
-        flushActiveNotes(data.outputEvents, currentPpq);
+        if (!flushActiveNotes(data.outputEvents, currentPpq))
+            return kResultFalse;
         phraseChangedNeedsFlush_ = false;
     }
 
-    if (!playing || !hasTempo || !hasProjectTime || data.numSamples <= 0) {
+    // V1 is deliberately 4/4-only. If a host supplies a valid non-4/4
+    // signature, do not silently run a four-quarter pattern against a
+    // different bar grid. Flush held notes and stay silent until 4/4 returns.
+    if (unsupportedTimeSignature) {
+        bool flushed = true;
         if (wasPlaying_)
-            flushActiveNotes(data.outputEvents, currentPpq);
+            flushed = flushActiveNotes(data.outputEvents, currentPpq);
+        if (!flushed)
+            phraseChangedNeedsFlush_ = true;
+
+        wasPlaying_ = false;
+        haveExpectedProjectTime_ = false;
+        haveTransportAnchor_ = false;
+        transportAnchorQn_ = 0.0;
+        return flushed ? kResultOk : kResultFalse;
+    }
+
+    if (!playing || !hasTempo || !hasProjectTime || data.numSamples <= 0) {
+        bool flushed = true;
+        if (wasPlaying_)
+            flushed = flushActiveNotes(data.outputEvents, currentPpq);
+        if (!flushed)
+            phraseChangedNeedsFlush_ = true;
+
         wasPlaying_ = playing;
         haveExpectedProjectTime_ = false;
         haveTransportAnchor_ = false;
         transportAnchorQn_ = 0.0;
-        return kResultOk;
+        return flushed ? kResultOk : kResultFalse;
     }
 
     const double tempo = context->tempo;
@@ -1278,8 +1314,10 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     if (wasPlaying_ && haveExpectedProjectTime_) {
         const double tolerance = std::max(1e-6, qnPerSample * 4.0);
         timelineJump = std::abs(blockStartQn - expectedProjectTimeQn_) > tolerance;
-        if (timelineJump)
-            flushActiveNotes(data.outputEvents, blockStartQn);
+        if (timelineJump && !flushActiveNotes(data.outputEvents, blockStartQn)) {
+            phraseChangedNeedsFlush_ = true;
+            return kResultFalse;
+        }
     }
 
     // Lock phrase phase to the host's musical bar grid, not to whichever
@@ -1479,6 +1517,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                       return a.pitch < b.pitch;
                   });
 
+        bool allDelivered = true;
         for (int i = 0; i < scheduledCount; ++i) {
             const auto& s = scheduled[i];
             Event e{};
@@ -1494,18 +1533,27 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                 e.noteOn.length = 0;
                 e.noteOn.tuning = 0.0f;
                 e.noteOn.noteId = -1;
-                data.outputEvents->addEvent(e);
-                activePitchesByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = true;
+
+                if (data.outputEvents->addEvent(e) == kResultOk) {
+                    activePitchesByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = true;
+                } else {
+                    allDelivered = false;
+                }
             } else {
                 e.type = Event::kNoteOffEvent;
                 e.noteOff.channel = 0;
                 e.noteOff.pitch = static_cast<int16>(s.pitch);
                 e.noteOff.velocity = 0.0f;
                 e.noteOff.noteId = -1;
-                data.outputEvents->addEvent(e);
-                activePitchesByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = false;
+
+                if (data.outputEvents->addEvent(e) == kResultOk) {
+                    activePitchesByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = false;
+                } else {
+                    allDelivered = false;
+                }
             }
         }
+        return allDelivered;
     };
 
     // Stage and emit one musical cycle at a time. The fixed array therefore
@@ -1528,11 +1576,17 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         if (schedulerOverflow) {
             // This now represents excessive complexity inside one single
             // musical cycle, not merely a large host block.
-            flushActiveNotes(data.outputEvents, blockStartQn);
+            phraseChangedNeedsFlush_ =
+                !flushActiveNotes(data.outputEvents, blockStartQn);
             return kResultFalse;
         }
 
-        emitScheduled();
+        if (!emitScheduled()) {
+            // Keep only successfully delivered NoteOns in the active set, and
+            // force a cleanup pass before any further musical events.
+            phraseChangedNeedsFlush_ = true;
+            return kResultFalse;
+        }
     }
 
     return kResultOk;
