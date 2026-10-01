@@ -134,7 +134,8 @@ private:
     void applyParameterChanges(ProcessData& data,
                                bool guiNewRiff = false,
                                bool guiVariation = false);
-    bool flushActiveNotes(IEventList* output, double ppqPosition = 0.0);
+    bool flushActiveNotes(IEventList* output, double ppqPosition = 0.0,
+                          bool forceAllNotes = false);
 };
 
 class MidiatorController final : public EditControllerEx1,

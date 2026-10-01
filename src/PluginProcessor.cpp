@@ -1187,14 +1187,17 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     }
 }
 
-bool MidiatorProcessor::flushActiveNotes(IEventList* output, double ppqPosition) {
+bool MidiatorProcessor::flushActiveNotes(
+    IEventList* output, double ppqPosition, bool forceAllNotes) {
     if (!output)
         return false;
 
     bool allDelivered = true;
     for (int bus = 0; bus < kEventOutputBusCount; ++bus) {
         for (int pitch = 0; pitch < 128; ++pitch) {
-            if (!activePitchesByBus_[static_cast<size_t>(bus)][pitch])
+            const bool trackedActive =
+                activePitchesByBus_[static_cast<size_t>(bus)][pitch];
+            if (!forceAllNotes && !trackedActive)
                 continue;
 
             Event e{};
@@ -1277,7 +1280,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     if (unsupportedTimeSignature) {
         bool flushed = true;
         if (wasPlaying_)
-            flushed = flushActiveNotes(data.outputEvents, currentPpq);
+            flushed = flushActiveNotes(data.outputEvents, currentPpq, true);
         if (!flushed)
             phraseChangedNeedsFlush_ = true;
 
@@ -1291,7 +1294,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     if (!playing || !hasTempo || !hasProjectTime || data.numSamples <= 0) {
         bool flushed = true;
         if (wasPlaying_)
-            flushed = flushActiveNotes(data.outputEvents, currentPpq);
+            flushed = flushActiveNotes(data.outputEvents, currentPpq, true);
         if (!flushed)
             phraseChangedNeedsFlush_ = true;
 
@@ -1314,7 +1317,8 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     if (wasPlaying_ && haveExpectedProjectTime_) {
         const double tolerance = std::max(1e-6, qnPerSample * 4.0);
         timelineJump = std::abs(blockStartQn - expectedProjectTimeQn_) > tolerance;
-        if (timelineJump && !flushActiveNotes(data.outputEvents, blockStartQn)) {
+        if (timelineJump &&
+            !flushActiveNotes(data.outputEvents, blockStartQn, true)) {
             phraseChangedNeedsFlush_ = true;
             return kResultFalse;
         }

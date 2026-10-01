@@ -296,6 +296,38 @@ void testNonFourFourTimeSignatureStaysSilentAndFlushes() {
             "unsupported meter must not emit new notes while flushing");
 }
 
+void testTransportStopSendsDefensivePanicNoteOffs() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "panic-stop fixture must start");
+
+    auto running = makeContext(0.0, true);
+    EventList first;
+    auto runningData = makeProcessData(running, first, 64);
+    require(processor.process(runningData) == kResultOk,
+            "panic-stop fixture must create notes");
+    require(containsType(first, Event::kNoteOnEvent),
+            "panic-stop fixture needs at least one NoteOn");
+
+    const double nextQn = 64.0 * 120.0 / (60.0 * 48000.0);
+    auto stopped = makeContext(nextQn, false);
+    EventList panic;
+    auto stoppedData = makeProcessData(stopped, panic, 64);
+    require(processor.process(stoppedData) == kResultOk,
+            "transport stop panic flush must succeed");
+
+    std::array<int, kEventOutputBusCount> offsByBus{};
+    for (const auto& e : panic.events) {
+        if (e.type == Event::kNoteOffEvent &&
+            e.busIndex >= 0 && e.busIndex < kEventOutputBusCount)
+            ++offsByBus[static_cast<size_t>(e.busIndex)];
+    }
+
+    for (int bus = 0; bus < kEventOutputBusCount; ++bus)
+        require(offsByBus[static_cast<size_t>(bus)] == 128,
+                "transport stop must panic-flush all 128 pitches on every role bus");
+}
+
 void testDedicatedInstrumentOutputBuses() {
     MidiatorProcessor processor;
     require(processor.initialize(nullptr) == kResultOk,
@@ -1846,6 +1878,7 @@ int main() {
     testRejectedFlushIsRetriedWithoutLosingActiveState();
     testRejectedScheduledEventForcesCleanupBeforeContinuing();
     testNonFourFourTimeSignatureStaysSilentAndFlushes();
+    testTransportStopSendsDefensivePanicNoteOffs();
     testAllInstrumentRolesUseSeparateOutputBuses();
     testDedicatedInstrumentOutputBuses();
     testVerifiedDrumMapParameterChangesOutput();
