@@ -438,7 +438,13 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
         // not depend on the note being "open".
         float chordChance =
             s.powerChordChance * (accent ? 1.0f : 0.62f) * guitarChordFactor(s.style);
-        const bool powerChord = s.powerChordsEnabled &&
+        // New styles use the final deterministic chord-count pass below.
+        // Keeping chord lottery out of the structural RNG means changing the
+        // Power Chords amount cannot rewrite their rhythm/pitch topology.
+        const bool deterministicChordPass =
+            static_cast<int>(s.style) >= static_cast<int>(StyleId::ClassicHeavy);
+        const bool powerChord = !deterministicChordPass &&
+            s.powerChordsEnabled &&
             rng.chance(std::clamp(chordChance, 0.0f, 1.0f));
 
         int openLength=2;
@@ -733,10 +739,20 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
         }
 
         float styleFactor = 1.0f;
-        if (s.style == StyleId::DarkRockGothic)
-            styleFactor = 1.10f;
-        else if (s.style == StyleId::HeavyIndustrial)
-            styleFactor = 0.92f;
+        switch (s.style) {
+            case StyleId::DarkRockGothic: styleFactor=1.10f; break;
+            case StyleId::HeavyIndustrial: styleFactor=0.92f; break;
+            case StyleId::ClassicHeavy: styleFactor=1.20f; break;
+            case StyleId::Thrash: styleFactor=0.86f; break;
+            case StyleId::Groove: styleFactor=1.05f; break;
+            case StyleId::Death: styleFactor=0.78f; break;
+            case StyleId::MelodicDeath: styleFactor=1.08f; break;
+            case StyleId::Metalcore: styleFactor=1.12f; break;
+            case StyleId::NuMetal: styleFactor=1.18f; break;
+            case StyleId::Doom: styleFactor=1.28f; break;
+            case StyleId::DjentProgressive: styleFactor=0.82f; break;
+            default: break;
+        }
 
         int targetChords = static_cast<int>(std::lround(
             static_cast<float>(eligibleHits) * s.powerChordChance * styleFactor));
