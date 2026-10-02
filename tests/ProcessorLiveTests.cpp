@@ -963,6 +963,119 @@ void testSectionRolesReuseSeedAndRemainReversible() {
             "returning to FREE must restore the original seed-derived riff");
 }
 
+void testSectionEnergyProfilesAreMusicallyOrdered() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "section-energy fixture must start");
+
+    // Build one fresh eight-bar FREE idea first. Every following section then
+    // reuses exactly this composition seed.
+    ParameterChanges setup;
+    int32 qi = 0;
+    auto* lengthQ = setup.addParameterData(kSectionLengthId, qi);
+    int32 pi = 0;
+    require(lengthQ && lengthQ->addPoint(0, 0.75, pi) == kResultOk,
+            "section-energy fixture must request eight bars");
+    auto* newQ = setup.addParameterData(kNewRiffId, qi);
+    pi = 0;
+    require(newQ && newQ->addPoint(0, 1.0, pi) == kResultOk,
+            "section-energy fixture must request a fresh riff");
+
+    auto setupContext = makeContext(0.0, false);
+    EventList setupOut;
+    auto setupData = makeProcessData(setupContext, setupOut, 64, &setup);
+    require(processor.process(setupData) == kResultOk,
+            "section-energy setup must process");
+
+    struct Counts {
+        std::array<int, kEventOutputBusCount> bus{};
+        int total() const {
+            int n = 0;
+            for (int v : bus) n += v;
+            return n;
+        }
+    };
+
+    auto capture = [&](int sectionIndex, double startQn) {
+        if (sectionIndex != 0) {
+            ParameterChanges changes;
+            int32 qIndex = 0;
+            auto* q = changes.addParameterData(kSectionTypeId, qIndex);
+            int32 pointIndex = 0;
+            const double normalized =
+                static_cast<double>(sectionIndex) /
+                static_cast<double>(static_cast<int>(midiator::SectionType::Count) - 1);
+            require(q && q->addPoint(0, normalized, pointIndex) == kResultOk,
+                    "section-energy selector must accept section role");
+
+            auto stopped = makeContext(startQn, false);
+            EventList stoppedOut;
+            auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &changes);
+            require(processor.process(stoppedData) == kResultOk,
+                    "section-energy selector change must process");
+        }
+
+        auto running = makeContext(startQn, true);
+        EventList output;
+        auto data = makeProcessData(running, output, 768000);
+        require(processor.process(data) == kResultOk,
+                "section-energy eight-bar capture must process");
+
+        Counts counts{};
+        for (const auto& e : output.events) {
+            if (e.type != Event::kNoteOnEvent ||
+                e.busIndex < 0 || e.busIndex >= kEventOutputBusCount)
+                continue;
+            ++counts.bus[static_cast<size_t>(e.busIndex)];
+        }
+        return counts;
+    };
+
+    static constexpr const char* names[] = {
+        "FREE", "INTRO", "VERSE", "PRE", "CHORUS", "BREAKDOWN", "OUTRO"
+    };
+    std::array<Counts, static_cast<size_t>(midiator::SectionType::Count)> all{};
+
+    for (int section = 0;
+         section < static_cast<int>(midiator::SectionType::Count);
+         ++section) {
+        all[static_cast<size_t>(section)] =
+            capture(section, static_cast<double>(section) * 32.0);
+        const auto& x = all[static_cast<size_t>(section)];
+        std::cerr << "Section " << names[section]
+                  << ": total=" << x.total()
+                  << " guitar=" << x.bus[kGuitarOutBus]
+                  << " bass=" << x.bus[kBassOutBus]
+                  << " drums=" << x.bus[kDrumsOutBus]
+                  << " pads=" << x.bus[kPadOutBus]
+                  << " synth=" << x.bus[kSynthOutBus] << "\n";
+    }
+
+    const auto& intro =
+        all[static_cast<size_t>(midiator::SectionType::Intro)];
+    const auto& verse =
+        all[static_cast<size_t>(midiator::SectionType::Verse)];
+    const auto& pre =
+        all[static_cast<size_t>(midiator::SectionType::PreChorus)];
+    const auto& chorus =
+        all[static_cast<size_t>(midiator::SectionType::Chorus)];
+    const auto& breakdown =
+        all[static_cast<size_t>(midiator::SectionType::Breakdown)];
+    const auto& outro =
+        all[static_cast<size_t>(midiator::SectionType::Outro)];
+
+    require(intro.total() < chorus.total(),
+            "INTRO must be materially lighter than CHORUS");
+    require(intro.bus[kDrumsOutBus] < pre.bus[kDrumsOutBus],
+            "INTRO drums must be lighter than PRE-CHORUS drums");
+    require(breakdown.bus[kSynthOutBus] < chorus.bus[kSynthOutBus],
+            "BREAKDOWN synth activity must be lower than CHORUS");
+    require(outro.total() < chorus.total(),
+            "OUTRO must reduce total activity from CHORUS");
+    require(chorus.bus[kGuitarOutBus] >= verse.bus[kGuitarOutBus],
+            "CHORUS guitar must not be thinner than VERSE guitar");
+}
+
 void testPowerChordTogglePreservesRiffOnsetsAndPitches() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
@@ -2284,6 +2397,7 @@ int main() {
     testSectionLengthResizePreservesRiffToSixteenBars();
     testSectionLengthSupportsSixteenBarsAndLegacyBarsStayStable();
     testSectionRolesReuseSeedAndRemainReversible();
+    testSectionEnergyProfilesAreMusicallyOrdered();
     testPowerChordTogglePreservesRiffOnsetsAndPitches();
     testLargeOfflineBlockKeepsNoteEventsBalanced();
     testStopFlushesEveryActiveInstrumentBus();
