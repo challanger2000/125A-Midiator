@@ -546,7 +546,12 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
             // stable step-0 anchor.
             constexpr int developmentCount =
                 static_cast<int>(std::size(developmentPositions));
-            const int developmentOffset = (bar * 4) % developmentCount;
+            // Move development in two-bar phrases rather than every bar:
+            // A/A' retain a common rhythmic vocabulary, the answer/turnaround
+            // pair moves elsewhere, and bars 5-8 develop again. This gives
+            // audible macro motion without destroying motif recognition.
+            const int developmentOffset =
+                ((bar / 2) * 2) % developmentCount;
 
             for (int orderIndex = 0; orderIndex < developmentCount; ++orderIndex) {
                 if (actualChanges >= minStructuralChanges &&
