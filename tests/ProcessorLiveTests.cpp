@@ -1562,7 +1562,7 @@ void testRoleSpecificGateRules() {
 
         checkGapRole(kGuitarOutBus, sawGuitarBoundaryGap, true);
         checkGapRole(kBassOutBus, sawBassBoundaryGap, true);
-        checkGapRole(kPadOutBus, sawPadBoundaryGap, false);
+        checkGapRole(kPadOutBus, sawPadBoundaryGap, true);
 
         // Synth is deliberately different: a generated note may end exactly
         // at the next monophonic onset, with NoteOff sorted before NoteOn.
@@ -1590,7 +1590,7 @@ void testRoleSpecificGateRules() {
     require(sawBassBoundaryGap,
             "Bass must demonstrate the configured 64th-note release gap");
     require(sawPadBoundaryGap,
-            "Pad must demonstrate a release gap of at least one 64th note");
+            "Pad must demonstrate the configured exact 64th-note release gap");
     require(sawSynthLegatoBoundary,
             "Synth must demonstrate independent legato-capable scheduling");
 }

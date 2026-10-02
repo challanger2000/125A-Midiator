@@ -139,6 +139,42 @@ void testFourthPadVoiceIsOctaveDoubleOnly() {
             "Pad octave-doubling fixture must observe occasional fourth voices");
 }
 
+void testPadNotesReachNextChordBoundary() {
+    Phrase guitar{}, bass{};
+    makeContext(guitar, bass);
+
+    for (int style = 0; style < static_cast<int>(StyleId::Count); ++style) {
+        for (float movement : {0.0f, 0.5f, 1.0f}) {
+            for (unsigned seed = 1; seed <= 128; ++seed) {
+                PadSettings s{};
+                s.style = static_cast<StyleId>(style);
+                s.movement = movement;
+                const auto p = PadBrain::generate(guitar, bass, s, 150000u + seed);
+
+                for (int i = 0; i < p.usedSteps(); ++i) {
+                    const auto& st = p.steps[i];
+                    if (st.noteCount <= 0)
+                        continue;
+
+                    int nextChord = p.usedSteps();
+                    for (int j = i + 1; j < p.usedSteps(); ++j) {
+                        if (p.steps[j].noteCount > 0) {
+                            nextChord = j;
+                            break;
+                        }
+                    }
+                    const int expectedLength = nextChord - i;
+                    require(expectedLength > 0,
+                            "Pad chord must have positive distance to its next boundary");
+                    for (int n = 0; n < st.noteCount; ++n)
+                        require(st.notes[n].lengthSteps == expectedLength,
+                                "every Pad voice must sustain exactly to the next chord boundary");
+                }
+            }
+        }
+    }
+}
+
 void testMovementIncreasesHarmonicActivity() {
     Phrase guitar{}, bass{};
     makeContext(guitar, bass);
@@ -397,6 +433,7 @@ int main() {
     testDeterministicPolyphonicScaleSafe();
     testAllStylesStayWithinTwoOrThreeHarmonicPitchClasses();
     testFourthPadVoiceIsOctaveDoubleOnly();
+    testPadNotesReachNextChordBoundary();
     testMovementIncreasesHarmonicActivity();
     testSpreadProgressivelyWidensVoicings();
     testMovementProgressivelyAddsHarmonicEvents();

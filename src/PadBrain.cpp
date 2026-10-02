@@ -216,10 +216,12 @@ PadPhrase PadBrain::generate(const Phrase& guitar,
         auto& dst = out.steps[step];
         dst.noteCount = harmonicVoices;
 
-        const int durationBase = chordEverySteps;
-        int duration = std::max(2, static_cast<int>(std::lround(
-            durationBase * (0.55 + 0.45 * s.sustain))));
-        duration = std::min(duration, out.usedSteps() - step);
+        // Pads are sustained harmonic beds, not plucked notes. Their generated
+        // duration therefore reaches the next chord boundary. The processor
+        // applies the deliberate 1/64-note release gap at scheduling time.
+        // Do not shorten this with the internal sustain scalar: doing so made
+        // audible holes of several 16th notes between pad chords.
+        const int duration = std::min(chordEverySteps, out.usedSteps() - step);
 
         for (int v = 0; v < harmonicVoices; ++v) {
             int pc = degreePc(s, degrees[v]);
