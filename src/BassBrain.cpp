@@ -98,6 +98,27 @@ int chooseBassPitch(Rng& rng,
 
     int guitarPitch = primaryGuitarPitch(guitar, step, root);
     int targetPc = wrap12(guitarPitch);
+
+    // MOVEMENT must remain audible even when the Guitar itself is strongly
+    // pedal-root focused. Once the root lottery has chosen "move", allow a
+    // root Guitar note to become a stable in-scale Bass colour tone instead
+    // of collapsing straight back to the same pedal note.
+    if (targetPc == wrap12(root) && s.movement > 0.0f &&
+        rng.chance(0.12f + 0.68f * s.movement)) {
+        const auto& scale = RiffEngine::scaleDefinition(s.scale);
+        int degreeIndex = (scale.count > 4 && rng.chance(0.62f)) ? 4 : 2;
+
+        // At high movement, occasionally use the characteristic neighbouring
+        // scale colours too; never leave the selected scale.
+        if (s.movement > 0.70f && scale.count > 5 && rng.chance(0.24f))
+            degreeIndex = rng.chance(0.5f) ? 1 : 5;
+
+        degreeIndex = std::clamp(
+            degreeIndex, 1, std::max(1, scale.count - 1));
+        targetPc = wrap12(
+            s.rootPitchClass + scale.intervals[degreeIndex]);
+    }
+
     int target = root;
     while (wrap12(target) != targetPc && target < 60)
         ++target;
