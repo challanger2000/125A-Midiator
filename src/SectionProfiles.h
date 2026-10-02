@@ -78,7 +78,7 @@ inline void applySectionPhraseShape(Phrase& phrase,
 
     for (int step=0; step<phrase.usedSteps(); ++step) {
         auto& st = phrase.steps[step];
-        if (st.noteCount <= 0)
+        if (step == 0 || st.noteCount <= 0)
             continue;
         const int local = step % kStepsPerBar;
         const bool strong = (local % 4) == 0;
@@ -87,13 +87,6 @@ inline void applySectionPhraseShape(Phrase& phrase,
             st = {};
     }
 
-    // Never let a section profile erase the opening musical anchor.
-    if (phrase.steps[0].noteCount == 0) {
-        // The raw generated phrase always owns a valid first step; section
-        // thinning only reaches this path defensively.
-        phrase.steps[0].noteCount = 1;
-        phrase.steps[0].notes[0] = {33, 100, 1};
-    }
 }
 
 inline BassSettings sectionBassSettings(const BassSettings& base, SectionType section) {
