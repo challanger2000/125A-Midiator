@@ -177,28 +177,32 @@ Phrase BassBrain::generate(const Phrase& guitar,
         const bool strongBeat = (local % 4) == 0;
         const bool guitarHit = guitarHitAt(guitar, step);
 
-        // Follow establishes the shared groove. Even at low follow values,
-        // strong beats retain anchors so the bass does not become random filler.
+        // FOLLOW is a continuous relationship control, not a copy switch.
+        // Shape the upper half so the default ~72% remains tight but leaves
+        // audible independent bass motion instead of duplicating >90% of the
+        // guitar onsets.
+        const float followShape =
+            0.35f * s.follow + 0.65f * s.follow * s.follow;
+
         bool hit = false;
         if (guitarHit) {
             float styleLock = 0.0f;
-            if (s.style == StyleId::NDHIndustrial) styleLock = 0.08f;
-            else if (s.style == StyleId::HeavyIndustrial) styleLock = 0.20f;
-            else if (s.style == StyleId::DarkRockGothic) styleLock = -0.12f;
+            if (s.style == StyleId::NDHIndustrial) styleLock = 0.06f;
+            else if (s.style == StyleId::HeavyIndustrial) styleLock = 0.14f;
+            else if (s.style == StyleId::DarkRockGothic) styleLock = -0.05f;
 
             if (strongBeat)
-                hit = rng.chance(0.55f + 0.45f * s.follow + styleLock);
+                hit = rng.chance(0.42f + 0.50f * followShape + styleLock);
             else
-                hit = rng.chance(0.16f + 0.80f * s.follow + styleLock);
+                hit = rng.chance(0.08f + 0.72f * followShape + styleLock);
         } else if (strongBeat) {
-            // Low FOLLOW gets its own quarter-note pulse so the bass can act
-            // like a separate player rather than a transposed guitar copy.
-            hit = rng.chance(0.10f + 0.40f * (1.0f - s.follow));
+            // Independent quarter-note anchors grow as FOLLOW falls.
+            hit = rng.chance(0.18f + 0.34f * (1.0f - followShape));
         } else {
             float independentPulse =
-                0.02f + 0.16f * (1.0f - s.follow) + 0.18f * s.passing;
+                0.04f + 0.22f * (1.0f - followShape) + 0.16f * s.passing;
             if (s.style == StyleId::DarkRockGothic)
-                independentPulse += 0.10f;
+                independentPulse += 0.08f;
             else if (s.style == StyleId::HeavyIndustrial)
                 independentPulse = std::max(0.0f, independentPulse - 0.02f);
             if ((local & 1) && rng.chance(independentPulse))

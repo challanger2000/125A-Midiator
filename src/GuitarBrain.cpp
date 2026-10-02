@@ -439,8 +439,12 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
     for (int bar = 0; bar < s.bars; ++bar) {
         int changedSteps = 0;
         const float roleFactor = roleFactorForBar(bar);
+        const float development = 1.0f - s.repetition;
         const float mutationChance =
-            (0.04f + (1.0f - s.repetition) * (0.16f + 0.34f * s.complexity)) * roleFactor;
+            development <= 0.0001f
+                ? 0.0f
+                : (0.015f + development * (0.12f + 0.30f * s.complexity)) *
+                    roleFactor;
 
         for (int i = 0; i < kStepsPerBar; ++i) {
             Step current = baseBar[i];
@@ -472,7 +476,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
             // Turnaround bars get a little extra activity/change in beat 4,
             // creating a phrase ending rather than a flat repeated loop.
             if (bar > 0 && (bar % 4) == 3 && i >= 12 &&
-                rng.chance(0.10f + 0.18f * s.complexity)) {
+                rng.chance(development * (0.10f + 0.18f * s.complexity))) {
                 ++changedSteps;
                 if (i == 15 && rng.chance(0.60f))
                     current = {};
@@ -483,47 +487,73 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
             result.steps[bar * kStepsPerBar + i] = current;
         }
 
-        // Give each bar role a minimum amount of structural development.
-        // A' remains close to the seed, bar 3 answers it, bar 4 turns it around.
-        if (bar > 0 && s.repetition < 0.95f) {
-            int minChanges = 1;
+        // Repetition must control audible bar-to-bar development across the
+        // whole 0..100% range. Earlier versions mostly changed pitch while
+        // retaining the same onset skeleton, so even low/mid Repetition still
+        // sounded like one bar copied eight times.
+        if (bar > 0 && development > 0.0001f) {
             const int role = bar % 4;
-            if (role == 2)
-                minChanges = 3;
-            else if (role == 3)
-                minChanges = 4;
+            const float rhythmWeight =
+                role == 1 ? 3.0f :   // A': recognizable but clearly alive
+                role == 2 ? 5.0f :   // answer/development
+                role == 3 ? 7.0f :   // turnaround
+                            4.0f;     // second four-bar phrase restart
 
+            int minRhythmChanges =
+                static_cast<int>(std::ceil(development * rhythmWeight));
             if (bar >= 4)
-                ++minChanges;
+                minRhythmChanges +=
+                    static_cast<int>(std::ceil(development * 2.0f));
+            minRhythmChanges = std::clamp(minRhythmChanges, 0, 12);
+
+            const int minStructuralChanges = std::clamp(
+                minRhythmChanges +
+                    static_cast<int>(std::ceil(development * 2.0f)),
+                minRhythmChanges, 14);
 
             static constexpr int developmentPositions[] = {
-                15, 14, 11, 10, 7, 6, 13, 3, 9, 5
+                15, 14, 11, 10, 7, 6, 13, 3, 9, 5, 12, 8, 4, 2, 1
             };
 
             auto differsFromBase = [&](int pos) {
                 return !(result.steps[bar * kStepsPerBar + pos] == baseBar[pos]);
             };
+            auto rhythmDiffersFromBase = [&](int pos) {
+                const bool now =
+                    result.steps[bar * kStepsPerBar + pos].noteCount > 0;
+                const bool seed = baseBar[pos].noteCount > 0;
+                return now != seed;
+            };
 
             int actualChanges = 0;
-            for (int pos = 0; pos < kStepsPerBar; ++pos)
+            int actualRhythmChanges = 0;
+            for (int pos = 0; pos < kStepsPerBar; ++pos) {
                 actualChanges += differsFromBase(pos) ? 1 : 0;
+                actualRhythmChanges += rhythmDiffersFromBase(pos) ? 1 : 0;
+            }
 
             for (int candidate : developmentPositions) {
-                if (actualChanges >= minChanges)
+                if (actualChanges >= minStructuralChanges &&
+                    actualRhythmChanges >= minRhythmChanges)
                     break;
-                if (differsFromBase(candidate))
-                    continue;
 
                 auto& target = result.steps[bar * kStepsPerBar + candidate];
                 const auto& seedStep = baseBar[candidate];
 
-                if (seedStep.noteCount == 0) {
-                    target = makeMusicalStep(candidate, false);
-                } else {
-                    const float action = rng.unit();
+                const bool needRhythm =
+                    actualRhythmChanges < minRhythmChanges &&
+                    !rhythmDiffersFromBase(candidate);
 
-                    if (action < 0.28f && candidate != 0) {
+                if (needRhythm) {
+                    // Toggle the seed occupancy. This makes Repetition audibly
+                    // rhythmic instead of merely changing pitches on the same grid.
+                    if (seedStep.noteCount == 0)
+                        target = makeMusicalStep(candidate, false);
+                    else
                         target = {};
+                } else if (!differsFromBase(candidate)) {
+                    if (seedStep.noteCount == 0) {
+                        target = makeMusicalStep(candidate, false);
                     } else {
                         const bool oldPowerChord = seedStep.noteCount == 2;
                         const bool oldPalmMute = seedStep.notes[0].velocity < 84;
@@ -531,25 +561,26 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
 
                         int degree = chooseDegree(rng, s, candidate);
                         int pitch = clampMusicalPitch(base + scale.intervals[degree], base);
-
-                        // Ensure this forced development step really differs
-                        // from the seed motif instead of randomly landing on it again.
                         if (pitch == seedStep.notes[0].pitch) {
                             const int fallbackDegree =
                                 (scale.count > 2) ? ((degree + 2) % scale.count) : 1;
-                            pitch = clampMusicalPitch(base + scale.intervals[fallbackDegree], base);
+                            pitch = clampMusicalPitch(
+                                base + scale.intervals[fallbackDegree], base);
                         }
 
                         createStepNote(target, pitch, oldPowerChord, oldPalmMute,
                                        (candidate % 4) == 0, oldLength, rng);
-
                         if (target == seedStep)
                             target = {};
                     }
                 }
 
-                if (differsFromBase(candidate))
-                    ++actualChanges;
+                actualChanges = 0;
+                actualRhythmChanges = 0;
+                for (int pos = 0; pos < kStepsPerBar; ++pos) {
+                    actualChanges += differsFromBase(pos) ? 1 : 0;
+                    actualRhythmChanges += rhythmDiffersFromBase(pos) ? 1 : 0;
+                }
             }
         }
     }

@@ -54,8 +54,14 @@ int main(){
  const auto gh=hashPhrase(guitar),bh=hashPhrase(bass),dh=hashDrums(drums),ph=hashPads(pads),sh=hashPhrase(synth);
  const auto ah=arrangementHash(gh,bh,dh,ph,sh);
 
-
-
+ std::cerr << std::hex << std::showbase
+           << "Golden actual Guitar=" << gh
+           << " Bass=" << bh
+           << " Drums=" << dh
+           << " Pad=" << ph
+           << " Synth=" << sh
+           << " Arrangement=" << ah << "\n"
+           << std::dec << std::noshowbase;
 
  require(gh==0x864e0c07b172c048ull,"golden Guitar fingerprint changed");
  require(bh==0xbfdf56c03f0e11d5ull,"golden Bass fingerprint changed");

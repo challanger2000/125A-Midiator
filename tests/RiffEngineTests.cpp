@@ -564,6 +564,48 @@ void testRepetitionControlBehavior() {
             "Repetition must reduce average pitch-class variety");
     require((highJaccard / highPairs) > (lowJaccard / lowPairs) + 0.10,
             "Repetition must materially increase adjacent-bar groove similarity");
+
+    const std::array<float, 5> values{{0.0f, 0.25f, 0.50f, 0.75f, 1.0f}};
+    std::array<double, 5> jaccard{};
+    for (size_t vi = 0; vi < values.size(); ++vi) {
+        midiator::GeneratorSettings x = low;
+        x.repetition = values[vi];
+        double sum = 0.0;
+        int pairs = 0;
+        for (unsigned seed = 1; seed <= 256; ++seed) {
+            const auto p = midiator::RiffEngine::generate(
+                x, 360000u + seed + static_cast<unsigned>(vi) * 10000u);
+            for (int bar = 1; bar < p.bars; ++bar) {
+                int intersection = 0, unionCount = 0;
+                for (int i = 0; i < midiator::kStepsPerBar; ++i) {
+                    const bool a =
+                        p.steps[(bar - 1) * midiator::kStepsPerBar + i].noteCount > 0;
+                    const bool b =
+                        p.steps[bar * midiator::kStepsPerBar + i].noteCount > 0;
+                    if (a || b) ++unionCount;
+                    if (a && b) ++intersection;
+                }
+                sum += unionCount > 0
+                    ? static_cast<double>(intersection) / unionCount : 1.0;
+                ++pairs;
+            }
+        }
+        jaccard[vi] = sum / std::max(1, pairs);
+    }
+
+    std::cerr << "Repetition Jaccard 0/25/50/75/100 = "
+              << jaccard[0] << ", " << jaccard[1] << ", "
+              << jaccard[2] << ", " << jaccard[3] << ", "
+              << jaccard[4] << "\n";
+
+    require(jaccard[0] < 0.72,
+            "Repetition 0% must create materially different adjacent bars");
+    require(jaccard[3] < 0.88,
+            "Repetition 75% must still retain audible bar development");
+    require(jaccard[4] > 0.95,
+            "Repetition 100% must behave as a near-exact repeated motif");
+    require(jaccard[4] > jaccard[0] + 0.25,
+            "Repetition control must span a broad audible similarity range");
 }
 
 void testComplexityControlBehavior() {

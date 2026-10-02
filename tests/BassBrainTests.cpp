@@ -50,20 +50,27 @@ void testFollowControlsGuitarLock() {
     const auto guitar = makeGuitarFixture();
     BassSettings low{};
     low.follow = 0.0f;
+    BassSettings mid = low;
+    mid.follow = 0.72f;
     BassSettings high = low;
     high.follow = 1.0f;
 
-    long long lowCoincidence = 0, highCoincidence = 0;
-    long long lowHits = 0, highHits = 0;
+    long long lowCoincidence = 0, midCoincidence = 0, highCoincidence = 0;
+    long long lowHits = 0, midHits = 0, highHits = 0;
 
     for (unsigned seed = 1; seed <= 256; ++seed) {
         const auto a = BassBrain::generate(guitar, low, 10000u + seed);
+        const auto m = BassBrain::generate(guitar, mid, 10000u + seed);
         const auto b = BassBrain::generate(guitar, high, 10000u + seed);
         for (int i = 0; i < guitar.usedSteps(); ++i) {
             const bool gh = guitar.steps[i].noteCount > 0;
             if (a.steps[i].noteCount > 0) {
                 ++lowHits;
                 if (gh) ++lowCoincidence;
+            }
+            if (m.steps[i].noteCount > 0) {
+                ++midHits;
+                if (gh) ++midCoincidence;
             }
             if (b.steps[i].noteCount > 0) {
                 ++highHits;
@@ -73,9 +80,18 @@ void testFollowControlsGuitarLock() {
     }
 
     const double lowShare = static_cast<double>(lowCoincidence) / std::max<long long>(1, lowHits);
+    const double midShare = static_cast<double>(midCoincidence) / std::max<long long>(1, midHits);
     const double highShare = static_cast<double>(highCoincidence) / std::max<long long>(1, highHits);
-    require(highShare > lowShare + 0.20,
+    std::cerr << "Bass Follow lock 0/72/100 = "
+              << lowShare << ", " << midShare << ", " << highShare << "\n";
+    require(highShare > lowShare + 0.25,
             "Bass Follow must materially increase lock to guitar onsets");
+    require(lowShare < 0.65,
+            "Bass Follow 0% must leave clearly independent rhythmic space");
+    require(midShare > lowShare + 0.10 && midShare < 0.90,
+            "default Bass Follow must be tight without becoming a guitar copy");
+    require(highShare > 0.85,
+            "Bass Follow 100% must remain strongly riff-locked");
 }
 
 void testMovementReducesRootDominance() {
