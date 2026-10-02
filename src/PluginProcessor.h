@@ -159,7 +159,7 @@ private:
     void regenerateSectionFromCurrentSeed();
     void rebuildSongCache(bool preserveCurrentSection);
     void varySongCache();
-    void syncManualFromSongCache();
+    void syncManualFromSongCache(bool markPhraseChanged = true);
     void resizePhraseBars(int newBars, bool regenerateCompanions = true);
     void applyPowerChordMode(bool enabled, bool regenerateCompanions = true);
     void transposePhraseToRoot(int newRootPitchClass, bool regenerateCompanions = true);

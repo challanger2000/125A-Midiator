@@ -2831,6 +2831,54 @@ void testSongModeActionsPreserveRunningSectionPosition() {
               "VARIATION in AUTO must keep the running Pre position instead of restarting Intro");
 }
 
+
+void testSongModeManualSectionSelectionDoesNotInterruptAuto() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "AUTO manual-section fixture must start");
+
+    ParameterChanges enable;
+    int32 qi = 0;
+    int32 pi = 0;
+    auto* songQ = enable.addParameterData(kSongModeId, qi);
+    require(songQ && songQ->addPoint(0, 1.0, pi) == kResultOk,
+            "AUTO manual-section fixture must enable Song Mode");
+
+    auto stopped = makeContext(0.0, false);
+    EventList stoppedOut;
+    auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &enable);
+    require(processor.process(stoppedData) == kResultOk,
+            "AUTO manual-section setup must process");
+
+    // Start with a tiny block so the opening notes are active but their
+    // natural NoteOffs are still in the future.
+    auto first = makeContext(0.0, true);
+    EventList firstOut;
+    auto firstData = makeProcessData(first, firstOut, 64);
+    require(processor.process(firstData) == kResultOk,
+            "AUTO manual-section playback must start");
+    require(containsType(firstOut, Event::kNoteOnEvent),
+            "AUTO manual-section fixture needs active notes");
+
+    ParameterChanges sectionChange;
+    qi = 0;
+    pi = 0;
+    auto* sectionQ = sectionChange.addParameterData(kSectionTypeId, qi);
+    require(sectionQ &&
+            sectionQ->addPoint(0, 4.0 / 6.0, pi) == kResultOk,
+            "manual CHORUS selection must be accepted during AUTO");
+
+    const double nextQn = 64.0 / 24000.0;
+    auto next = makeContext(nextQn, true);
+    EventList nextOut;
+    auto nextData = makeProcessData(next, nextOut, 64, &sectionChange);
+    require(processor.process(nextData) == kResultOk,
+            "manual SECTION selection during AUTO must process");
+
+    require(!containsType(nextOut, Event::kNoteOffEvent),
+            "manual SECTION selection during AUTO must not flush the currently playing automatic Section");
+}
+
 } // namespace
 
 int main() {
@@ -2858,6 +2906,7 @@ int main() {
     testSongModeSixteenBarSectionsCrossOfflineBoundaries();
     testSongModeTimelineJumpFlushesEveryBusAndRestarts();
     testSongModeActionsPreserveRunningSectionPosition();
+    testSongModeManualSectionSelectionDoesNotInterruptAuto();
     testSongModeV11StateRoundtripPreservesCompleteCache();
     testPowerChordTogglePreservesRiffOnsetsAndPitches();
     testLargeOfflineBlockKeepsNoteEventsBalanced();

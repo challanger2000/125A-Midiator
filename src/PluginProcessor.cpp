@@ -948,7 +948,7 @@ void MidiatorProcessor::rebuildSongCache(bool preserveCurrentSection) {
     songCacheValid_ = true;
 }
 
-void MidiatorProcessor::syncManualFromSongCache() {
+void MidiatorProcessor::syncManualFromSongCache(bool markPhraseChanged) {
     const auto index = static_cast<std::size_t>(settings_.section);
     if (!songCacheValid_ || index >= songSections_->size())
         return;
@@ -959,7 +959,11 @@ void MidiatorProcessor::syncManualFromSongCache() {
     drumPhrase_ = snapshot.drums;
     padPhrase_ = snapshot.pads;
     synthPhrase_ = snapshot.synth;
-    phraseChangedNeedsFlush_ = true;
+
+    // In AUTO, SECTION is only the manual fallback selection. Updating that
+    // fallback must not interrupt the currently scheduled automatic Section.
+    if (markPhraseChanged)
+        phraseChangedNeedsFlush_ = true;
 }
 
 void MidiatorProcessor::varySongCache() {
@@ -1508,9 +1512,10 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     if (freshGeneration) {
         generateNew();
     } else if (sectionChanged) {
-        if (songMode_ && songCacheValid_)
-            syncManualFromSongCache();
-        else
+        // While AUTO is running, SECTION only selects the phrase that will be
+        // used when the user returns to manual mode. The automatic scheduler
+        // itself is driven by SongArrangement, so do not flush/retrigger here.
+        if (!(songMode_ && songCacheValid_))
             regenerateSectionFromCurrentSeed();
     } else if (guitarEdited && !pending.variation) {
         // Root/Bars/Power-Chord edits may all occur in one host block. Refresh
@@ -1544,7 +1549,7 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         if (rebuild)
             rebuildSongCache(true);
         else if (sectionChanged)
-            syncManualFromSongCache();
+            syncManualFromSongCache(false);
     }
 
     // Variation is always last so Style/Scale/New-Riff and structural edits
