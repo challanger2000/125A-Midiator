@@ -2411,6 +2411,16 @@ void testSongModeArrangesDeterministicSectionForm() {
             continue;
         if (e.busIndex >= 0 && e.busIndex < kEventOutputBusCount)
             ++noteOnsByBus[static_cast<std::size_t>(e.busIndex)];
+
+        if (e.ppqPosition >= 0.0 && e.ppqPosition < 48.0) {
+            const double unitEndQn =
+                (std::floor(e.ppqPosition / 8.0) + 1.0) * 8.0;
+            const double maxLengthSamples =
+                std::ceil((unitEndQn - e.ppqPosition) * 24000.0 + 1.0);
+            require(static_cast<double>(e.noteOn.length) <= maxLengthSamples,
+                    "song-mode NoteOn length must not cross a Section-unit boundary");
+        }
+
         if (e.busIndex != kGuitarOutBus || e.ppqPosition < 0.0 || e.ppqPosition >= 48.0)
             continue;
 

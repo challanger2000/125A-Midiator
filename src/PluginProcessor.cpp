@@ -1768,6 +1768,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                                    int32 busIndex,
                                    double cycleStartQn) {
         const int usedSteps = phrase.usedSteps();
+        const double cycleEndQn = cycleStartQn + patternLengthQn;
         constexpr double kSustainGapQn = 1.0 / 16.0;
 
         for (int stepIndex = 0; stepIndex < usedSteps; ++stepIndex) {
@@ -1789,7 +1790,8 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
             const double nextOnQn =
                 onQn + static_cast<double>(stepsToNextHit) * kStepQuarterNotes;
             const double latestOffQn =
-                std::max(onQn, nextOnQn - kSustainGapQn);
+                std::min(cycleEndQn,
+                         std::max(onQn, nextOnQn - kSustainGapQn));
 
             for (int n = 0; n < step.noteCount; ++n) {
                 const auto& note = step.notes[n];
@@ -1828,6 +1830,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                                  double cycleStartQn) {
         constexpr double kPadReleaseGapQn = 1.0 / 16.0; // 1/64-note gap
         const int usedSteps = pads.usedSteps();
+        const double cycleEndQn = cycleStartQn + patternLengthQn;
 
         for (int stepIndex = 0; stepIndex < usedSteps; ++stepIndex) {
             const auto& step = pads.steps[stepIndex];
@@ -1856,7 +1859,9 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                     onQn + static_cast<double>(std::max(1, note.lengthSteps)) *
                                kStepQuarterNotes - kPadReleaseGapQn;
                 const double offQn =
-                    std::max(onQn, std::min(latestOffQn, requestedOffQn));
+                    std::max(onQn,
+                             std::min(cycleEndQn,
+                                      std::min(latestOffQn, requestedOffQn)));
                 addScheduled(onQn, true, note.pitch, note.velocity, kPadOutBus, offQn);
                 addScheduled(offQn, false, note.pitch, 0, kPadOutBus);
             }
@@ -1866,6 +1871,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     auto scheduleSynthCycle = [&](const midiator::Phrase& synth,
                                    double cycleStartQn) {
         const int usedSteps = synth.usedSteps();
+        const double cycleEndQn = cycleStartQn + patternLengthQn;
 
         for (int stepIndex = 0; stepIndex < usedSteps; ++stepIndex) {
             const auto& step = synth.steps[stepIndex];
@@ -1894,7 +1900,10 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                 const double requestedOffQn =
                     onQn + static_cast<double>(std::max(1, note.lengthSteps)) *
                                kStepQuarterNotes;
-                const double offQn = std::max(onQn, std::min(nextOnQn, requestedOffQn));
+                const double offQn =
+                    std::max(onQn,
+                             std::min(cycleEndQn,
+                                      std::min(nextOnQn, requestedOffQn)));
                 addScheduled(onQn, true, note.pitch, note.velocity, kSynthOutBus, offQn);
                 addScheduled(offQn, false, note.pitch, 0, kSynthOutBus);
             }
