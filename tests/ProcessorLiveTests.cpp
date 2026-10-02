@@ -2758,6 +2758,79 @@ void testSongModeTimelineJumpFlushesEveryBusAndRestarts() {
             "song-mode timeline jump must restart musical scheduling at the destination bar");
 }
 
+
+void testSongModeActionsPreserveRunningSectionPosition() {
+    auto runAction = [](ParamID actionId,
+                        double actionQn,
+                        int32 preRollSamples,
+                        const char* actionName) {
+        MidiatorProcessor processor;
+        require(processor.setProcessing(true) == kResultOk,
+                "song action position fixture must start");
+
+        ParameterChanges enable;
+        int32 qi = 0;
+        int32 pi = 0;
+        auto* songQ = enable.addParameterData(kSongModeId, qi);
+        require(songQ && songQ->addPoint(0, 1.0, pi) == kResultOk,
+                "song action position fixture must enable AUTO");
+
+        auto stopped = makeContext(0.0, false);
+        EventList stoppedOut;
+        auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &enable);
+        require(processor.process(stoppedData) == kResultOk,
+                "song action position setup must process");
+
+        auto pre = makeContext(0.0, true);
+        EventList preOut;
+        auto preData = makeProcessData(pre, preOut, preRollSamples);
+        require(processor.process(preData) == kResultOk,
+                "song action position pre-roll must process");
+
+        ParameterChanges command;
+        qi = 0;
+        pi = 0;
+        auto* actionQ = command.addParameterData(actionId, qi);
+        require(actionQ && actionQ->addPoint(0, 1.0, pi) == kResultOk,
+                "song action command must be accepted");
+
+        auto context = makeContext(actionQn, true);
+        EventList output;
+        auto data = makeProcessData(context, output, 64, &command);
+        require(processor.process(data) == kResultOk,
+                "song action while running must process");
+
+        bool flushed = false;
+        bool crashAtBoundary = false;
+        for (const auto& e : output.events) {
+            if (e.type == Event::kNoteOffEvent)
+                flushed = true;
+            if (e.type == Event::kNoteOnEvent &&
+                e.busIndex == kDrumsOutBus &&
+                e.noteOn.pitch == 49 &&
+                std::abs(e.ppqPosition - actionQn) < 1e-9)
+                crashAtBoundary = true;
+        }
+
+        require(flushed,
+                "song action while running must flush held notes before replacing content");
+        require(crashAtBoundary,
+                actionName);
+    };
+
+    // Default NDH form with two-bar units:
+    // QN 8 = first VERSE entrance. NEW RIFF must replace content but keep
+    // cycle index 1; if it reset the AUTO anchor, this point would become
+    // INTRO and there would be no opening crash.
+    runAction(kNewRiffId, 8.0, 192000,
+              "NEW RIFF in AUTO must keep the running Verse position instead of restarting Intro");
+
+    // QN 24 = PRE entrance after INTRO + VERSE + VERSE. VARIATION must keep
+    // that transport position for the same reason.
+    runAction(kVariationId, 24.0, 576000,
+              "VARIATION in AUTO must keep the running Pre position instead of restarting Intro");
+}
+
 } // namespace
 
 int main() {
@@ -2784,6 +2857,7 @@ int main() {
     testSongModeRepeatedSectionUsesContinuationDrums();
     testSongModeSixteenBarSectionsCrossOfflineBoundaries();
     testSongModeTimelineJumpFlushesEveryBusAndRestarts();
+    testSongModeActionsPreserveRunningSectionPosition();
     testSongModeV11StateRoundtripPreservesCompleteCache();
     testPowerChordTogglePreservesRiffOnsetsAndPitches();
     testLargeOfflineBlockKeepsNoteEventsBalanced();
