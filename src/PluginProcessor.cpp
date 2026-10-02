@@ -21,7 +21,7 @@ namespace {
 constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 8192;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 11u;
+constexpr uint32_t kStateVersion = 12u;
 constexpr int kLegacyStateSteps = 128; // V1-V7 fixed phrase payload width
 constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
 constexpr const char* kMsgVariation = "125A.Midiator.Variation";
@@ -308,9 +308,9 @@ bool readStateHeader(IBStream* state,
             int32 storedStyle = 0;
             if (!readValue(state, storedStyle))
                 return false;
-            // V3-V10 only knew the original three style IDs. V11 expands the
-            // enum, but historical states must not reinterpret formerly
-            // invalid values as new genres.
+            // V3-V10 only knew the original three style IDs. The unreleased
+            // V11 development line and V12 know the expanded enum. Historical
+            // states must not reinterpret formerly invalid values as new genres.
             const int32 maxStyle =
                 version >= 11u
                     ? static_cast<int32>(midiator::StyleId::Count) - 1
@@ -387,6 +387,23 @@ bool readStateHeader(IBStream* state,
                 int32 storedSection = 0;
                 if (!readValue(state, storedSection))
                     return false;
+
+                // The abandoned development-only Song Mode also used V11 and
+                // packed AUTO into bit 0x100 of the Section word. V12 has no
+                // Song Mode. Accept that V11 header, discard the retired flag,
+                // and keep the selected manual Section. Extra cached song data
+                // follows the normal five-role payload and is intentionally
+                // ignored by the current state reader.
+                if (version == 11u) {
+                    constexpr int32 kRetiredSongModeFlag = 0x100;
+                    constexpr int32 kAllowedV11SectionBits =
+                        kRetiredSongModeFlag | 0xFF;
+                    if (storedSection < 0 ||
+                        (storedSection & ~kAllowedV11SectionBits) != 0)
+                        return false;
+                    storedSection &= 0xFF;
+                }
+
                 const int32 maxSection =
                     static_cast<int32>(midiator::SectionType::Count) - 1;
                 if (storedSection < 0 || storedSection > maxSection)

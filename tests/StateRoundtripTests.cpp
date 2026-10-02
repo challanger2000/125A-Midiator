@@ -825,8 +825,8 @@ int main() {
 
 
     {
-        // V10 had exactly three valid style IDs. V11 must not reinterpret a
-        // corrupt/impossible V10 value as one of the newly-added metal styles.
+        // V10 had exactly three valid style IDs. Newer state readers must not
+        // reinterpret a corrupt/impossible V10 value as a newly-added style.
         MemoryStream impossibleV10;
         impossibleV10.bytes() = first.bytes();
         const uint32_t v10Version = 10u;
@@ -842,39 +842,91 @@ int main() {
     }
 
     {
-        // V11 legitimately stores every expanded style ID without changing
-        // the historical byte layout.
-        MemoryStream deathV11;
-        deathV11.bytes() = first.bytes();
+        // V12 is the authoritative expanded-style state. The byte layout stays
+        // compatible with V10 while style IDs 0..11 are now valid.
+        MemoryStream deathV12;
+        deathV12.bytes() = first.bytes();
         const int32 deathStyle =
             static_cast<int32>(midiator::StyleId::Death);
-        patchFixtureValue(deathV11, 56, deathStyle);
-        deathV11.rewind();
+        patchFixtureValue(deathV12, 56, deathStyle);
+        deathV12.rewind();
 
         MidiatorProcessor restoredDeath;
-        require(restoredDeath.setState(&deathV11) == kResultOk,
-                "V11 state must accept expanded metal style IDs");
+        require(restoredDeath.setState(&deathV12) == kResultOk,
+                "V12 state must accept expanded metal style IDs");
 
         MemoryStream serializedDeath;
         require(restoredDeath.getState(&serializedDeath) == kResultOk,
-                "V11 expanded style state must serialize again");
+                "V12 expanded style state must serialize again");
         int32 storedStyle = -1;
         std::memcpy(&storedStyle,
                     serializedDeath.bytes().data() + 56,
                     sizeof(storedStyle));
         require(storedStyle == deathStyle,
-                "V11 expanded style ID must survive exact state roundtrip");
+                "V12 expanded style ID must survive exact state roundtrip");
 
-        deathV11.rewind();
+        deathV12.rewind();
         MidiatorController deathController;
         require(deathController.initialize(nullptr) == kResultOk,
-                "V11 expanded style controller must initialize");
-        require(deathController.setComponentState(&deathV11) == kResultOk,
-                "V11 expanded style controller must restore state");
+                "V12 expanded style controller must initialize");
+        require(deathController.setComponentState(&deathV12) == kResultOk,
+                "V12 expanded style controller must restore state");
         require(std::abs(
                     deathController.getParamNormalized(kMetalStyleId) -
                     6.0 / 11.0) < 1e-9,
-                "V11 Death Metal state must restore the 12-style selector exactly");
+                "V12 Death Metal state must restore the 12-style selector exactly");
+    }
+
+    {
+        // V11 was used by two unreleased development lines: early expanded
+        // styles and the now-retired Song Mode. Preserve both safely. The old
+        // Song Mode flag lived in Section bit 0x100; migration discards that
+        // flag and keeps the selected manual Section.
+        MemoryStream retiredSongV11;
+        retiredSongV11.bytes() = first.bytes();
+        const uint32_t v11Version = 11u;
+        const int32 oldStyle =
+            static_cast<int32>(midiator::StyleId::HeavyIndustrial);
+        const int32 chorusWithRetiredAutoFlag =
+            0x100 | static_cast<int32>(midiator::SectionType::Chorus);
+        patchFixtureValue(retiredSongV11, sizeof(uint32_t), v11Version);
+        patchFixtureValue(retiredSongV11, 56, oldStyle);
+        patchFixtureValue(retiredSongV11, 104, chorusWithRetiredAutoFlag);
+        retiredSongV11.rewind();
+
+        MidiatorProcessor migratedSong;
+        require(migratedSong.setState(&retiredSongV11) == kResultOk,
+                "retired Song Mode V11 state must migrate without ambiguity");
+
+        MemoryStream migratedV12;
+        require(migratedSong.getState(&migratedV12) == kResultOk,
+                "retired V11 state must resave as V12");
+        uint32_t storedVersion = 0;
+        int32 storedSection = -1;
+        std::memcpy(&storedVersion,
+                    migratedV12.bytes().data() + sizeof(uint32_t),
+                    sizeof(storedVersion));
+        std::memcpy(&storedSection,
+                    migratedV12.bytes().data() + 104,
+                    sizeof(storedSection));
+        require(storedVersion == 12u,
+                "retired V11 state must upgrade to V12");
+        require(storedSection ==
+                    static_cast<int32>(midiator::SectionType::Chorus),
+                "retired V11 AUTO flag must be discarded while preserving the manual Section");
+
+        // The brief expanded-style V11 development build used the same plain
+        // header layout. Keep those test projects readable as well.
+        MemoryStream expandedV11;
+        expandedV11.bytes() = first.bytes();
+        const int32 deathStyle =
+            static_cast<int32>(midiator::StyleId::Death);
+        patchFixtureValue(expandedV11, sizeof(uint32_t), v11Version);
+        patchFixtureValue(expandedV11, 56, deathStyle);
+        expandedV11.rewind();
+        MidiatorProcessor migratedExpanded;
+        require(migratedExpanded.setState(&expandedV11) == kResultOk,
+                "expanded-style development V11 state must remain readable");
     }
 
     std::cout << "Midiator processor-state roundtrip test: PASS\n";
