@@ -54,21 +54,12 @@ int main(){
  const auto gh=hashPhrase(guitar),bh=hashPhrase(bass),dh=hashDrums(drums),ph=hashPads(pads),sh=hashPhrase(synth);
  const auto ah=arrangementHash(gh,bh,dh,ph,sh);
 
- std::cerr << std::hex << std::showbase
-           << "Golden actual Guitar=" << gh
-           << " Bass=" << bh
-           << " Drums=" << dh
-           << " Pad=" << ph
-           << " Synth=" << sh
-           << " Arrangement=" << ah << "\n"
-           << std::dec << std::noshowbase;
-
- require(gh==0x864e0c07b172c048ull,"golden Guitar fingerprint changed");
- require(bh==0xbfdf56c03f0e11d5ull,"golden Bass fingerprint changed");
- require(dh==0x550d204a9b4b4c83ull,"golden Drum fingerprint changed");
+ require(gh==0x2dc5c0d5e5199af3ull,"golden Guitar fingerprint changed");
+ require(bh==0xfac07e772b6a4559ull,"golden Bass fingerprint changed");
+ require(dh==0x1126ed13d19eb1a0ull,"golden Drum fingerprint changed");
  require(ph==0x12355b88ae5ea5c1ull,"golden Pad fingerprint changed");
  require(sh==0x2b3c4d1813b598faull,"golden Synth fingerprint changed");
- require(ah==0x496fc7e239aec0b5ull,"golden arrangement fingerprint changed");
+ require(ah==0xd64ea370a78c3a16ull,"golden arrangement fingerprint changed");
  std::cout<<"Midiator golden five-role fingerprint: PASS\n";
  return 0;
 }

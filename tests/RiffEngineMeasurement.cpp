@@ -961,6 +961,59 @@ int main() {
                   << "%\n";
     }
 
+    std::cout << "\n8-bar macro-development diagnostics (512 phrases)\n";
+    std::cout << "------------------------------------------------\n";
+    {
+        GeneratorSettings macro = s;
+        macro.bars = 8;
+        macro.repetition = 0.72f;
+        macro.complexity = 0.42f;
+        macro.density = 0.56f;
+
+        auto barJaccard = [](const Phrase& p, int a, int b) {
+            int intersection = 0;
+            int unionCount = 0;
+            for (int step = 0; step < kStepsPerBar; ++step) {
+                const bool ah =
+                    p.steps[a * kStepsPerBar + step].noteCount > 0;
+                const bool bh =
+                    p.steps[b * kStepsPerBar + step].noteCount > 0;
+                if (ah || bh) ++unionCount;
+                if (ah && bh) ++intersection;
+            }
+            return unionCount > 0
+                ? static_cast<double>(intersection) / unionCount : 1.0;
+        };
+
+        double adjacent = 0.0;
+        double sectionMirror = 0.0;
+        double seedBarSimilarity = 0.0;
+        int adjacentPairs = 0;
+        int sectionPairs = 0;
+        int seedPairs = 0;
+
+        for (unsigned seed = 1; seed <= 512; ++seed) {
+            const auto p = RiffEngine::generate(macro, 970000u + seed);
+            for (int bar = 1; bar < 8; ++bar) {
+                adjacent += barJaccard(p, bar - 1, bar);
+                ++adjacentPairs;
+                seedBarSimilarity += barJaccard(p, 0, bar);
+                ++seedPairs;
+            }
+            for (int bar = 0; bar < 4; ++bar) {
+                sectionMirror += barJaccard(p, bar, bar + 4);
+                ++sectionPairs;
+            }
+        }
+
+        std::cout << "Default 72% Repetition adjacent-bar onset Jaccard: "
+                  << pct(adjacent / adjacentPairs) << "%\n";
+        std::cout << "Bars 1-4 vs corresponding 5-8 onset Jaccard: "
+                  << pct(sectionMirror / sectionPairs) << "%\n";
+        std::cout << "Bar 1 vs later bars onset Jaccard: "
+                  << pct(seedBarSimilarity / seedPairs) << "%\n";
+    }
+
     GeneratorSettings lowVarSettings = s;
     const auto base = RiffEngine::generate(lowVarSettings, 123456u);
     const auto var20 = RiffEngine::vary(base, lowVarSettings, 0.20f, 123457u);
