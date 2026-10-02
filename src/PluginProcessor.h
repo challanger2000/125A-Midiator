@@ -56,7 +56,10 @@ enum : ParamID {
     // automation with the historic {1,2,4,8} normalization.
     kSectionLengthId = 123,
     kFillIntensityId = 124,
-    kSectionTypeId = 125
+    kSectionTypeId = 125,
+    // kStyleId=112 stays frozen with the original 3-choice normalization.
+    // The expanded 12-style selector uses a new ID for automation safety.
+    kMetalStyleId = 126
 };
 
 static const FUID ProcessorUID(0x125A4001, 0x6D494449, 0x41544F52, 0x00000100);

@@ -75,6 +75,62 @@ int primaryGuitarPitch(const Phrase& guitar, int step, int fallback) {
     return guitar.steps[step].notes[0].pitch;
 }
 
+float bassRootBias(StyleId style) {
+    switch(style){
+        case StyleId::NDHIndustrial:return 0.10f; case StyleId::DarkRockGothic:return -0.12f;
+        case StyleId::HeavyIndustrial:return 0.02f; case StyleId::ClassicHeavy:return 0.02f;
+        case StyleId::Thrash:return 0.08f; case StyleId::Groove:return 0.06f;
+        case StyleId::Death:return 0.04f; case StyleId::MelodicDeath:return -0.08f;
+        case StyleId::Metalcore:return 0.08f; case StyleId::NuMetal:return 0.10f;
+        case StyleId::Doom:return -0.03f; case StyleId::DjentProgressive:return 0.04f;
+        default:return 0.0f;
+    }
+}
+float bassFollowLock(StyleId style) {
+    switch(style){
+        case StyleId::NDHIndustrial:return 0.06f; case StyleId::DarkRockGothic:return -0.05f;
+        case StyleId::HeavyIndustrial:return 0.14f; case StyleId::ClassicHeavy:return 0.02f;
+        case StyleId::Thrash:return 0.08f; case StyleId::Groove:return 0.10f;
+        case StyleId::Death:return 0.12f; case StyleId::MelodicDeath:return -0.03f;
+        case StyleId::Metalcore:return 0.10f; case StyleId::NuMetal:return 0.12f;
+        case StyleId::Doom:return -0.08f; case StyleId::DjentProgressive:return 0.06f;
+        default:return 0.0f;
+    }
+}
+float bassIndependentBias(StyleId style) {
+    switch(style){
+        case StyleId::DarkRockGothic:return 0.08f; case StyleId::HeavyIndustrial:return -0.02f;
+        case StyleId::ClassicHeavy:return 0.02f; case StyleId::Thrash:return -0.02f;
+        case StyleId::Groove:return 0.04f; case StyleId::Death:return -0.03f;
+        case StyleId::MelodicDeath:return 0.05f; case StyleId::Metalcore:return -0.01f;
+        case StyleId::NuMetal:return 0.02f; case StyleId::Doom:return 0.08f;
+        default:return 0.0f;
+    }
+}
+float bassSustainBias(StyleId style) {
+    switch(style){
+        case StyleId::DarkRockGothic:return 0.14f; case StyleId::HeavyIndustrial:return -0.06f;
+        case StyleId::ClassicHeavy:return 0.05f; case StyleId::Thrash:return -0.05f;
+        case StyleId::Groove:return 0.02f; case StyleId::Death:return -0.08f;
+        case StyleId::MelodicDeath:return 0.10f; case StyleId::Metalcore:return -0.05f;
+        case StyleId::NuMetal:return 0.03f; case StyleId::Doom:return 0.22f;
+        case StyleId::DjentProgressive:return -0.08f; default:return 0.0f;
+    }
+}
+float bassOctaveChance(float base, StyleId style) {
+    float factor=1.0f, add=0.0f;
+    switch(style){
+        case StyleId::DarkRockGothic:factor=0.75f;break;
+        case StyleId::HeavyIndustrial:factor=1.80f;add=0.06f;break;
+        case StyleId::ClassicHeavy:factor=0.90f;break; case StyleId::Thrash:factor=1.10f;break;
+        case StyleId::Groove:factor=1.10f;break; case StyleId::MelodicDeath:factor=1.30f;break;
+        case StyleId::Metalcore:factor=1.10f;break; case StyleId::NuMetal:factor=0.80f;break;
+        case StyleId::Doom:factor=0.65f;break; case StyleId::DjentProgressive:factor=1.35f;break;
+        default:break;
+    }
+    return std::clamp(base*factor+add,0.0f,1.0f);
+}
+
 int chooseBassPitch(Rng& rng,
                     const Phrase& guitar,
                     int step,
@@ -83,13 +139,7 @@ int chooseBassPitch(Rng& rng,
                     bool strongBeat) {
     // Heavy/NDH bass should live primarily on the pedal root, but selectively
     // follow important guitar movement instead of duplicating every guitar note.
-    float rootChance = 0.72f - 0.54f * s.movement;
-    if (s.style == StyleId::NDHIndustrial)
-        rootChance += 0.10f;
-    else if (s.style == StyleId::DarkRockGothic)
-        rootChance -= 0.12f;
-    else if (s.style == StyleId::HeavyIndustrial)
-        rootChance += 0.02f;
+    float rootChance=0.72f-0.54f*s.movement+bassRootBias(s.style);
     if (strongBeat)
         rootChance += 0.16f;
 
@@ -133,11 +183,7 @@ int chooseBassPitch(Rng& rng,
     while (target < root)
         target += 12;
 
-    float octaveChance = s.octaveChance;
-    if (s.style == StyleId::HeavyIndustrial)
-        octaveChance = std::min(1.0f, octaveChance * 1.8f + 0.06f);
-    else if (s.style == StyleId::DarkRockGothic)
-        octaveChance *= 0.75f;
+    const float octaveChance=bassOctaveChance(s.octaveChance,s.style);
     if (rng.chance(octaveChance) && target <= 48)
         target += 12;
 
@@ -208,10 +254,7 @@ Phrase BassBrain::generate(const Phrase& guitar,
 
         bool hit = false;
         if (guitarHit) {
-            float styleLock = 0.0f;
-            if (s.style == StyleId::NDHIndustrial) styleLock = 0.06f;
-            else if (s.style == StyleId::HeavyIndustrial) styleLock = 0.14f;
-            else if (s.style == StyleId::DarkRockGothic) styleLock = -0.05f;
+            const float styleLock=bassFollowLock(s.style);
 
             if (strongBeat)
                 hit = rng.chance(0.42f + 0.50f * followShape + styleLock);
@@ -223,10 +266,7 @@ Phrase BassBrain::generate(const Phrase& guitar,
         } else {
             float independentPulse =
                 0.04f + 0.22f * (1.0f - followShape) + 0.16f * s.passing;
-            if (s.style == StyleId::DarkRockGothic)
-                independentPulse += 0.08f;
-            else if (s.style == StyleId::HeavyIndustrial)
-                independentPulse = std::max(0.0f, independentPulse - 0.02f);
+            independentPulse=std::max(0.0f,independentPulse+bassIndependentBias(s.style));
             if ((local & 1) && rng.chance(independentPulse))
                 hit = true;
         }
@@ -256,9 +296,7 @@ Phrase BassBrain::generate(const Phrase& guitar,
             : (guitarHit ? rng.range(82, 104) : rng.range(68, 92));
 
         int length = 1;
-        float sustainBias = 0.0f;
-        if (s.style == StyleId::DarkRockGothic) sustainBias = 0.14f;
-        else if (s.style == StyleId::HeavyIndustrial) sustainBias = -0.06f;
+        const float sustainBias=bassSustainBias(s.style);
         if (!strongBeat && rng.chance(0.18f + 0.58f * s.sustain + sustainBias))
             length = 2;
         if (strongBeat && !guitarHitAt(guitar, step + 1) &&

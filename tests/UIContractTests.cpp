@@ -37,7 +37,7 @@ int main() {
             xml.find("maxSize=\"1720, 1460\"") != std::string::npos,
             "resizable editor contract must expose non-identical min/max sizes");
 
-    for (int tag = 100; tag <= 125; ++tag) {
+    for (int tag = 100; tag <= 126; ++tag) {
         const std::string needle = "tag=\"" + std::to_string(tag) + "\"";
         require(xml.find(needle) != std::string::npos,
                 "all Midiator parameter tags 100..125 must be declared");
@@ -68,8 +68,11 @@ int main() {
     }
     require(xml.find("control-tag=\"RootSource\"") != std::string::npos,
             "ROOT SOURCE selector must be bound");
-    require(xml.find("control-tag=\"Style\"") != std::string::npos,
-            "RIFF STYLE selector must be bound");
+    require(xml.find("<control-tag name=\"LegacyStyle\" tag=\"112\"") != std::string::npos,
+            "legacy STYLE tag must remain declared for old automation");
+    require(xml.find("<control-tag name=\"Style\" tag=\"126\"") != std::string::npos &&
+            xml.find("control-tag=\"Style\"") != std::string::npos,
+            "visible METAL STYLE selector must bind the new 12-style parameter");
     require(xml.find("control-tag=\"PowerChordsEnabled\"") != std::string::npos,
             "POWER CHORDS ON/OFF selector must be bound");
     require(xml.find("control-tag=\"DrumMap\"") != std::string::npos,

@@ -21,7 +21,7 @@ namespace {
 constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 8192;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 10u;
+constexpr uint32_t kStateVersion = 11u;
 constexpr int kLegacyStateSteps = 128; // V1-V7 fixed phrase payload width
 constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
 constexpr const char* kMsgVariation = "125A.Midiator.Variation";
@@ -883,10 +883,20 @@ void MidiatorProcessor::applyPowerChordMode(bool enabled, bool regenerateCompani
     }
 
     float styleFactor = 1.0f;
-    if (settings_.style == midiator::StyleId::DarkRockGothic)
-        styleFactor = 1.10f;
-    else if (settings_.style == midiator::StyleId::HeavyIndustrial)
-        styleFactor = 0.92f;
+    switch (settings_.style) {
+        case midiator::StyleId::DarkRockGothic: styleFactor=1.10f; break;
+        case midiator::StyleId::HeavyIndustrial: styleFactor=0.92f; break;
+        case midiator::StyleId::ClassicHeavy: styleFactor=1.20f; break;
+        case midiator::StyleId::Thrash: styleFactor=0.86f; break;
+        case midiator::StyleId::Groove: styleFactor=1.05f; break;
+        case midiator::StyleId::Death: styleFactor=0.78f; break;
+        case midiator::StyleId::MelodicDeath: styleFactor=1.08f; break;
+        case midiator::StyleId::Metalcore: styleFactor=1.12f; break;
+        case midiator::StyleId::NuMetal: styleFactor=1.18f; break;
+        case midiator::StyleId::Doom: styleFactor=1.28f; break;
+        case midiator::StyleId::DjentProgressive: styleFactor=0.82f; break;
+        default: break;
+    }
 
     int targetChords = static_cast<int>(std::lround(
         static_cast<float>(eligibleHits) * settings_.powerChordChance * styleFactor));
@@ -974,8 +984,10 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         float palmMute = 0.0f;
         bool hasVariationAmount = false;
         float variationAmount = 0.0f;
-        bool hasStyle = false;
-        midiator::StyleId style = midiator::StyleId::NDHIndustrial;
+        bool hasLegacyStyle = false;
+        midiator::StyleId legacyStyle = midiator::StyleId::NDHIndustrial;
+        bool hasMetalStyle = false;
+        midiator::StyleId metalStyle = midiator::StyleId::NDHIndustrial;
         bool hasRootSource = false;
         bool midiRootSource = true;
         bool hasDrumMap = false;
@@ -1086,8 +1098,14 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
                 pending.variationAmount = static_cast<float>(v);
                 break;
             case kStyleId:
-                pending.hasStyle = true;
-                pending.style = static_cast<midiator::StyleId>(
+                // Frozen legacy mapping: 0 / 0.5 / 1.0 -> old styles 0 / 1 / 2.
+                pending.hasLegacyStyle = true;
+                pending.legacyStyle = static_cast<midiator::StyleId>(
+                    normalizedIndex(v, 3));
+                break;
+            case kMetalStyleId:
+                pending.hasMetalStyle = true;
+                pending.metalStyle = static_cast<midiator::StyleId>(
                     normalizedIndex(v, static_cast<int>(midiator::StyleId::Count)));
                 break;
             case kRootSourceId:
@@ -1214,8 +1232,12 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     const auto oldSection = settings_.section;
     if (pending.hasScale)
         settings_.scale = pending.scale;
-    if (pending.hasStyle)
-        settings_.style = pending.style;
+    // The new parameter wins if both generations of style automation arrive
+    // in one block; queue enumeration order cannot change the composition.
+    if (pending.hasMetalStyle)
+        settings_.style = pending.metalStyle;
+    else if (pending.hasLegacyStyle)
+        settings_.style = pending.legacyStyle;
     if (pending.hasSectionType)
         settings_.section = pending.sectionType;
 
@@ -1782,10 +1804,28 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     rootSource->setNormalized(1.0);
     parameters.addParameter(rootSource);
 
-    auto* style = new StringListParameter(STR16("Riff Style"), kStyleId);
+    auto* legacyStyle = new StringListParameter(STR16("Riff Style (Legacy)"), kStyleId);
+    legacyStyle->appendString(STR16("NDH / Industrial"));
+    legacyStyle->appendString(STR16("Dark Rock / Gothic"));
+    legacyStyle->appendString(STR16("Heavy Industrial"));
+    legacyStyle->getInfo().defaultNormalizedValue = 0.0;
+    legacyStyle->setNormalized(0.0);
+    legacyStyle->getInfo().flags |= ParameterInfo::kIsHidden;
+    parameters.addParameter(legacyStyle);
+
+    auto* style = new StringListParameter(STR16("Metal Style"), kMetalStyleId);
     style->appendString(STR16("NDH / Industrial"));
     style->appendString(STR16("Dark Rock / Gothic"));
     style->appendString(STR16("Heavy Industrial"));
+    style->appendString(STR16("Classic Heavy Metal"));
+    style->appendString(STR16("Thrash Metal"));
+    style->appendString(STR16("Groove Metal"));
+    style->appendString(STR16("Death Metal"));
+    style->appendString(STR16("Melodic Death Metal"));
+    style->appendString(STR16("Metalcore"));
+    style->appendString(STR16("Nu Metal"));
+    style->appendString(STR16("Doom Metal"));
+    style->appendString(STR16("Djent / Progressive"));
     style->getInfo().defaultNormalizedValue = 0.0;
     style->setNormalized(0.0);
     parameters.addParameter(style);
@@ -1964,8 +2004,14 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
         drumMapId == midiator::DrumMapId::GeneralMidi ? 0.0 :
         (drumMapId == midiator::DrumMapId::EZdrummer3 ? 0.5 : 1.0);
     setParamNormalized(kDrumMapId, drumMapNormalized);
-    setParamNormalized(kStyleId, static_cast<double>(static_cast<int>(restored.style)) /
-                                 static_cast<double>(static_cast<int>(midiator::StyleId::Count) - 1));
+    const int restoredStyleIndex = static_cast<int>(restored.style);
+    const int legacyStyleIndex =
+        restoredStyleIndex >= 0 && restoredStyleIndex < 3 ? restoredStyleIndex : 0;
+    setParamNormalized(kStyleId, static_cast<double>(legacyStyleIndex) / 2.0);
+    setParamNormalized(
+        kMetalStyleId,
+        static_cast<double>(restoredStyleIndex) /
+        static_cast<double>(static_cast<int>(midiator::StyleId::Count) - 1));
     setParamNormalized(kScaleId, static_cast<double>(static_cast<int>(restored.scale)) /
                                   static_cast<double>(static_cast<int>(midiator::ScaleId::Count) - 1));
     setParamNormalized(kBarsId, legacyBarsIndex(restored.bars));

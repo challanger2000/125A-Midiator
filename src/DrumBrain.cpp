@@ -162,16 +162,36 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
             openHatFactor = 1.35f;
             break;
         case StyleId::HeavyIndustrial:
-            // Aggressive kick reinforcement and faster upper-kit pressure.
-            kickContextFactor = 1.15f;
-            independentKickFactor = 1.25f;
-            hatSixteenthFactor = 1.30f;
-            ghostFactor = 0.90f;
-            fillFactor = 1.10f;
-            openHatFactor = 0.90f;
-            break;
-        case StyleId::Count:
-            break;
+            kickContextFactor=1.15f; independentKickFactor=1.25f; hatSixteenthFactor=1.30f;
+            ghostFactor=0.90f; fillFactor=1.10f; openHatFactor=0.90f; break;
+        case StyleId::ClassicHeavy:
+            kickContextFactor=0.98f; independentKickFactor=0.95f; hatSixteenthFactor=0.95f;
+            ghostFactor=1.00f; fillFactor=1.05f; openHatFactor=1.00f; break;
+        case StyleId::Thrash:
+            kickContextFactor=1.05f; independentKickFactor=1.20f; hatSixteenthFactor=1.55f;
+            ghostFactor=0.75f; fillFactor=1.20f; openHatFactor=0.75f; break;
+        case StyleId::Groove:
+            kickContextFactor=1.08f; independentKickFactor=0.95f; hatSixteenthFactor=0.85f;
+            ghostFactor=1.10f; fillFactor=1.05f; openHatFactor=1.00f; break;
+        case StyleId::Death:
+            kickContextFactor=1.16f; independentKickFactor=1.30f; hatSixteenthFactor=1.70f;
+            ghostFactor=0.70f; fillFactor=1.25f; openHatFactor=0.70f; break;
+        case StyleId::MelodicDeath:
+            kickContextFactor=1.08f; independentKickFactor=1.12f; hatSixteenthFactor=1.35f;
+            ghostFactor=0.85f; fillFactor=1.20f; openHatFactor=0.90f; break;
+        case StyleId::Metalcore:
+            kickContextFactor=1.15f; independentKickFactor=1.10f; hatSixteenthFactor=1.20f;
+            ghostFactor=0.80f; fillFactor=1.30f; openHatFactor=0.85f; break;
+        case StyleId::NuMetal:
+            kickContextFactor=1.10f; independentKickFactor=0.88f; hatSixteenthFactor=0.78f;
+            ghostFactor=1.05f; fillFactor=0.95f; openHatFactor=1.05f; break;
+        case StyleId::Doom:
+            kickContextFactor=0.78f; independentKickFactor=0.65f; hatSixteenthFactor=0.55f;
+            ghostFactor=1.05f; fillFactor=0.90f; openHatFactor=1.35f; break;
+        case StyleId::DjentProgressive:
+            kickContextFactor=1.18f; independentKickFactor=1.05f; hatSixteenthFactor=1.10f;
+            ghostFactor=0.75f; fillFactor=1.05f; openHatFactor=0.80f; break;
+        case StyleId::Count: break;
     }
 
     DrumPhrase out{};
@@ -325,7 +345,7 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
             // first sixteenth of the final beat. This avoids a 75->100 plateau:
             // 100% must be structurally bigger, not merely a few velocity points louder.
             if (majorFillIntensity >= 0.875f && local == 12) {
-                if (s.style == StyleId::DarkRockGothic) {
+                if (s.style == StyleId::DarkRockGothic || s.style == StyleId::Doom) {
                     addHit(ds, DrumVoice::Kick,
                            humanizedVelocity(velocityRng, 108, s.humanize));
                 } else {
@@ -347,9 +367,12 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
                 if (local == 15 && s.complexity >= 0.25f)
                     addHit(ds, DrumVoice::HighTom,
                            humanizedVelocity(velocityRng, static_cast<int>(96.0f + 12.0f * majorFillIntensity), s.humanize));
-            } else if (s.style == StyleId::HeavyIndustrial) {
-                // Aggressive machine-like roll: snare each sixteenth, kick
-                // reinforcement and an ascending tom at the end.
+            } else if (s.style == StyleId::HeavyIndustrial ||
+                       s.style == StyleId::Thrash ||
+                       s.style == StyleId::Death ||
+                       s.style == StyleId::MelodicDeath ||
+                       s.style == StyleId::Metalcore) {
+                // Fast/heavy families use an assertive snare/kick roll.
                 addHit(ds, DrumVoice::Snare,
                        humanizedVelocity(
                            velocityRng,
@@ -364,8 +387,10 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
                 if (local == 15)
                     addHit(ds, DrumVoice::HighTom,
                            humanizedVelocity(velocityRng, static_cast<int>(100.0f + 14.0f * majorFillIntensity), s.humanize));
-            } else if (s.style == StyleId::DarkRockGothic) {
-                // More organic tom run with a restrained snare pickup.
+            } else if (s.style == StyleId::DarkRockGothic ||
+                       s.style == StyleId::ClassicHeavy ||
+                       s.style == StyleId::Doom) {
+                // Organic/heavy families use a tom-led transition.
                 if (local == 12)
                     addHit(ds, DrumVoice::LowTom,
                            humanizedVelocity(velocityRng, static_cast<int>(90.0f + 8.0f * majorFillIntensity), s.humanize));
@@ -378,6 +403,16 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
                 if (local == 15)
                     addHit(ds, DrumVoice::HighTom,
                            humanizedVelocity(velocityRng, static_cast<int>(100.0f + 12.0f * majorFillIntensity), s.humanize));
+            } else {
+                if (local == 12 || (local == 14 && fullRoll))
+                    addHit(ds, DrumVoice::Kick,
+                           humanizedVelocity(velocityRng, static_cast<int>(94.0f + 10.0f * majorFillIntensity), s.humanize));
+                if (local == 14)
+                    addHit(ds, DrumVoice::Snare,
+                           humanizedVelocity(velocityRng, static_cast<int>(92.0f + 10.0f * majorFillIntensity), s.humanize));
+                if (local == 15)
+                    addHit(ds, DrumVoice::HighTom,
+                           humanizedVelocity(velocityRng, static_cast<int>(98.0f + 10.0f * majorFillIntensity), s.humanize));
             }
         }
     }

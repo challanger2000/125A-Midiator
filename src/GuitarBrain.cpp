@@ -57,17 +57,86 @@ int wrap12(int v) {
     return v < 0 ? v + 12 : v;
 }
 
+float guitarRootBias(StyleId style) {
+    switch (style) {
+        case StyleId::NDHIndustrial: return 0.10f;
+        case StyleId::DarkRockGothic: return -0.09f;
+        case StyleId::HeavyIndustrial: return 0.04f;
+        case StyleId::ClassicHeavy: return 0.02f;
+        case StyleId::Thrash: return 0.08f;
+        case StyleId::Groove: return 0.06f;
+        case StyleId::Death: return 0.04f;
+        case StyleId::MelodicDeath: return -0.06f;
+        case StyleId::Metalcore: return 0.08f;
+        case StyleId::NuMetal: return 0.10f;
+        case StyleId::Doom: return -0.04f;
+        case StyleId::DjentProgressive: return 0.02f;
+        case StyleId::Count: break;
+    }
+    return 0.0f;
+}
+
+float guitarOctaveFactor(StyleId style) {
+    switch (style) {
+        case StyleId::NDHIndustrial: return 0.55f;
+        case StyleId::ClassicHeavy: return 0.82f;
+        case StyleId::Thrash: return 0.55f;
+        case StyleId::Groove: return 0.65f;
+        case StyleId::Death: return 0.50f;
+        case StyleId::Metalcore: return 0.55f;
+        case StyleId::NuMetal: return 0.45f;
+        case StyleId::Doom: return 0.40f;
+        case StyleId::DjentProgressive: return 0.65f;
+        default: return 1.0f;
+    }
+}
+
+float guitarOctaveAdd(StyleId style) {
+    if (style == StyleId::DarkRockGothic) return 0.12f;
+    if (style == StyleId::MelodicDeath) return 0.14f;
+    return 0.0f;
+}
+
+float guitarPalmFactor(StyleId style) {
+    switch (style) {
+        case StyleId::DarkRockGothic: return 0.48f;
+        case StyleId::HeavyIndustrial: return 1.18f;
+        case StyleId::ClassicHeavy: return 0.85f;
+        case StyleId::Thrash: return 1.30f;
+        case StyleId::Groove: return 1.15f;
+        case StyleId::Death: return 1.20f;
+        case StyleId::MelodicDeath: return 0.85f;
+        case StyleId::Metalcore: return 1.25f;
+        case StyleId::NuMetal: return 1.10f;
+        case StyleId::Doom: return 0.35f;
+        case StyleId::DjentProgressive: return 1.35f;
+        default: return 1.0f;
+    }
+}
+
+float guitarChordFactor(StyleId style) {
+    switch (style) {
+        case StyleId::DarkRockGothic: return 1.15f;
+        case StyleId::HeavyIndustrial: return 0.90f;
+        case StyleId::ClassicHeavy: return 1.25f;
+        case StyleId::Thrash: return 0.85f;
+        case StyleId::Groove: return 1.05f;
+        case StyleId::Death: return 0.75f;
+        case StyleId::MelodicDeath: return 1.10f;
+        case StyleId::Metalcore: return 1.15f;
+        case StyleId::NuMetal: return 1.20f;
+        case StyleId::Doom: return 1.35f;
+        case StyleId::DjentProgressive: return 0.78f;
+        default: return 1.0f;
+    }
+}
+
 int chooseDegree(Rng& rng, const GeneratorSettings& s, int stepInBar) {
     const auto& scale = kScales[static_cast<int>(s.scale)];
 
     // Each style has a different relationship to the pedal root.
-    float rootProbability = 0.28f + 0.30f * s.repetition;
-    if (s.style == StyleId::NDHIndustrial)
-        rootProbability += 0.10f;
-    else if (s.style == StyleId::DarkRockGothic)
-        rootProbability -= 0.09f;
-    else if (s.style == StyleId::HeavyIndustrial)
-        rootProbability += 0.04f;
+    float rootProbability =
+        0.28f + 0.30f * s.repetition + guitarRootBias(s.style);
 
     if ((stepInBar % 4) == 0)
         rootProbability += 0.16f;
@@ -122,35 +191,20 @@ bool shouldHit(Rng& rng, const GeneratorSettings& s, int globalStep, int archety
     const int pos = globalStep % 16;
     archetype = std::clamp(archetype, 0, 5);
 
-    // Three genuine rhythm languages, each with six deliberately different
-    // riff families. Bit n marks a preferred sixteenth-note onset in one bar.
-    // NEW RIFF can therefore move between genuinely different groove skeletons
-    // without changing the selected style.
+    // Six one-bar rhythm families per style. Bit n marks a preferred 16th.
     static constexpr uint16_t masks[static_cast<int>(StyleId::Count)][6] = {
-        {
-            0x5555u, // straight eighth-note machine
-            0x0D0Du, // stop/start blocks
-            0x00F1u, // four-sixteenth machine burst
-            0x4515u, // sparse verse-like pedal pattern
-            0xD145u, // back-half push / answer
-            0x03F1u  // six-sixteenth drive after the anchor
-        },
-        {
-            0x1111u, // broad quarter-note pulse
-            0x2449u, // open melodic gaps
-            0x5151u, // wide eighth-note frame
-            0x1485u, // delayed dark-rock answer
-            0x4129u, // asymmetrical melodic pulse
-            0x1053u  // long spaces with clustered response
-        },
-        {
-            0xF00Fu, // two four-sixteenth attack bursts
-            0x0F07u, // three-note pickup into four-note stutter
-            0x4B19u, // broken accents
-            0xF871u, // split burst / late machine-gun ending
-            0x69C3u, // split-beat machine pattern
-            0x0FF1u  // sustained eight-sixteenth pressure run
-        }
+        {0x5555u,0x0D0Du,0x00F1u,0x4515u,0xD145u,0x03F1u},
+        {0x1111u,0x2449u,0x5151u,0x1485u,0x4129u,0x1053u},
+        {0xF00Fu,0x0F07u,0x4B19u,0xF871u,0x69C3u,0x0FF1u},
+        {0x5555u,0x7777u,0xD555u,0x5755u,0x555Du,0x1555u},
+        {0xFFFFu,0x7777u,0xEEEEu,0xF7F7u,0xDDF7u,0x7FFFu},
+        {0x5155u,0x4511u,0x5119u,0xA145u,0x214Du,0x4945u},
+        {0xFFFFu,0xF7FFu,0xEFEFu,0xFF3Fu,0xDFFFu,0x7F7Fu},
+        {0x5755u,0xD555u,0x7557u,0x555Du,0x3575u,0x5D55u},
+        {0x0F11u,0xF011u,0x451Fu,0x11F1u,0xD10Fu,0x33C3u},
+        {0x1115u,0x4109u,0x1149u,0x5011u,0x2141u,0x090Du},
+        {0x1111u,0x1001u,0x0101u,0x0011u,0x1010u,0x4001u},
+        {0x4B19u,0xA263u,0x31C5u,0x6925u,0xC319u,0x9661u}
     };
 
     const int styleIndex = std::clamp(static_cast<int>(s.style), 0,
@@ -162,14 +216,26 @@ bool shouldHit(Rng& rng, const GeneratorSettings& s, int globalStep, int archety
     // high density the burst core becomes deterministic so the generator can
     // actually produce fast 16ths instead of only isolated syncopation.
     bool burstCore = false;
-    if (s.style == StyleId::NDHIndustrial) {
-        burstCore = (archetype == 2 && pos >= 4 && pos <= 7) ||
-                    (archetype == 5 && pos >= 4 && pos <= 9);
-    } else if (s.style == StyleId::HeavyIndustrial) {
-        burstCore = (archetype == 0 && (pos <= 3 || pos >= 12)) ||
-                    (archetype == 1 && ((pos <= 2) || (pos >= 8 && pos <= 11))) ||
-                    (archetype == 3 && ((pos >= 4 && pos <= 6) || pos >= 11)) ||
-                    (archetype == 5 && pos >= 4 && pos <= 11);
+    switch (s.style) {
+        case StyleId::NDHIndustrial:
+            burstCore = (archetype == 2 && pos >= 4 && pos <= 7) ||
+                        (archetype == 5 && pos >= 4 && pos <= 9); break;
+        case StyleId::HeavyIndustrial:
+            burstCore = (archetype == 0 && (pos <= 3 || pos >= 12)) ||
+                        (archetype == 1 && ((pos <= 2) || (pos >= 8 && pos <= 11))) ||
+                        (archetype == 3 && ((pos >= 4 && pos <= 6) || pos >= 11)) ||
+                        (archetype == 5 && pos >= 4 && pos <= 11); break;
+        case StyleId::Thrash:
+            burstCore = archetype == 0 ||
+                        (archetype == 1 && (pos % 4) != 3) ||
+                        (archetype == 5 && pos >= 4); break;
+        case StyleId::Death:
+            burstCore = archetype == 0 || archetype == 2 || archetype == 4 ||
+                        (archetype == 3 && pos >= 8); break;
+        case StyleId::Metalcore:
+            burstCore = (archetype == 0 && pos <= 3) ||
+                        (archetype == 1 && pos >= 8 && pos <= 11); break;
+        default: break;
     }
 
     if (burstCore && s.density >= 0.42f) {
@@ -181,16 +247,38 @@ bool shouldHit(Rng& rng, const GeneratorSettings& s, int globalStep, int archety
     }
 
     float weight = preferred ? 0.92f : 0.16f;
-    if (s.style == StyleId::NDHIndustrial) {
-        if ((pos % 4) == 0) weight += 0.12f;
-        if ((pos % 2) == 0) weight += 0.06f;
-    } else if (s.style == StyleId::DarkRockGothic) {
-        weight *= 0.78f; // more air and longer spaces
-        if ((pos % 4) == 0) weight += 0.10f;
-    } else {
-        // Heavy Industrial deliberately favors displaced late sixteenths.
-        if (pos == 3 || pos == 7 || pos == 11 || pos == 15)
-            weight += 0.20f + 0.12f * s.complexity;
+    switch (s.style) {
+        case StyleId::NDHIndustrial:
+            if ((pos%4)==0) weight+=0.12f; if ((pos%2)==0) weight+=0.06f; break;
+        case StyleId::DarkRockGothic:
+            weight*=0.78f; if ((pos%4)==0) weight+=0.10f; break;
+        case StyleId::HeavyIndustrial:
+            if (pos==3||pos==7||pos==11||pos==15) weight+=0.20f+0.12f*s.complexity; break;
+        case StyleId::ClassicHeavy:
+            if ((pos%4)==0) weight+=0.10f; if ((pos%2)==0) weight+=0.08f; break;
+        case StyleId::Thrash:
+            weight*=1.05f; if ((pos%2)==0) weight+=0.08f;
+            if (pos==3||pos==7||pos==11||pos==15) weight+=0.10f; break;
+        case StyleId::Groove:
+            if ((pos%4)==0) weight+=0.08f;
+            if (pos==2||pos==6||pos==10||pos==14) weight+=0.18f;
+            if (pos==3||pos==7||pos==11||pos==15) weight+=0.08f; break;
+        case StyleId::Death:
+            weight*=1.08f; if ((pos&1)!=0) weight+=0.08f; break;
+        case StyleId::MelodicDeath:
+            if ((pos%2)==0) weight+=0.10f; if ((pos%4)==0) weight+=0.08f; break;
+        case StyleId::Metalcore:
+            if (pos==0||pos==3||pos==6||pos==8||pos==11||pos==14) weight+=0.14f; break;
+        case StyleId::NuMetal:
+            weight*=0.72f; if (pos==2||pos==6||pos==10||pos==14) weight+=0.22f;
+            if ((pos%4)==0) weight+=0.06f; break;
+        case StyleId::Doom:
+            weight*=0.55f; if ((pos%4)==0) weight+=0.24f;
+            else if ((pos%2)==0) weight+=0.06f; break;
+        case StyleId::DjentProgressive:
+            if (pos==3||pos==5||pos==7||pos==10||pos==11||pos==14||pos==15)
+                weight+=0.20f+0.08f*s.complexity; break;
+        case StyleId::Count: break;
     }
 
     const float probability = std::clamp((0.18f + 1.02f * s.density) * weight, 0.0f, 0.97f);
@@ -335,36 +423,29 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
         int degree = preferRoot ? 0 : chooseDegree(rng, s, stepInBar);
         int pitch = base + scale.intervals[degree];
 
-        float octaveChance = 0.08f + 0.20f * s.complexity;
-        if (s.style == StyleId::DarkRockGothic)
-            octaveChance += 0.12f;
-        else if (s.style == StyleId::NDHIndustrial)
-            octaveChance *= 0.55f;
+        float octaveChance =
+            (0.08f + 0.20f * s.complexity) * guitarOctaveFactor(s.style) +
+            guitarOctaveAdd(s.style);
         if (!preferRoot && rng.chance(octaveChance))
             pitch += 12;
 
         pitch = clampMusicalPitch(pitch, base);
 
-        float palmFactor = accent ? 0.68f : 1.0f;
-        if (s.style == StyleId::DarkRockGothic)
-            palmFactor *= 0.48f;
-        else if (s.style == StyleId::HeavyIndustrial)
-            palmFactor *= 1.18f;
+        float palmFactor = (accent ? 0.68f : 1.0f) * guitarPalmFactor(s.style);
         const bool palmMute = rng.chance(std::clamp(s.palmMuteChance * palmFactor, 0.0f, 1.0f));
 
         // Palm-muted power chords are musically valid, so chord generation must
         // not depend on the note being "open".
-        float chordChance = s.powerChordChance * (accent ? 1.0f : 0.62f);
-        if (s.style == StyleId::DarkRockGothic)
-            chordChance *= 1.15f;
-        else if (s.style == StyleId::HeavyIndustrial)
-            chordChance *= 0.90f;
+        float chordChance =
+            s.powerChordChance * (accent ? 1.0f : 0.62f) * guitarChordFactor(s.style);
         const bool powerChord = s.powerChordsEnabled &&
             rng.chance(std::clamp(chordChance, 0.0f, 1.0f));
 
-        const int length = palmMute
-            ? 1
-            : (rng.chance(0.34f + 0.28f * (1.0f - s.density)) ? 2 : 1);
+        int openLength=2;
+        float longChance=0.34f+0.28f*(1.0f-s.density);
+        if (s.style==StyleId::Doom) { openLength=4; longChance+=0.34f; }
+        else if (s.style==StyleId::MelodicDeath) longChance+=0.08f;
+        const int length=palmMute?1:(rng.chance(longChance)?openLength:1);
 
         createStepNote(out, pitch, powerChord, palmMute, accent, length, rng);
         return out;

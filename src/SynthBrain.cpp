@@ -153,15 +153,20 @@ Phrase SynthBrain::generate(const Phrase& guitar,
     std::array<int,8> motifDegree{{0,2,4,1,0,3,2,5}};
     std::array<int,8> motifHit{{1,0,1,1,0,1,0,1}};
 
-    if(s.style==StyleId::NDHIndustrial){
-        motifDegree={{0,0,2,0,3,0,2,0}};
-        motifHit={{1,0,1,0,1,1,0,1}};
-    } else if(s.style==StyleId::DarkRockGothic){
-        motifDegree={{0,2,4,5,4,2,1,3}};
-        motifHit={{1,0,1,1,0,1,1,0}};
-    } else if(s.style==StyleId::HeavyIndustrial){
-        motifDegree={{0,3,0,4,2,0,5,0}};
-        motifHit={{1,1,0,1,1,1,0,1}};
+    switch(s.style){
+        case StyleId::NDHIndustrial:motifDegree={{0,0,2,0,3,0,2,0}};motifHit={{1,0,1,0,1,1,0,1}};break;
+        case StyleId::DarkRockGothic:motifDegree={{0,2,4,5,4,2,1,3}};motifHit={{1,0,1,1,0,1,1,0}};break;
+        case StyleId::HeavyIndustrial:motifDegree={{0,3,0,4,2,0,5,0}};motifHit={{1,1,0,1,1,1,0,1}};break;
+        case StyleId::ClassicHeavy:motifDegree={{0,2,4,2,0,3,4,2}};motifHit={{1,0,1,0,1,0,1,0}};break;
+        case StyleId::Thrash:motifDegree={{0,0,3,0,0,2,0,4}};motifHit={{1,0,0,0,1,0,0,0}};break;
+        case StyleId::Groove:motifDegree={{0,2,0,3,0,4,2,0}};motifHit={{1,0,1,1,0,1,0,1}};break;
+        case StyleId::Death:motifDegree={{0,1,0,3,0,1,4,0}};motifHit={{1,0,0,1,0,0,1,0}};break;
+        case StyleId::MelodicDeath:motifDegree={{0,2,4,5,4,2,3,1}};motifHit={{1,1,1,0,1,1,0,1}};break;
+        case StyleId::Metalcore:motifDegree={{0,0,2,3,0,4,0,2}};motifHit={{1,0,1,0,1,1,0,1}};break;
+        case StyleId::NuMetal:motifDegree={{0,0,2,0,3,0,0,2}};motifHit={{1,0,0,1,0,1,0,0}};break;
+        case StyleId::Doom:motifDegree={{0,3,4,2,0,5,3,1}};motifHit={{1,0,0,0,1,0,0,0}};break;
+        case StyleId::DjentProgressive:motifDegree={{0,3,0,4,2,5,0,1}};motifHit={{1,1,0,1,0,1,1,0}};break;
+        case StyleId::Count:break;
     }
 
     int previousPitch=nearestScalePitch(s.centerMidi,s);
@@ -177,10 +182,13 @@ Phrase SynthBrain::generate(const Phrase& guitar,
 
         if(offbeat) {
             float syncChance=0.02f+0.68f*s.syncopation;
-            if(s.style==StyleId::HeavyIndustrial)
-                syncChance+=0.08f;
-            else if(s.style==StyleId::DarkRockGothic)
-                syncChance+=0.03f;
+            switch(s.style){
+                case StyleId::HeavyIndustrial:syncChance+=0.08f;break; case StyleId::DarkRockGothic:syncChance+=0.03f;break;
+                case StyleId::Groove:syncChance+=0.08f;break; case StyleId::MelodicDeath:syncChance+=0.04f;break;
+                case StyleId::Metalcore:syncChance+=0.07f;break; case StyleId::NuMetal:syncChance+=0.05f;break;
+                case StyleId::DjentProgressive:syncChance+=0.14f;break; case StyleId::Doom:syncChance-=0.01f;break;
+                default:break;
+            }
 
             if(motifHit[motifIndex]!=0 && rhythmRng.chance(syncChance))
                 hit=true;
@@ -205,8 +213,11 @@ Phrase SynthBrain::generate(const Phrase& guitar,
             degree += pitchRng.chance(0.5f)?1:-1;
 
         int target=s.centerMidi;
-        if(s.style==StyleId::DarkRockGothic) target+=5;
-        else if(s.style==StyleId::HeavyIndustrial) target+=2;
+        switch(s.style){
+            case StyleId::DarkRockGothic:target+=5;break; case StyleId::HeavyIndustrial:target+=2;break;
+            case StyleId::MelodicDeath:target+=4;break; case StyleId::ClassicHeavy:target+=2;break;
+            case StyleId::Doom:target-=3;break; default:break;
+        }
 
         int pitch=pitchFromDegree(degree,s,target);
 
@@ -232,8 +243,12 @@ Phrase SynthBrain::generate(const Phrase& guitar,
         st.noteCount=1;
         int velocity=82;
         if(local%4==0) velocity+=10;
-        if(s.style==StyleId::HeavyIndustrial) velocity+=5;
-        else if(s.style==StyleId::DarkRockGothic) velocity-=4;
+        switch(s.style){
+            case StyleId::HeavyIndustrial:velocity+=5;break; case StyleId::DarkRockGothic:velocity-=4;break;
+            case StyleId::Thrash:velocity-=4;break; case StyleId::Death:velocity-=2;break;
+            case StyleId::Metalcore:velocity+=3;break; case StyleId::Doom:velocity-=6;break;
+            case StyleId::DjentProgressive:velocity+=2;break; default:break;
+        }
 
         // Synth gestures stay deliberately short: arp/ostinato notes and
         // compact phrase fragments, not long lead lines.
@@ -246,15 +261,18 @@ Phrase SynthBrain::generate(const Phrase& guitar,
         // Occasional short two-note chord stabs. The gesture decision has its
         // own RNG stream so Movement/Repetition/Sustain cannot rewrite whether
         // a step is a stab. Prefer a second active Pad chord tone.
-        float stabChance = 0.0f;
-        if ((local % 4) == 0) {
-            if (s.style==StyleId::NDHIndustrial)
-                stabChance=0.22f;
-            else if (s.style==StyleId::DarkRockGothic)
-                stabChance=0.12f;
-            else
-                stabChance=0.28f;
-        } else if (s.style==StyleId::HeavyIndustrial) {
+        float stabChance=0.0f;
+        if((local%4)==0){
+            switch(s.style){
+                case StyleId::NDHIndustrial:stabChance=0.22f;break; case StyleId::DarkRockGothic:stabChance=0.12f;break;
+                case StyleId::HeavyIndustrial:stabChance=0.28f;break; case StyleId::ClassicHeavy:stabChance=0.18f;break;
+                case StyleId::Thrash:stabChance=0.08f;break; case StyleId::Groove:stabChance=0.16f;break;
+                case StyleId::Death:stabChance=0.06f;break; case StyleId::MelodicDeath:stabChance=0.18f;break;
+                case StyleId::Metalcore:stabChance=0.24f;break; case StyleId::NuMetal:stabChance=0.14f;break;
+                case StyleId::Doom:stabChance=0.10f;break; case StyleId::DjentProgressive:stabChance=0.22f;break;
+                case StyleId::Count:break;
+            }
+        } else if(s.style==StyleId::HeavyIndustrial||s.style==StyleId::DjentProgressive){
             stabChance=0.06f;
         }
 

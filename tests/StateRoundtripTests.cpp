@@ -224,7 +224,12 @@ void verifyLegacyControllerMigration(uint32_t version,
     require(std::abs(controller.getParamNormalized(kRootSourceId) - expectedSourceNormalized) < 1e-9,
             "legacy root-source migration must preserve/default correctly");
     require(std::abs(controller.getParamNormalized(kStyleId) - expectedStyleNormalized) < 1e-9,
-            "legacy style migration must preserve/default correctly");
+            "legacy style migration must preserve the original 3-choice normalization");
+    const double expectedMetalStyle =
+        static_cast<double>(std::clamp<int32>(style, 0, 2)) /
+        static_cast<double>(static_cast<int>(midiator::StyleId::Count) - 1);
+    require(std::abs(controller.getParamNormalized(kMetalStyleId) - expectedMetalStyle) < 1e-9,
+            "legacy style migration must also populate the new Metal Style selector");
     const double expectedPower = expectedPowerChordsEnabled ? 1.0 : 0.0;
     require(std::abs(controller.getParamNormalized(kPowerChordsEnabledId) - expectedPower) < 1e-9,
             "legacy Power Chords Enabled migration must preserve/default correctly");

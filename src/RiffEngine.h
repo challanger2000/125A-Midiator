@@ -11,9 +11,19 @@ constexpr int kMaxSteps = kStepsPerBar * kMaxBars;
 constexpr int kMaxNotesPerStep = 2;
 
 enum class StyleId : int {
+    // IDs 0..2 are frozen for V3+ project-state compatibility.
     NDHIndustrial = 0,
     DarkRockGothic,
     HeavyIndustrial,
+    ClassicHeavy,
+    Thrash,
+    Groove,
+    Death,
+    MelodicDeath,
+    Metalcore,
+    NuMetal,
+    Doom,
+    DjentProgressive,
     Count
 };
 

@@ -1,6 +1,6 @@
 # 125A Midiator
 
-**125A Midiator** is a multi-role VST3 MIDI songwriting generator for heavy, industrial and dark-rock workflows. It generates coordinated MIDI parts for external instruments; it contains no internal audio engine.
+**125A Midiator** is a multi-role VST3 MIDI generator for metal, industrial and dark-rock workflows. It generates coordinated MIDI parts for external instruments; it contains no internal audio engine.
 
 ## Current development scope
 
@@ -20,7 +20,7 @@ The current timing scope is **4/4**, using an internal 16th-note grid and phrase
 
 The engine shares root note, scale / mode, style, phrase length, transport position and DAW tempo.
 
-Implemented styles: NDH / Industrial, Dark Rock / Gothic and Heavy Industrial.
+Implemented styles: NDH / Industrial, Dark Rock / Gothic, Heavy Industrial, Classic Heavy Metal, Thrash Metal, Groove Metal, Death Metal, Melodic Death Metal, Metalcore, Nu Metal, Doom Metal and Djent / Progressive.
 
 Bass is style-aware; Drums derive kick pressure from Guitar/Bass context; Pads use 2-3 harmonic tones with occasional octave doubling, voice-leading and Guitar/Bass context-follow; Synth generates compact arp/ostinato notes, short phrase fragments and occasional two-note chord stabs while optionally targeting active Pad harmony.
 
@@ -36,7 +36,7 @@ Bass is style-aware; Drums derive kick pressure from Guitar/Bass context; Pads u
 
 ## GUI controls currently exposed
 
-Root / Root Source, Scale / Mode, Section Length (1/2/4/8/16), Section (FREE / Intro / Verse / Pre / Chorus / Breakdown / Outro), Style, Density, Complexity, Repetition, Power Chords on/off and amount, Palm Mute, Variation Amount, NEW RIFF and VARIATION.
+Root / Root Source, Scale / Mode, Section Length (1/2/4/8/16), Section (FREE / Intro / Verse / Pre / Chorus / Breakdown / Outro), Metal Style, Density, Complexity, Repetition, Power Chords on/off and amount, Palm Mute, Variation Amount, NEW RIFF and VARIATION.
 
 The GUI exposes a deliberately small role-shaping layer instead of every internal generator parameter:
 

@@ -693,7 +693,10 @@ static NewRiffBenchResult benchmarkNewRiffPath(StyleId style,
 
 static void printNewRiffBenchmarks() {
     static const char* names[] = {
-        "NDH / Industrial", "Dark Rock / Gothic", "Heavy Industrial"
+        "NDH / Industrial", "Dark Rock / Gothic", "Heavy Industrial",
+        "Classic Heavy Metal", "Thrash Metal", "Groove Metal",
+        "Death Metal", "Melodic Death Metal", "Metalcore",
+        "Nu Metal", "Doom Metal", "Djent / Progressive"
     };
 
     std::cout << "\nNEW RIFF full-path diagnostics (256 operations per style)\n";
@@ -949,7 +952,12 @@ int main() {
 
     std::cout << "\nStyle / NEW-RIFF diversity diagnostics\n";
     std::cout << "--------------------------------------\n";
-    const char* styleNames[] = {"NDH / Industrial", "Dark Rock / Gothic", "Heavy Industrial"};
+    const char* styleNames[] = {
+        "NDH / Industrial", "Dark Rock / Gothic", "Heavy Industrial",
+        "Classic Heavy Metal", "Thrash Metal", "Groove Metal",
+        "Death Metal", "Melodic Death Metal", "Metalcore",
+        "Nu Metal", "Doom Metal", "Djent / Progressive"
+    };
     for (int style = 0; style < static_cast<int>(StyleId::Count); ++style) {
         GeneratorSettings ds = s;
         ds.bars = 2;

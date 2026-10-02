@@ -153,14 +153,22 @@ PadPhrase PadBrain::generate(const Phrase& guitar,
     Rng contextRng(seed ^ 0x434F4E54u);
     const auto& scale = RiffEngine::scaleDefinition(s.scale);
 
-    int chordEverySteps = 16;
-    float halfBarProbability = 0.0f;
-    if (s.style == StyleId::HeavyIndustrial)
-        halfBarProbability = 0.12f + 0.78f * s.movement;
-    else if (s.style == StyleId::DarkRockGothic)
-        halfBarProbability = 0.04f + 0.62f * s.movement;
-    else
-        halfBarProbability = 0.06f + 0.70f * s.movement;
+    int chordEverySteps=16;
+    float halfBarProbability=0.06f+0.70f*s.movement;
+    switch(s.style){
+        case StyleId::HeavyIndustrial:halfBarProbability=0.12f+0.78f*s.movement;break;
+        case StyleId::DarkRockGothic:halfBarProbability=0.04f+0.62f*s.movement;break;
+        case StyleId::ClassicHeavy:halfBarProbability=0.04f+0.55f*s.movement;break;
+        case StyleId::Thrash:halfBarProbability=0.02f+0.45f*s.movement;break;
+        case StyleId::Groove:halfBarProbability=0.05f+0.55f*s.movement;break;
+        case StyleId::Death:halfBarProbability=0.02f+0.40f*s.movement;break;
+        case StyleId::MelodicDeath:halfBarProbability=0.08f+0.72f*s.movement;break;
+        case StyleId::Metalcore:halfBarProbability=0.05f+0.60f*s.movement;break;
+        case StyleId::NuMetal:halfBarProbability=0.03f+0.48f*s.movement;break;
+        case StyleId::Doom:halfBarProbability=0.01f+0.30f*s.movement;break;
+        case StyleId::DjentProgressive:halfBarProbability=0.06f+0.65f*s.movement;break;
+        default:break;
+    }
 
     // Movement should react progressively: lower values mostly hold whole-bar
     // harmony, higher values increasingly introduce half-bar changes.
@@ -175,10 +183,19 @@ PadPhrase PadBrain::generate(const Phrase& guitar,
         int rootDegree = progression[static_cast<size_t>(chordIndex % progression.size())] %
                          std::max(1, scale.count);
 
-        if (s.style == StyleId::NDHIndustrial && chordIndex > 0 &&
-            !rng.chance(0.22f + 0.38f * s.movement)) {
-            rootDegree = 0;
+        float progressionMoveChance=1.0f;
+        switch(s.style){
+            case StyleId::NDHIndustrial:progressionMoveChance=0.22f+0.38f*s.movement;break;
+            case StyleId::Thrash:progressionMoveChance=0.18f+0.30f*s.movement;break;
+            case StyleId::Death:progressionMoveChance=0.16f+0.28f*s.movement;break;
+            case StyleId::Metalcore:progressionMoveChance=0.22f+0.32f*s.movement;break;
+            case StyleId::NuMetal:progressionMoveChance=0.15f+0.25f*s.movement;break;
+            case StyleId::Doom:progressionMoveChance=0.12f+0.22f*s.movement;break;
+            case StyleId::DjentProgressive:progressionMoveChance=0.20f+0.35f*s.movement;break;
+            default:break;
         }
+        if(chordIndex>0&&progressionMoveChance<0.999f&&!rng.chance(progressionMoveChance))
+            rootDegree=0;
 
         // Context Follow makes the pad harmonically serve the actual riff.
         // It only chooses the diatonic chord root; voicing, movement, tension
@@ -207,10 +224,18 @@ PadPhrase PadBrain::generate(const Phrase& guitar,
             if (rng.chance(twoToneProbability))
                 harmonicVoices = 2;
         } else if (s.style == StyleId::HeavyIndustrial) {
-            const float twoToneProbability =
-                0.08f + 0.20f * contextRichness;
-            if (rng.chance(twoToneProbability))
-                harmonicVoices = 2;
+            const float twoToneProbability=0.08f+0.20f*contextRichness;
+            if(rng.chance(twoToneProbability)) harmonicVoices=2;
+        } else if (s.style==StyleId::Thrash||s.style==StyleId::Death||s.style==StyleId::DjentProgressive) {
+            if(rng.chance(0.45f+0.25f*contextRichness)) harmonicVoices=2;
+        } else if (s.style==StyleId::NuMetal) {
+            if(rng.chance(0.35f+0.30f*contextRichness)) harmonicVoices=2;
+        } else if (s.style==StyleId::Metalcore) {
+            if(rng.chance(0.25f+0.25f*contextRichness)) harmonicVoices=2;
+        } else if (s.style==StyleId::ClassicHeavy) {
+            if(rng.chance(0.15f+0.15f*contextRichness)) harmonicVoices=2;
+        } else if (s.style==StyleId::MelodicDeath) {
+            if(rng.chance(0.10f+0.10f*contextRichness)) harmonicVoices=2;
         }
 
         auto& dst = out.steps[step];
@@ -266,11 +291,14 @@ PadPhrase PadBrain::generate(const Phrase& guitar,
             pitch = nearestScaleTone(std::clamp(pitch, 45, 88), s);
             previous[v] = pitch;
 
-            int velocity = 66 + (v == 0 ? 7 : 0);
-            if (s.style == StyleId::HeavyIndustrial)
-                velocity += 5;
-            else if (s.style == StyleId::DarkRockGothic)
-                velocity -= 3;
+            int velocity=66+(v==0?7:0);
+            switch(s.style){
+                case StyleId::HeavyIndustrial:velocity+=5;break; case StyleId::DarkRockGothic:velocity-=3;break;
+                case StyleId::Thrash:velocity-=5;break; case StyleId::Death:velocity-=4;break;
+                case StyleId::MelodicDeath:velocity+=1;break; case StyleId::Metalcore:velocity+=2;break;
+                case StyleId::NuMetal:velocity-=2;break; case StyleId::Doom:velocity-=5;break;
+                case StyleId::DjentProgressive:velocity-=2;break; default:break;
+            }
 
             dst.notes[v] = {pitch, std::clamp(velocity, 1, 126), duration};
         }
@@ -282,10 +310,14 @@ PadPhrase PadBrain::generate(const Phrase& guitar,
         // at 2-3 sounding notes; Spread may make an octave copy more likely,
         // but even the widest setting must not turn four-note pads into the norm.
         float octaveDoubleProbability = 0.02f + 0.08f * s.spread;
-        if (s.style == StyleId::DarkRockGothic)
-            octaveDoubleProbability += 0.04f;
-        else if (s.style == StyleId::HeavyIndustrial)
-            octaveDoubleProbability += 0.02f;
+        switch(s.style){
+            case StyleId::DarkRockGothic:octaveDoubleProbability+=0.04f;break;
+            case StyleId::HeavyIndustrial:octaveDoubleProbability+=0.02f;break;
+            case StyleId::ClassicHeavy:octaveDoubleProbability+=0.02f;break;
+            case StyleId::MelodicDeath:octaveDoubleProbability+=0.03f;break;
+            case StyleId::Doom:octaveDoubleProbability+=0.05f;break;
+            default:break;
+        }
 
         if (harmonicVoices < kMaxPadVoices &&
             rng.chance(std::clamp(octaveDoubleProbability, 0.0f, 0.16f))) {

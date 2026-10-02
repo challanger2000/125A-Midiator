@@ -36,6 +36,11 @@ bool isExactOctavePair(const PadStep& step) {
 } // namespace
 
 int main() {
+    static_assert(static_cast<int>(StyleId::NDHIndustrial) == 0);
+    static_assert(static_cast<int>(StyleId::DarkRockGothic) == 1);
+    static_assert(static_cast<int>(StyleId::HeavyIndustrial) == 2);
+    static_assert(static_cast<int>(StyleId::Count) == 12);
+
     static constexpr std::array<int,4> barsList{{1,2,4,8}};
     long long arrangements = 0;
 
@@ -255,7 +260,8 @@ int main() {
         }
     }
 
-    require(arrangements == 7ll * 3ll * 4ll * 64ll,
+    require(arrangements ==
+                7ll * static_cast<long long>(StyleId::Count) * 4ll * 64ll,
             "property matrix must execute the complete arrangement grid");
     std::cout << "Midiator arrangement property matrix: PASS ("
               << arrangements << " arrangements)\n";
