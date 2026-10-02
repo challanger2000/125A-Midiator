@@ -3,6 +3,7 @@
 #include "DrumBrain.h"
 #include "PadBrain.h"
 #include "SynthBrain.h"
+#include "SectionProfiles.h"
 
 #include <algorithm>
 #include <chrono>
@@ -1192,6 +1193,72 @@ int main() {
         printSweepLine(styleNames[style], 0.0, m);
     }
 
+
+    std::cout << "\nSection-role energy diagnostics (same seed, 8 bars)\n";
+    std::cout << "---------------------------------------------------\n";
+    {
+        static constexpr const char* sectionNames[] = {
+            "FREE", "INTRO", "VERSE", "PRE", "CHORUS", "BREAKDOWN", "OUTRO"
+        };
+        constexpr uint32_t sectionSeed = 0x5EC71042u;
+
+        for (int idx = 0; idx < static_cast<int>(SectionType::Count); ++idx) {
+            const auto section = static_cast<SectionType>(idx);
+
+            GeneratorSettings g = s;
+            g.bars = 8;
+            g.section = section;
+            const auto guitar = RiffEngine::generate(
+                sectionGeneratorSettings(g), sectionSeed);
+
+            BassSettings b{};
+            b.rootPitchClass = g.rootPitchClass;
+            b.scale = g.scale;
+            b.style = g.style;
+            const auto bass = BassBrain::generate(
+                guitar, sectionBassSettings(b, section),
+                sectionSeed ^ 0xB4552026u);
+
+            DrumSettings d{};
+            d.style = g.style;
+            const auto drums = DrumBrain::generate(
+                guitar, bass, sectionDrumSettings(d, section),
+                sectionSeed ^ 0xD12A2026u);
+
+            PadSettings p{};
+            p.rootPitchClass = g.rootPitchClass;
+            p.scale = g.scale;
+            p.style = g.style;
+            const auto pads = PadBrain::generate(
+                guitar, bass, sectionPadSettings(p, section),
+                sectionSeed ^ 0x50414426u);
+
+            SynthSettings sy{};
+            sy.rootPitchClass = g.rootPitchClass;
+            sy.scale = g.scale;
+            sy.style = g.style;
+            const auto synth = SynthBrain::generate(
+                guitar, bass, pads, sectionSynthSettings(sy, section),
+                sectionSeed ^ 0x53594E26u);
+
+            long long guitarNotes=0, bassNotes=0, drumHits=0, padNotes=0, synthNotes=0;
+            for (int i=0;i<guitar.usedSteps();++i) guitarNotes += guitar.steps[i].noteCount;
+            for (int i=0;i<bass.usedSteps();++i) bassNotes += bass.steps[i].noteCount;
+            for (int i=0;i<drums.usedSteps();++i) drumHits += drums.steps[i].hitCount;
+            for (int i=0;i<pads.usedSteps();++i) padNotes += pads.steps[i].noteCount;
+            for (int i=0;i<synth.usedSteps();++i) synthNotes += synth.steps[i].noteCount;
+
+            const long long total =
+                guitarNotes + bassNotes + drumHits + padNotes + synthNotes;
+            std::cout << "Section " << std::setw(9) << sectionNames[idx]
+                      << ": total=" << total
+                      << " guitar=" << guitarNotes
+                      << " bass=" << bassNotes
+                      << " drums=" << drumHits
+                      << " pads=" << padNotes
+                      << " synth=" << synthNotes << "\n";
+        }
+    }
 
     std::cout << "\nBass Brain control sweep diagnostics (256 phrases per point)\n";
     std::cout << "---------------------------------------------------------\n";
