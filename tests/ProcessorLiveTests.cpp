@@ -780,12 +780,26 @@ void testSectionLengthSupportsSixteenBarsAndLegacyBarsStayStable() {
     require(processor.process(data) == kResultOk,
             "16-bar section must schedule successfully");
 
-    double latestGuitarOn = -1.0;
-    for (const auto& e : output.events)
-        if (e.type == Event::kNoteOnEvent && e.busIndex == kGuitarOutBus)
-            latestGuitarOn = std::max(latestGuitarOn, e.ppqPosition);
-    require(latestGuitarOn >= 60.0,
+    std::array<double, kEventOutputBusCount> latestOnByBus{};
+    latestOnByBus.fill(-1.0);
+    for (const auto& e : output.events) {
+        if (e.type != Event::kNoteOnEvent ||
+            e.busIndex < 0 || e.busIndex >= kEventOutputBusCount)
+            continue;
+        latestOnByBus[static_cast<size_t>(e.busIndex)] =
+            std::max(latestOnByBus[static_cast<size_t>(e.busIndex)], e.ppqPosition);
+    }
+
+    require(latestOnByBus[kGuitarOutBus] >= 60.0,
             "16-bar section must emit Guitar material in the final bar");
+    require(latestOnByBus[kBassOutBus] >= 32.0,
+            "16-bar section must keep Bass active in bars 9-16");
+    require(latestOnByBus[kDrumsOutBus] >= 32.0,
+            "16-bar section must keep Drums active in bars 9-16");
+    require(latestOnByBus[kPadOutBus] >= 32.0,
+            "16-bar section must keep Pads active in bars 9-16");
+    require(latestOnByBus[kSynthOutBus] >= 32.0,
+            "16-bar section must keep Synth active in bars 9-16");
 
     ParameterChanges legacy;
     qi = 0;
