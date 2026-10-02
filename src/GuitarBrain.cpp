@@ -529,11 +529,24 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
                 actualRhythmChanges += rhythmDiffersFromBase(pos) ? 1 : 0;
             }
 
-            for (int candidate : developmentPositions) {
+            // Rotate the preferred development locations per bar. Using the
+            // same first N positions on every bar made different bars share the
+            // same onset skeleton even when each one technically contained
+            // mutations. A stride of four across the 15 non-downbeat candidates
+            // gives each bar a different rhythmic answer while preserving the
+            // stable step-0 anchor.
+            constexpr int developmentCount =
+                static_cast<int>(std::size(developmentPositions));
+            const int developmentOffset = (bar * 4) % developmentCount;
+
+            for (int orderIndex = 0; orderIndex < developmentCount; ++orderIndex) {
                 if (actualChanges >= minStructuralChanges &&
                     actualRhythmChanges >= minRhythmChanges)
                     break;
 
+                const int candidate =
+                    developmentPositions[(orderIndex + developmentOffset) %
+                                         developmentCount];
                 auto& target = result.steps[bar * kStepsPerBar + candidate];
                 const auto& seedStep = baseBar[candidate];
 
