@@ -756,6 +756,80 @@ void testBarsResizePreservesExistingRiff() {
             "shrinking back to 2 bars must restore the unchanged original riff span");
 }
 
+void testSectionLengthResizePreservesRiffToSixteenBars() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "16-bar resize preservation fixture must start");
+
+    auto captureGuitar = [&](double startQn, int samples) {
+        auto context = makeContext(startQn, true);
+        EventList output;
+        auto data = makeProcessData(context, output, samples);
+        require(processor.process(data) == kResultOk,
+                "16-bar resize preservation capture must succeed");
+
+        std::vector<std::pair<int, int>> notes;
+        for (const auto& e : output.events) {
+            if (e.type != Event::kNoteOnEvent || e.busIndex != kGuitarOutBus)
+                continue;
+            const int step = static_cast<int>(
+                std::lround((e.ppqPosition - startQn) / 0.25));
+            notes.emplace_back(step, e.noteOn.pitch);
+        }
+        return notes;
+    };
+
+    const auto original = captureGuitar(0.0, 192000); // default two bars
+    require(!original.empty(),
+            "16-bar resize preservation fixture needs Guitar notes");
+
+    ParameterChanges grow;
+    int32 qi = 0;
+    auto* q = grow.addParameterData(kSectionLengthId, qi);
+    int32 pi = 0;
+    require(q && q->addPoint(0, 1.0, pi) == kResultOk,
+            "Section Length 16 value must be accepted for preservation test");
+
+    auto stopped = makeContext(8.0, false);
+    EventList stoppedOut;
+    auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &grow);
+    require(processor.process(stoppedData) == kResultOk,
+            "2-to-16 structural resize must succeed");
+
+    const auto extended = captureGuitar(8.0, 1536000);
+    require(!extended.empty(),
+            "16-bar extended Guitar capture must contain notes");
+
+    for (int chunk = 0; chunk < 8; ++chunk) {
+        std::vector<std::pair<int, int>> repeated;
+        const int firstStep = chunk * 32;
+        const int lastStep = firstStep + 32;
+        for (const auto& n : extended) {
+            if (n.first >= firstStep && n.first < lastStep)
+                repeated.emplace_back(n.first - firstStep, n.second);
+        }
+        require(repeated == original,
+                "2-to-16 Section Length resize must tile the existing two-bar riff exactly");
+    }
+
+    ParameterChanges shrink;
+    qi = 0;
+    q = shrink.addParameterData(kSectionLengthId, qi);
+    pi = 0;
+    require(q && q->addPoint(0, 0.25, pi) == kResultOk,
+            "Section Length 2 value must be accepted for shrink test");
+
+    auto stopped2 = makeContext(72.0, false);
+    EventList stoppedOut2;
+    auto stoppedData2 = makeProcessData(stopped2, stoppedOut2, 64, &shrink);
+    require(processor.process(stoppedData2) == kResultOk,
+            "16-to-2 structural shrink must succeed");
+
+    const auto shortened = captureGuitar(72.0, 192000);
+    require(shortened == original,
+            "shrinking Section Length back to two bars must restore the original riff span");
+}
+
 void testSectionLengthSupportsSixteenBarsAndLegacyBarsStayStable() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk,
@@ -2140,6 +2214,7 @@ int main() {
     testHeavyIndustrialStaysLockedToHostGrid();
     testRepeatedNewRiffStaysDistinct();
     testBarsResizePreservesExistingRiff();
+    testSectionLengthResizePreservesRiffToSixteenBars();
     testSectionLengthSupportsSixteenBarsAndLegacyBarsStayStable();
     testPowerChordTogglePreservesRiffOnsetsAndPitches();
     testLargeOfflineBlockKeepsNoteEventsBalanced();
