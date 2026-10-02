@@ -82,6 +82,7 @@ add_test(NAME MidiatorDrumBrainTests COMMAND MidiatorDrumBrainTests)
 add_executable(MidiatorPadBrainTests
     PadBrainTests.cpp
     ../src/GuitarBrain.cpp
+    ../src/BassBrain.cpp
     ../src/PadBrain.cpp
 )
 
