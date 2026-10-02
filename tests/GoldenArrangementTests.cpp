@@ -54,16 +54,12 @@ int main(){
  const auto gh=hashPhrase(guitar),bh=hashPhrase(bass),dh=hashDrums(drums),ph=hashPads(pads),sh=hashPhrase(synth);
  const auto ah=arrangementHash(gh,bh,dh,ph,sh);
 
- std::cout << std::hex << std::showbase
-           << "Candidate Guitar=" << gh
-           << " Bass=" << bh
-           << " Drums=" << dh
-           << " Pad=" << ph
-           << " Synth=" << sh
-           << " Arrangement=" << ah << "\n"
-           << std::dec << std::noshowbase;
- // Candidate measurement run: exact hashes are re-frozen immediately after
- // the full test/validator/measurement pass confirms this musical revision.
+ require(gh==0x1a2d22e5e04cd244ull,"golden Guitar fingerprint changed");
+ require(bh==0xb950aa894af7f34bull,"golden Bass fingerprint changed");
+ require(dh==0x8dd5e990b5104226ull,"golden Drum fingerprint changed");
+ require(ph==0x12355b88ae5ea5c1ull,"golden Pad fingerprint changed");
+ require(sh==0x2b3c4d1813b598faull,"golden Synth fingerprint changed");
+ require(ah==0xa6e62fe1b4c6c264ull,"golden arrangement fingerprint changed");
  std::cout<<"Midiator golden five-role fingerprint: PASS\n";
  return 0;
 }

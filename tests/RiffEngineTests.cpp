@@ -506,6 +506,57 @@ void testFourBarRoleDevelopment() {
 }
 
 
+void testEightBarMacroDevelopmentStaysMusical() {
+    midiator::GeneratorSettings s{};
+    s.bars = 8;
+    s.rootPitchClass = 9;
+    s.scale = midiator::ScaleId::Phrygian;
+    s.style = midiator::StyleId::NDHIndustrial;
+    s.density = 0.56f;
+    s.complexity = 0.42f;
+    s.repetition = 0.72f;
+
+    auto jaccard = [](const midiator::Phrase& p, int a, int b) {
+        int intersection = 0;
+        int unionCount = 0;
+        for (int step = 0; step < midiator::kStepsPerBar; ++step) {
+            const bool ah =
+                p.steps[a * midiator::kStepsPerBar + step].noteCount > 0;
+            const bool bh =
+                p.steps[b * midiator::kStepsPerBar + step].noteCount > 0;
+            if (ah || bh) ++unionCount;
+            if (ah && bh) ++intersection;
+        }
+        return unionCount > 0
+            ? static_cast<double>(intersection) / unionCount : 1.0;
+    };
+
+    double adjacent = 0.0;
+    double sectionMirror = 0.0;
+    int adjacentPairs = 0;
+    int sectionPairs = 0;
+
+    for (unsigned seed = 1; seed <= 256; ++seed) {
+        const auto p = midiator::RiffEngine::generate(s, 970000u + seed);
+        for (int bar = 1; bar < 8; ++bar) {
+            adjacent += jaccard(p, bar - 1, bar);
+            ++adjacentPairs;
+        }
+        for (int bar = 0; bar < 4; ++bar) {
+            sectionMirror += jaccard(p, bar, bar + 4);
+            ++sectionPairs;
+        }
+    }
+
+    const double adjacentMean = adjacent / adjacentPairs;
+    const double sectionMean = sectionMirror / sectionPairs;
+
+    require(adjacentMean >= 0.68 && adjacentMean <= 0.82,
+            "default 8-bar phrase must stay recognizable without becoming static");
+    require(sectionMean >= 0.48 && sectionMean <= 0.72,
+            "bars 5-8 must develop the first four bars without becoming unrelated");
+}
+
 void testRepetitionControlBehavior() {
     midiator::GeneratorSettings low{};
     low.bars = 4;
@@ -676,6 +727,7 @@ int main() {
     testFastSixteenthBurstsExist();
     testStyleEnginesHaveDistinctRhythmLanguages();
     testFourBarRoleDevelopment();
+    testEightBarMacroDevelopmentStaysMusical();
     testRepetitionControlBehavior();
     testComplexityControlBehavior();
 
