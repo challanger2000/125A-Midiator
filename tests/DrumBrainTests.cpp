@@ -259,7 +259,7 @@ void testFillIntensityScalesSectionTransitions() {
     for (StyleId style : {StyleId::NDHIndustrial,
                           StyleId::DarkRockGothic,
                           StyleId::HeavyIndustrial}) {
-        long long off = 0, mid = 0, high = 0;
+        long long off = 0, mid = 0, strong = 0, high = 0;
         for (unsigned seed = 1; seed <= 128; ++seed) {
             DrumSettings s{};
             s.style = style;
@@ -273,6 +273,10 @@ void testFillIntensityScalesSectionTransitions() {
             mid += transitionActivity(
                 DrumBrain::generate(guitar, bass, s, 930000u + seed));
 
+            s.fillIntensity = 0.75f;
+            strong += transitionActivity(
+                DrumBrain::generate(guitar, bass, s, 930000u + seed));
+
             s.fillIntensity = 1.0f;
             high += transitionActivity(
                 DrumBrain::generate(guitar, bass, s, 930000u + seed));
@@ -280,8 +284,10 @@ void testFillIntensityScalesSectionTransitions() {
 
         require(mid > off + 80,
                 "50% Fill Intensity must add a clearly audible section transition");
-        require(high > mid + 80,
-                "100% Fill Intensity must be materially larger than 50%");
+        require(strong > mid + 40,
+                "75% Fill Intensity must be materially larger than 50%");
+        require(high > strong + 80,
+                "100% Fill Intensity must remain structurally larger than 75%");
     }
 }
 

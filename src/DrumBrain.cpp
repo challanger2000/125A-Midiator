@@ -320,6 +320,19 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
                 majorFillIntensity >= 0.50f &&
                 (s.complexity >= 0.20f || transitionRng.chance(0.55f));
 
+            // At the very top of the control, add a distinct setup hit on the
+            // first sixteenth of the final beat. This avoids a 75->100 plateau:
+            // 100% must be structurally bigger, not merely a few velocity points louder.
+            if (majorFillIntensity >= 0.875f && local == 12) {
+                if (s.style == StyleId::DarkRockGothic) {
+                    addHit(ds, DrumVoice::Kick,
+                           humanizedVelocity(velocityRng, 108, s.humanize));
+                } else {
+                    addHit(ds, DrumVoice::LowTom,
+                           humanizedVelocity(velocityRng, 106, s.humanize));
+                }
+            }
+
             if (s.style == StyleId::NDHIndustrial) {
                 // Mechanical snare roll with a final tom punctuation.
                 if ((local == 12 || local == 14 || local == 15) ||
