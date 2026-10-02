@@ -224,8 +224,11 @@ void testEightBarSectionTransitionFill() {
             bar8Fill += countTransitionVoices(d, 7);
         }
 
-        require(bar8Fill > bar7Fill + 300,
-                "eighth bar must contain a materially stronger transition fill than bar seven");
+        // Default Fill Intensity is 50%, intentionally using only the
+        // final two sixteenths. Even the sparse Dark Rock language must still
+        // make the section boundary clearly stronger than the preceding bar.
+        require(bar8Fill > bar7Fill + 150,
+                "default 50% Fill Intensity must make bar eight clearly stronger than bar seven");
     }
 }
 
