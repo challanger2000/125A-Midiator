@@ -14,7 +14,7 @@ Midiator currently generates five independently routable musical roles:
 
 Each role uses its own VST3 event output bus. The roles are not multiplexed onto one MIDI output.
 
-The current timing scope is **4/4**, using an internal 16th-note grid and phrase lengths of 1, 2, 4 or 8 bars.
+The current timing scope is **4/4**, using an internal 16th-note grid and phrase lengths of 1, 2, 4, 8 or 16 bars.
 
 ## Shared musical frame
 
@@ -36,12 +36,12 @@ Bass is style-aware; Drums derive kick pressure from Guitar/Bass context; Pads u
 
 ## GUI controls currently exposed
 
-Root / Root Source, Scale / Mode, Bars, Style, Density, Complexity, Repetition, Power Chords on/off and amount, Palm Mute, Variation Amount, NEW RIFF and VARIATION.
+Root / Root Source, Scale / Mode, Section Length (1/2/4/8/16), Style, Density, Complexity, Repetition, Power Chords on/off and amount, Palm Mute, Variation Amount, NEW RIFF and VARIATION.
 
 The GUI exposes a deliberately small role-shaping layer instead of every internal generator parameter:
 
 - Bass: Follow, Movement
-- Drums: Density, Complexity
+- Drums: Density, Complexity, Fill Intensity
 - Pads: Spread, Tension
 - Synth: Activity, Movement
 
@@ -61,11 +61,11 @@ The processor requests VST3 musical timeline, tempo, time signature and transpor
 
 ## State
 
-State V7 stores the shared musical settings, verified Drum Map selection, the eight exposed role-shaping controls and the exact generated Guitar, Bass, Drum, Pad and Synth phrases. This freezes project recall even if generation algorithms change later. Legacy V1-V4 states remain supported by regenerating missing companion roles once during migration; V5 preserves its exact five-role payload, and V6 additionally preserves its verified Drum Map. All migrated states are then saved in V7 format.
+State V9 stores the shared musical settings, verified Drum Map selection, the exposed role-shaping controls including Fill Intensity, and the exact generated Guitar, Bass, Drum, Pad and Synth phrases. V8 expanded the exact phrase payload from 128 to 256 steps so 16-bar sections can be recalled without regeneration; V9 adds persisted Fill Intensity while retaining the V8 phrase layout. Legacy V1-V4 states remain supported by regenerating missing companion roles once during migration; V5 preserves its exact five-role payload, V6 additionally preserves its verified Drum Map, V7 preserves the original eight role-shaping controls with the 128-step payload, and V8 preserves the 256-step payload. All migrated states are then saved in V9 format.
 
 ## Automated verification
 
-The development branch checks deterministic generation, scale safety, phrase integrity, role-specific controls, style behavior, Pad voice-leading/context-follow, Synth motif/harmony follow, Drum Humanize invariance, verified drum maps, five dedicated event output buses, per-bus balance/flush, large offline blocks with cycle-chunked scheduling, state roundtrip plus frozen V1-V6 migration fixtures, GUI/editor lifecycle, Steinberg Validator and statistical measurement reports.
+The development branch checks deterministic generation, scale safety, phrase integrity, 8- and 16-bar macro-development, role-specific controls, style behavior, Fill Intensity progression and section transitions, Pad voice-leading/context-follow, Synth motif/harmony follow, Drum Humanize invariance, verified drum maps, five dedicated event output buses, per-bus balance/flush, large offline blocks with cycle-chunked scheduling, state roundtrip plus frozen V1-V8 migration fixtures, GUI/editor lifecycle, Steinberg Validator and statistical measurement reports.
 
 A frozen deterministic **golden five-role arrangement fingerprint** protects a known NDH / A Phrygian four-bar reference so unintended musical changes fail CI immediately.
 

@@ -304,7 +304,7 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
         // Faster 1/32 rolls remain a future ratchet/substep feature.
         const bool sixteenBarBoundary = ((bar + 1) % 16) == 0;
         const float majorFillIntensity = sixteenBarBoundary
-            ? std::min(1.0f, fillIntensity + 0.25f)
+            ? std::min(1.0f, fillIntensity * 1.25f)
             : fillIntensity;
         const int majorFillStart =
             majorFillIntensity >= 0.875f ? 12 :
