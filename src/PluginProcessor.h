@@ -17,6 +17,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 
 namespace VSTGUI {
@@ -122,8 +123,14 @@ private:
     midiator::SynthSettings synthSettings_{};
     midiator::Phrase synthPhrase_{};
     uint32_t seed_ = 0x125A2026u;
-    std::array<SongSectionSnapshot,
-               static_cast<std::size_t>(midiator::SectionType::Count)> songSections_{};
+    using SongSectionCache =
+        std::array<SongSectionSnapshot,
+                   static_cast<std::size_t>(midiator::SectionType::Count)>;
+
+    // Preallocated once with the processor object. Keeping the full automatic
+    // song bank off the callback/test thread stack avoids large-stack pressure
+    // without introducing allocation into process().
+    std::unique_ptr<SongSectionCache> songSections_{};
     bool songMode_ = false;
     bool songCacheValid_ = false;
 

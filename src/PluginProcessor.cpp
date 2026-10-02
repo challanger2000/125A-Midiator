@@ -466,7 +466,8 @@ int normalizedIndex(ParamValue v, int count) {
 
 } // namespace
 
-MidiatorProcessor::MidiatorProcessor() {
+MidiatorProcessor::MidiatorProcessor()
+: songSections_(std::make_unique<SongSectionCache>()) {
     setControllerClass(ControllerUID);
 
     // The sequencer depends on musical timeline position, tempo and
@@ -599,7 +600,7 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
     }
 
     if (songMode_) {
-        for (const auto& section : songSections_) {
+        for (const auto& section : *songSections_) {
             if (!writePhraseState(state, section.guitar) ||
                 !writePhraseState(state, section.bass) ||
                 !writeDrumPhraseState(state, section.drums) ||
@@ -664,11 +665,10 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
         }
     }
 
-    std::array<SongSectionSnapshot,
-               static_cast<std::size_t>(midiator::SectionType::Count)> restoredSongSections{};
+    auto restoredSongSections = std::make_unique<SongSectionCache>();
     bool restoredSongCacheValid = false;
     if (restoredStateVersion >= 11u && restoredSongMode) {
-        for (auto& section : restoredSongSections) {
+        for (auto& section : *restoredSongSections) {
             if (!readPhraseState(state, section.guitar, restored.bars,
                                  midiator::kMaxSteps, true, true) ||
                 !readPhraseState(state, section.bass, restored.bars,
@@ -697,7 +697,7 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     padSettings_ = restoredPadSettings;
     synthSettings_ = restoredSynthSettings;
     songMode_ = restoredSongMode;
-    songSections_ = restoredSongSections;
+    *songSections_ = *restoredSongSections;
     songCacheValid_ = restoredSongCacheValid;
     phrase_ = restoredPhrase;
 
@@ -902,7 +902,7 @@ void MidiatorProcessor::rebuildSongCache(bool preserveCurrentSection) {
          sectionIndex < static_cast<int>(midiator::SectionType::Count);
          ++sectionIndex) {
         const auto section = static_cast<midiator::SectionType>(sectionIndex);
-        auto& snapshot = songSections_[static_cast<std::size_t>(sectionIndex)];
+        auto& snapshot = (*songSections_)[static_cast<std::size_t>(sectionIndex)];
 
         auto guitarSettings = settings_;
         guitarSettings.section = section;
@@ -943,18 +943,18 @@ void MidiatorProcessor::rebuildSongCache(bool preserveCurrentSection) {
     }
 
     if (preserveCurrentSection &&
-        selectedIndex < songSections_.size())
-        songSections_[selectedIndex] = preserved;
+        selectedIndex < songSections_->size())
+        (*songSections_)[selectedIndex] = preserved;
 
     songCacheValid_ = true;
 }
 
 void MidiatorProcessor::syncManualFromSongCache() {
     const auto index = static_cast<std::size_t>(settings_.section);
-    if (!songCacheValid_ || index >= songSections_.size())
+    if (!songCacheValid_ || index >= songSections_->size())
         return;
 
-    const auto& snapshot = songSections_[index];
+    const auto& snapshot = (*songSections_)[index];
     phrase_ = snapshot.guitar;
     bassPhrase_ = snapshot.bass;
     drumPhrase_ = snapshot.drums;
@@ -973,7 +973,7 @@ void MidiatorProcessor::varySongCache() {
          sectionIndex < static_cast<int>(midiator::SectionType::Count);
          ++sectionIndex) {
         const auto section = static_cast<midiator::SectionType>(sectionIndex);
-        auto& snapshot = songSections_[static_cast<std::size_t>(sectionIndex)];
+        auto& snapshot = (*songSections_)[static_cast<std::size_t>(sectionIndex)];
         const uint32_t sectionSeed =
             seed_ ^ (0x9E3779B9u * static_cast<uint32_t>(sectionIndex + 1));
 
@@ -1981,7 +1981,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         if (songMode_ && songCacheValid_) {
             const auto section = midiator::songSectionForUnit(cycle);
             const auto& snapshot =
-                songSections_[static_cast<std::size_t>(section)];
+                (*songSections_)[static_cast<std::size_t>(section)];
             guitar = &snapshot.guitar;
             bass = &snapshot.bass;
             drums = &snapshot.drums;
