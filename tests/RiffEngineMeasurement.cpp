@@ -348,6 +348,32 @@ static void printDrumSweepLine(const char* label,double value,const DrumSweepMet
              <<" velStd="<<m.velocityStdDev<<"\n";
 }
 
+static double measureSectionFillActivity(const Phrase& guitar,
+                                         const Phrase& bass,
+                                         const DrumSettings& settings,
+                                         int targetBar,
+                                         unsigned seedBase,
+                                         int samples = 256) {
+    long long activity = 0;
+    for (int sidx = 0; sidx < samples; ++sidx) {
+        const auto d = DrumBrain::generate(
+            guitar, bass, settings, seedBase + static_cast<unsigned>(sidx));
+        if (targetBar < 0 || targetBar >= d.bars)
+            continue;
+        for (int local = 12; local < 16; ++local) {
+            const auto& st = d.steps[targetBar * kStepsPerBar + local];
+            for (int n = 0; n < st.hitCount; ++n) {
+                const auto v = st.hits[n].voice;
+                if (v == DrumVoice::Kick || v == DrumVoice::Snare ||
+                    v == DrumVoice::LowTom || v == DrumVoice::MidTom ||
+                    v == DrumVoice::HighTom)
+                    ++activity;
+            }
+        }
+    }
+    return static_cast<double>(activity) / std::max(1, samples);
+}
+
 
 struct PadSweepMetrics {
     double chords = 0.0;
@@ -1014,6 +1040,59 @@ int main() {
                   << pct(seedBarSimilarity / seedPairs) << "%\n";
     }
 
+    std::cout << "\n16-bar macro-development diagnostics (512 phrases)\n";
+    std::cout << "-------------------------------------------------\n";
+    {
+        GeneratorSettings macro = s;
+        macro.bars = 16;
+        macro.repetition = 0.72f;
+        macro.complexity = 0.42f;
+        macro.density = 0.56f;
+
+        auto barJaccard = [](const Phrase& p, int a, int b) {
+            int intersection = 0;
+            int unionCount = 0;
+            for (int step = 0; step < kStepsPerBar; ++step) {
+                const bool ah =
+                    p.steps[a * kStepsPerBar + step].noteCount > 0;
+                const bool bh =
+                    p.steps[b * kStepsPerBar + step].noteCount > 0;
+                if (ah || bh) ++unionCount;
+                if (ah && bh) ++intersection;
+            }
+            return unionCount > 0
+                ? static_cast<double>(intersection) / unionCount : 1.0;
+        };
+
+        double adjacent = 0.0;
+        double halfMirror = 0.0;
+        double seedBarSimilarity = 0.0;
+        int adjacentPairs = 0;
+        int halfPairs = 0;
+        int seedPairs = 0;
+
+        for (unsigned seed = 1; seed <= 512; ++seed) {
+            const auto p = RiffEngine::generate(macro, 980000u + seed);
+            for (int bar = 1; bar < 16; ++bar) {
+                adjacent += barJaccard(p, bar - 1, bar);
+                ++adjacentPairs;
+                seedBarSimilarity += barJaccard(p, 0, bar);
+                ++seedPairs;
+            }
+            for (int bar = 0; bar < 8; ++bar) {
+                halfMirror += barJaccard(p, bar, bar + 8);
+                ++halfPairs;
+            }
+        }
+
+        std::cout << "Default 72% Repetition adjacent-bar onset Jaccard (16 bars): "
+                  << pct(adjacent / adjacentPairs) << "%\n";
+        std::cout << "Bars 1-8 vs corresponding 9-16 onset Jaccard: "
+                  << pct(halfMirror / halfPairs) << "%\n";
+        std::cout << "Bar 1 vs later bars onset Jaccard (16 bars): "
+                  << pct(seedBarSimilarity / seedPairs) << "%\n";
+    }
+
     GeneratorSettings lowVarSettings = s;
     const auto base = RiffEngine::generate(lowVarSettings, 123456u);
     const auto var20 = RiffEngine::vary(base, lowVarSettings, 0.20f, 123457u);
@@ -1186,6 +1265,27 @@ int main() {
         DrumSettings ds{}; ds.complexity=v;
         printDrumSweepLine("Complexity",v,measureDrums(drumGuitar,drumBass,ds,720000u));
     }
+    std::cout<<"\n";
+
+    GeneratorSettings fillGuitarSettings = bassGuitarSettings;
+    fillGuitarSettings.bars = 8;
+    const auto fillGuitar =
+        RiffEngine::generate(fillGuitarSettings, 0xF1111001u);
+    BassSettings fillBassSettings{};
+    const auto fillBass =
+        BassBrain::generate(fillGuitar, fillBassSettings, 0xF1111002u);
+
+    std::cout << "Fill Intensity focused 8-bar transition activity\n";
+    for (float v : sweepValues) {
+        DrumSettings ds{};
+        ds.fillIntensity = v;
+        const double activity = measureSectionFillActivity(
+            fillGuitar, fillBass, ds, 7,
+            725000u + static_cast<unsigned>(v * 1000.0f));
+        std::cout << "FillIntensity " << std::setw(5) << v * 100.0
+                  << "%: transitionActivity=" << activity << "\n";
+    }
+
     std::cout<<"\n";
     for (float v : sweepValues) {
         DrumSettings ds{}; ds.humanize=v;
