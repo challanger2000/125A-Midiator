@@ -37,7 +37,7 @@ void testBarsAndScaleSafety() {
     s.rootPitchClass = 9; // A
     s.scale = midiator::ScaleId::Phrygian;
 
-    for (int bars : {1, 2, 4, 8}) {
+    for (int bars : {1, 2, 4, 8, 16}) {
         s.bars = bars;
         const auto phrase = midiator::RiffEngine::generate(s, 12345u + static_cast<unsigned>(bars));
         require(phrase.bars == bars, "bar count must be preserved");

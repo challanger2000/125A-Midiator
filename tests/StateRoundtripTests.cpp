@@ -21,6 +21,8 @@ void* moduleHandle = nullptr;
 
 namespace {
 
+constexpr int kLegacyStateSteps = 128;
+
 void require(bool condition, const char* message) {
     if (!condition) {
         std::cerr << "FAIL: " << message << "\n";
@@ -182,7 +184,7 @@ MemoryStream makeLegacyStateFixture(uint32_t version,
     // V1-V4 stored only the Guitar phrase in the fixed 128-step layout.
     const int32 phraseBars = 2;
     appendFixtureValue(stream, phraseBars);
-    for (int i = 0; i < midiator::kMaxSteps; ++i) {
+    for (int i = 0; i < kLegacyStateSteps; ++i) {
         const int32 noteCount = (i == 0) ? 1 : 0;
         appendFixtureValue(stream, noteCount);
         for (int n = 0; n < midiator::kMaxNotesPerStep; ++n) {
@@ -338,6 +340,15 @@ int main() {
         (sizeof(int32) + midiator::kMaxDrumHitsPerStep * 2 * sizeof(int32));
     constexpr size_t kPadPhraseBytes =
         sizeof(int32) + midiator::kMaxSteps *
+        (sizeof(int32) + midiator::kMaxPadVoices * 3 * sizeof(int32));
+    constexpr size_t kLegacyPhraseBytes =
+        sizeof(int32) + kLegacyStateSteps *
+        (sizeof(int32) + midiator::kMaxNotesPerStep * 3 * sizeof(int32));
+    constexpr size_t kLegacyDrumPhraseBytes =
+        sizeof(int32) + kLegacyStateSteps *
+        (sizeof(int32) + midiator::kMaxDrumHitsPerStep * 2 * sizeof(int32));
+    constexpr size_t kLegacyPadPhraseBytes =
+        sizeof(int32) + kLegacyStateSteps *
         (sizeof(int32) + midiator::kMaxPadVoices * 3 * sizeof(int32));
 
     const size_t guitarOffset = kHeaderBytes;
@@ -497,9 +508,21 @@ int main() {
         v5.bytes().insert(v5.bytes().end(),
                           current.bytes().begin(),
                           current.bytes().begin() + 64);
-        v5.bytes().insert(v5.bytes().end(),
-                          current.bytes().begin() + 100,
-                          current.bytes().end());
+        const size_t curGuitar = 100;
+        const size_t curBass = curGuitar + kPhraseBytes;
+        const size_t curDrums = curBass + kPhraseBytes;
+        const size_t curPads = curDrums + kDrumPhraseBytes;
+        const size_t curSynth = curPads + kPadPhraseBytes;
+        auto appendLegacy = [&](size_t offset, size_t bytes) {
+            v5.bytes().insert(v5.bytes().end(),
+                              current.bytes().begin() + offset,
+                              current.bytes().begin() + offset + bytes);
+        };
+        appendLegacy(curGuitar, kLegacyPhraseBytes);
+        appendLegacy(curBass, kLegacyPhraseBytes);
+        appendLegacy(curDrums, kLegacyDrumPhraseBytes);
+        appendLegacy(curPads, kLegacyPadPhraseBytes);
+        appendLegacy(curSynth, kLegacyPhraseBytes);
         const uint32_t v5Version = 5u;
         patchFixtureValue(v5, sizeof(uint32_t), v5Version);
 
@@ -561,9 +584,21 @@ int main() {
         v6.bytes().insert(v6.bytes().end(),
                           current.bytes().begin(),
                           current.bytes().begin() + 68);
-        v6.bytes().insert(v6.bytes().end(),
-                          current.bytes().begin() + 100,
-                          current.bytes().end());
+        const size_t curGuitar = 100;
+        const size_t curBass = curGuitar + kPhraseBytes;
+        const size_t curDrums = curBass + kPhraseBytes;
+        const size_t curPads = curDrums + kDrumPhraseBytes;
+        const size_t curSynth = curPads + kPadPhraseBytes;
+        auto appendLegacy = [&](size_t offset, size_t bytes) {
+            v6.bytes().insert(v6.bytes().end(),
+                              current.bytes().begin() + offset,
+                              current.bytes().begin() + offset + bytes);
+        };
+        appendLegacy(curGuitar, kLegacyPhraseBytes);
+        appendLegacy(curBass, kLegacyPhraseBytes);
+        appendLegacy(curDrums, kLegacyDrumPhraseBytes);
+        appendLegacy(curPads, kLegacyPadPhraseBytes);
+        appendLegacy(curSynth, kLegacyPhraseBytes);
         const uint32_t v6Version = 6u;
         patchFixtureValue(v6, sizeof(uint32_t), v6Version);
 
@@ -586,6 +621,47 @@ int main() {
         std::memcpy(&storedMap, upgraded.bytes().data() + 64, sizeof(storedMap));
         require(storedMap == ezd3,
                 "V6 migration must preserve the selected verified Drum Map");
+    }
+
+    {
+        MemoryStream current;
+        MidiatorProcessor source;
+        require(source.getState(&current) == kResultOk,
+                "current V8 fixture for V7 migration must serialize");
+
+        MemoryStream v7;
+        v7.bytes().insert(v7.bytes().end(),
+                          current.bytes().begin(),
+                          current.bytes().begin() + 100);
+        const size_t curGuitar = 100;
+        const size_t curBass = curGuitar + kPhraseBytes;
+        const size_t curDrums = curBass + kPhraseBytes;
+        const size_t curPads = curDrums + kDrumPhraseBytes;
+        const size_t curSynth = curPads + kPadPhraseBytes;
+        auto appendLegacy = [&](size_t offset, size_t bytes) {
+            v7.bytes().insert(v7.bytes().end(),
+                              current.bytes().begin() + offset,
+                              current.bytes().begin() + offset + bytes);
+        };
+        appendLegacy(curGuitar, kLegacyPhraseBytes);
+        appendLegacy(curBass, kLegacyPhraseBytes);
+        appendLegacy(curDrums, kLegacyDrumPhraseBytes);
+        appendLegacy(curPads, kLegacyPadPhraseBytes);
+        appendLegacy(curSynth, kLegacyPhraseBytes);
+        const uint32_t v7Version = 7u;
+        patchFixtureValue(v7, sizeof(uint32_t), v7Version);
+
+        const size_t oldSize = v7.bytes().size();
+        v7.rewind();
+        MidiatorProcessor migrated;
+        require(migrated.setState(&v7) == kResultOk,
+                "frozen V7 128-step state must migrate to V8");
+
+        MemoryStream upgraded;
+        require(migrated.getState(&upgraded) == kResultOk,
+                "migrated V7 state must serialize as V8");
+        require(upgraded.bytes().size() > oldSize,
+                "V8 state must expand the old 128-step payload to 256 steps");
     }
 
     std::cout << "Midiator processor-state roundtrip test: PASS\n";

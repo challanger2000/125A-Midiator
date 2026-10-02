@@ -6,7 +6,7 @@
 namespace midiator {
 
 constexpr int kStepsPerBar = 16;
-constexpr int kMaxBars = 8;
+constexpr int kMaxBars = 16;
 constexpr int kMaxSteps = kStepsPerBar * kMaxBars;
 constexpr int kMaxNotesPerStep = 2;
 

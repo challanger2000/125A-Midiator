@@ -20,7 +20,8 @@ namespace {
 constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 8192;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 7u;
+constexpr uint32_t kStateVersion = 8u;
+constexpr int kLegacyStateSteps = 128; // V1-V7 fixed phrase payload width
 constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
 constexpr const char* kMsgVariation = "125A.Midiator.Variation";
 
@@ -67,17 +68,25 @@ bool writePhraseState(IBStream* state, const midiator::Phrase& phrase) {
 }
 
 bool readPhraseState(IBStream* state, midiator::Phrase& phrase, int fallbackBars,
+                     int serializedSteps, bool allow16Bars,
                      bool strict = false) {
     int32 phraseBars = 0;
     if (!readValue(state, phraseBars))
         return false;
-    const bool validBars =
+
+    const bool validLegacyBars =
         phraseBars == 1 || phraseBars == 2 || phraseBars == 4 || phraseBars == 8;
+    const bool validBars = validLegacyBars || (allow16Bars && phraseBars == 16);
     if (strict && !validBars)
         return false;
-    phrase.bars = validBars ? phraseBars : fallbackBars;
+    if (serializedSteps < 1 || serializedSteps > midiator::kMaxSteps)
+        return false;
 
-    for (int i = 0; i < midiator::kMaxSteps; ++i) {
+    phrase.bars = validBars ? phraseBars : fallbackBars;
+    for (auto& step : phrase.steps)
+        step = {};
+
+    for (int i = 0; i < serializedSteps; ++i) {
         int32 noteCount = 0;
         if (!readValue(state, noteCount))
             return false;
@@ -124,16 +133,24 @@ bool writeDrumPhraseState(IBStream* state, const midiator::DrumPhrase& phrase) {
 }
 
 bool readDrumPhraseState(IBStream* state, midiator::DrumPhrase& phrase, int fallbackBars,
+                         int serializedSteps, bool allow16Bars,
                          bool strict = false) {
     int32 bars = 0;
     if (!readValue(state, bars))
         return false;
-    const bool validBars = bars == 1 || bars == 2 || bars == 4 || bars == 8;
+
+    const bool validLegacyBars = bars == 1 || bars == 2 || bars == 4 || bars == 8;
+    const bool validBars = validLegacyBars || (allow16Bars && bars == 16);
     if (strict && !validBars)
         return false;
-    phrase.bars = validBars ? bars : fallbackBars;
+    if (serializedSteps < 1 || serializedSteps > midiator::kMaxSteps)
+        return false;
 
-    for (int i = 0; i < midiator::kMaxSteps; ++i) {
+    phrase.bars = validBars ? bars : fallbackBars;
+    for (auto& step : phrase.steps)
+        step = {};
+
+    for (int i = 0; i < serializedSteps; ++i) {
         int32 hitCount = 0;
         if (!readValue(state, hitCount))
             return false;
@@ -181,16 +198,24 @@ bool writePadPhraseState(IBStream* state, const midiator::PadPhrase& phrase) {
 }
 
 bool readPadPhraseState(IBStream* state, midiator::PadPhrase& phrase, int fallbackBars,
+                        int serializedSteps, bool allow16Bars,
                         bool strict = false) {
     int32 bars = 0;
     if (!readValue(state, bars))
         return false;
-    const bool validBars = bars == 1 || bars == 2 || bars == 4 || bars == 8;
+
+    const bool validLegacyBars = bars == 1 || bars == 2 || bars == 4 || bars == 8;
+    const bool validBars = validLegacyBars || (allow16Bars && bars == 16);
     if (strict && !validBars)
         return false;
-    phrase.bars = validBars ? bars : fallbackBars;
+    if (serializedSteps < 1 || serializedSteps > midiator::kMaxSteps)
+        return false;
 
-    for (int i = 0; i < midiator::kMaxSteps; ++i) {
+    phrase.bars = validBars ? bars : fallbackBars;
+    for (auto& step : phrase.steps)
+        step = {};
+
+    for (int i = 0; i < serializedSteps; ++i) {
         int32 noteCount = 0;
         if (!readValue(state, noteCount))
             return false;
@@ -205,12 +230,12 @@ bool readPadPhraseState(IBStream* state, midiator::PadPhrase& phrase, int fallba
                 return false;
             if (strict && (pitch < 0 || pitch > 127 ||
                            velocity < 0 || velocity > 126 ||
-                           lengthSteps < 1 || lengthSteps > midiator::kMaxSteps))
+                           lengthSteps < 1 || lengthSteps > serializedSteps))
                 return false;
             phrase.steps[i].notes[n].pitch = std::clamp<int32>(pitch, 0, 127);
             phrase.steps[i].notes[n].velocity = std::clamp<int32>(velocity, 0, 126);
             phrase.steps[i].notes[n].lengthSteps =
-                std::clamp<int32>(lengthSteps, 1, midiator::kMaxSteps);
+                std::clamp<int32>(lengthSteps, 1, serializedSteps);
         }
     }
     return true;
@@ -246,8 +271,10 @@ bool readStateHeader(IBStream* state,
     }
 
     const bool strictCurrent = version >= 5u;
-    const bool validBars =
+    const bool validLegacyBars =
         bars == 1 || bars == 2 || bars == 4 || bars == 8;
+    const bool validBars =
+        validLegacyBars || (version >= 8u && bars == 16);
     const bool validScale =
         scale >= 0 && scale < static_cast<int32>(midiator::ScaleId::Count);
     const bool validUnitFloats =
@@ -369,7 +396,7 @@ bool readStateHeader(IBStream* state,
 
     settings.scale = static_cast<midiator::ScaleId>(
         std::clamp<int32>(scale, 0, static_cast<int32>(midiator::ScaleId::Count) - 1));
-    settings.bars = (bars == 1 || bars == 2 || bars == 4 || bars == 8) ? bars : 2;
+    settings.bars = validBars ? bars : 2;
     settings.density = std::clamp(settings.density, 0.0f, 1.0f);
     settings.complexity = std::clamp(settings.complexity, 0.0f, 1.0f);
     settings.repetition = std::clamp(settings.repetition, 0.0f, 1.0f);
@@ -548,7 +575,11 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
 
     midiator::Phrase restoredPhrase{};
     const bool strictV5 = restoredStateVersion >= 5u;
-    if (!readPhraseState(state, restoredPhrase, restored.bars, strictV5))
+    const int serializedSteps =
+        restoredStateVersion >= 8u ? midiator::kMaxSteps : kLegacyStateSteps;
+    const bool allow16Bars = restoredStateVersion >= 8u;
+    if (!readPhraseState(state, restoredPhrase, restored.bars,
+                         serializedSteps, allow16Bars, strictV5))
         return kResultFalse;
 
     midiator::Phrase restoredBassPhrase{};
@@ -557,10 +588,14 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     midiator::Phrase restoredSynthPhrase{};
 
     if (restoredStateVersion >= 5u) {
-        if (!readPhraseState(state, restoredBassPhrase, restored.bars, true) ||
-            !readDrumPhraseState(state, restoredDrumPhrase, restored.bars, true) ||
-            !readPadPhraseState(state, restoredPadPhrase, restored.bars, true) ||
-            !readPhraseState(state, restoredSynthPhrase, restored.bars, true)) {
+        if (!readPhraseState(state, restoredBassPhrase, restored.bars,
+                             serializedSteps, allow16Bars, true) ||
+            !readDrumPhraseState(state, restoredDrumPhrase, restored.bars,
+                                serializedSteps, allow16Bars, true) ||
+            !readPadPhraseState(state, restoredPadPhrase, restored.bars,
+                               serializedSteps, allow16Bars, true) ||
+            !readPhraseState(state, restoredSynthPhrase, restored.bars,
+                             serializedSteps, allow16Bars, true)) {
             return kResultFalse;
         }
     }
@@ -735,7 +770,8 @@ void MidiatorProcessor::regenerateSynth() {
 }
 
 void MidiatorProcessor::resizePhraseBars(int newBars, bool regenerateCompanions) {
-    if (newBars != 1 && newBars != 2 && newBars != 4 && newBars != 8)
+    if (newBars != 1 && newBars != 2 && newBars != 4 &&
+        newBars != 8 && newBars != 16)
         return;
 
     const int oldBars = std::clamp(phrase_.bars, 1, midiator::kMaxBars);
@@ -861,6 +897,8 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         midiator::ScaleId scale = midiator::ScaleId::Phrygian;
         bool hasBars = false;
         int bars = 2;
+        bool hasSectionLength = false;
+        int sectionBars = 2;
         bool hasDensity = false;
         float density = 0.0f;
         bool hasComplexity = false;
@@ -938,9 +976,17 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
                     normalizedIndex(v, static_cast<int>(midiator::ScaleId::Count)));
                 break;
             case kBarsId: {
+                // Frozen legacy mapping. Do not extend: old automation at
+                // 0, 1/3, 2/3, 1 must remain 1/2/4/8 bars.
                 static constexpr int bars[] = {1, 2, 4, 8};
                 pending.hasBars = true;
                 pending.bars = bars[normalizedIndex(v, 4)];
+                break;
+            }
+            case kSectionLengthId: {
+                static constexpr int bars[] = {1, 2, 4, 8, 16};
+                pending.hasSectionLength = true;
+                pending.sectionBars = bars[normalizedIndex(v, 5)];
                 break;
             }
             case kDensityId:
@@ -1145,14 +1191,20 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         }
     }
 
+    // New Section Length wins if both it and frozen legacy Bars arrive in one
+    // host block. Legacy Bars remains fully functional for existing projects.
+    const bool hasRequestedBars = pending.hasSectionLength || pending.hasBars;
+    const int requestedBars =
+        pending.hasSectionLength ? pending.sectionBars : pending.bars;
+
     // Phrase length is a structural edit only when no fresh composition is
     // already required. Otherwise the generator creates the requested length
     // directly, avoiding an intermediate companion-role cascade.
-    if (pending.hasBars && pending.bars != settings_.bars) {
+    if (hasRequestedBars && requestedBars != settings_.bars) {
         if (freshGeneration) {
-            settings_.bars = pending.bars;
+            settings_.bars = requestedBars;
         } else {
-            resizePhraseBars(pending.bars, false);
+            resizePhraseBars(requestedBars, false);
             guitarEdited = true;
         }
     }
@@ -1668,7 +1720,7 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     scale->setNormalized(scale->getInfo().defaultNormalizedValue);
     parameters.addParameter(scale);
 
-    auto* bars = new StringListParameter(STR16("Bars"), kBarsId);
+    auto* bars = new StringListParameter(STR16("Bars (Legacy)"), kBarsId);
     bars->appendString(STR16("1"));
     bars->appendString(STR16("2"));
     bars->appendString(STR16("4"));
@@ -1676,6 +1728,17 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     bars->getInfo().defaultNormalizedValue = 1.0 / 3.0;
     bars->setNormalized(bars->getInfo().defaultNormalizedValue);
     parameters.addParameter(bars);
+
+    auto* sectionLength =
+        new StringListParameter(STR16("Section Length"), kSectionLengthId);
+    sectionLength->appendString(STR16("1"));
+    sectionLength->appendString(STR16("2"));
+    sectionLength->appendString(STR16("4"));
+    sectionLength->appendString(STR16("8"));
+    sectionLength->appendString(STR16("16"));
+    sectionLength->getInfo().defaultNormalizedValue = 0.25;
+    sectionLength->setNormalized(0.25);
+    parameters.addParameter(sectionLength);
 
     auto addPercent = [&](const char16_t* name, ParamID id, double defaultValue) {
         auto* p = new RangeParameter(name, id, STR16("%"), 0.0, 100.0, defaultValue, 0,
@@ -1777,13 +1840,24 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
                          bassSettings, drumSettings, padSettings, synthSettings))
         return kResultFalse;
 
-    auto barsIndex = [](int bars) -> double {
+    auto legacyBarsIndex = [](int bars) -> double {
         switch (bars) {
             case 1: return 0.0;
             case 2: return 1.0 / 3.0;
             case 4: return 2.0 / 3.0;
-            case 8: return 1.0;
+            case 8:
+            case 16: return 1.0;
             default: return 1.0 / 3.0;
+        }
+    };
+    auto sectionBarsIndex = [](int bars) -> double {
+        switch (bars) {
+            case 1: return 0.0;
+            case 2: return 0.25;
+            case 4: return 0.50;
+            case 8: return 0.75;
+            case 16: return 1.0;
+            default: return 0.25;
         }
     };
 
@@ -1798,7 +1872,8 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
                                  static_cast<double>(static_cast<int>(midiator::StyleId::Count) - 1));
     setParamNormalized(kScaleId, static_cast<double>(static_cast<int>(restored.scale)) /
                                   static_cast<double>(static_cast<int>(midiator::ScaleId::Count) - 1));
-    setParamNormalized(kBarsId, barsIndex(restored.bars));
+    setParamNormalized(kBarsId, legacyBarsIndex(restored.bars));
+    setParamNormalized(kSectionLengthId, sectionBarsIndex(restored.bars));
     setParamNormalized(kDensityId, restored.density);
     setParamNormalized(kComplexityId, restored.complexity);
     setParamNormalized(kRepetitionId, restored.repetition);

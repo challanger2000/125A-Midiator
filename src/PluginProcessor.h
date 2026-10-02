@@ -51,7 +51,10 @@ enum : ParamID {
     kPadSpreadId = 119,
     kPadTensionId = 120,
     kSynthActivityId = 121,
-    kSynthMovementId = 122
+    kSynthMovementId = 122,
+    // New host/UI length contract. kBarsId=102 is frozen for legacy
+    // automation with the historic {1,2,4,8} normalization.
+    kSectionLengthId = 123
 };
 
 static const FUID ProcessorUID(0x125A4001, 0x6D494449, 0x41544F52, 0x00000100);

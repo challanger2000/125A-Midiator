@@ -37,10 +37,10 @@ int main() {
             xml.find("maxSize=\"1720, 1460\"") != std::string::npos,
             "resizable editor contract must expose non-identical min/max sizes");
 
-    for (int tag = 100; tag <= 122; ++tag) {
+    for (int tag = 100; tag <= 123; ++tag) {
         const std::string needle = "tag=\"" + std::to_string(tag) + "\"";
         require(xml.find(needle) != std::string::npos,
-                "all Midiator parameter tags 100..122 must be declared");
+                "all Midiator parameter tags 100..123 must be declared");
     }
 
     const char* theoryIds[] = {
@@ -74,6 +74,8 @@ int main() {
             "POWER CHORDS ON/OFF selector must be bound");
     require(xml.find("control-tag=\"DrumMap\"") != std::string::npos,
             "DRUM MAP selector must be bound");
+    require(xml.find("control-tag=\"SectionLength\"") != std::string::npos,
+            "SECTION LENGTH selector must be bound");
     for (const char* roleTag : {"BassFollow", "BassMovement", "DrumDensity",
                                 "DrumComplexity", "PadSpread", "PadTension",
                                 "SynthActivity", "SynthMovement"}) {

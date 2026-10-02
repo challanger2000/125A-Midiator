@@ -756,6 +756,64 @@ void testBarsResizePreservesExistingRiff() {
             "shrinking back to 2 bars must restore the unchanged original riff span");
 }
 
+void testSectionLengthSupportsSixteenBarsAndLegacyBarsStayStable() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "16-bar section fixture must start");
+
+    ParameterChanges sixteen;
+    int32 qi = 0;
+    auto* q = sixteen.addParameterData(kSectionLengthId, qi);
+    int32 pi = 0;
+    require(q && q->addPoint(0, 1.0, pi) == kResultOk,
+            "16-bar Section Length value must be accepted");
+
+    auto stopped = makeContext(0.0, false);
+    EventList stoppedOut;
+    auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &sixteen);
+    require(processor.process(stoppedData) == kResultOk,
+            "16-bar Section Length change must process");
+
+    auto running = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(running, output, 1536000);
+    require(processor.process(data) == kResultOk,
+            "16-bar section must schedule successfully");
+
+    double latestGuitarOn = -1.0;
+    for (const auto& e : output.events)
+        if (e.type == Event::kNoteOnEvent && e.busIndex == kGuitarOutBus)
+            latestGuitarOn = std::max(latestGuitarOn, e.ppqPosition);
+    require(latestGuitarOn >= 60.0,
+            "16-bar section must emit Guitar material in the final bar");
+
+    ParameterChanges legacy;
+    qi = 0;
+    q = legacy.addParameterData(kBarsId, qi);
+    pi = 0;
+    require(q && q->addPoint(0, 1.0, pi) == kResultOk,
+            "legacy Bars=8 value must be accepted");
+
+    auto stopped2 = makeContext(64.0, false);
+    EventList stoppedOut2;
+    auto stoppedData2 = makeProcessData(stopped2, stoppedOut2, 64, &legacy);
+    require(processor.process(stoppedData2) == kResultOk,
+            "legacy Bars automation must process");
+
+    auto running2 = makeContext(64.0, true);
+    EventList output2;
+    auto data2 = makeProcessData(running2, output2, 768000);
+    require(processor.process(data2) == kResultOk,
+            "legacy eight-bar section must schedule");
+
+    double latestLegacyOn = -1.0;
+    for (const auto& e : output2.events)
+        if (e.type == Event::kNoteOnEvent && e.busIndex == kGuitarOutBus)
+            latestLegacyOn = std::max(latestLegacyOn, e.ppqPosition - 64.0);
+    require(latestLegacyOn < 32.0,
+            "legacy Bars normalized 1.0 must remain eight bars, never become sixteen");
+}
+
 void testPowerChordTogglePreservesRiffOnsetsAndPitches() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
@@ -2068,6 +2126,7 @@ int main() {
     testHeavyIndustrialStaysLockedToHostGrid();
     testRepeatedNewRiffStaysDistinct();
     testBarsResizePreservesExistingRiff();
+    testSectionLengthSupportsSixteenBarsAndLegacyBarsStayStable();
     testPowerChordTogglePreservesRiffOnsetsAndPitches();
     testLargeOfflineBlockKeepsNoteEventsBalanced();
     testStopFlushesEveryActiveInstrumentBus();
