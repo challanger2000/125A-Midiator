@@ -49,11 +49,13 @@ Less essential controls (for example Bass Sustain, Drum Humanize, Pad Context Fo
 
 ## Automatic Song Mode
 
-AUTO arranges the existing section vocabulary into a deterministic 16-unit song form:
+AUTO arranges the existing section vocabulary into a deterministic 16-unit song form matched to the selected Style.
 
-INTRO → VERSE → VERSE → PRE → CHORUS → CHORUS → VERSE → VERSE → PRE → CHORUS → CHORUS → BREAKDOWN → BREAKDOWN → CHORUS → CHORUS → OUTRO.
+- **NDH / Industrial:** INTRO → VERSE → VERSE → PRE → CHORUS → CHORUS → VERSE → VERSE → PRE → CHORUS → CHORUS → BREAKDOWN → BREAKDOWN → CHORUS → CHORUS → OUTRO
+- **Dark Rock / Gothic:** INTRO → INTRO → VERSE → VERSE → PRE → CHORUS → CHORUS → VERSE → VERSE → PRE → BREAKDOWN → BREAKDOWN → CHORUS → CHORUS → OUTRO → OUTRO
+- **Heavy Industrial:** INTRO → VERSE → VERSE → CHORUS → CHORUS → VERSE → BREAKDOWN → BREAKDOWN → VERSE → PRE → CHORUS → CHORUS → BREAKDOWN → CHORUS → CHORUS → OUTRO
 
-One unit equals the selected Section Length. With the default two-bar unit this produces a 32-bar form; a four-bar unit produces a 64-bar form. Repeated Verse/Chorus/Breakdown units intentionally reuse the same seed-related section idea instead of creating unrelated random material. The scheduler selects the correct cached five-role section per host timeline unit, including when one large offline render block crosses multiple section boundaries. The complete form repeats if the host timeline continues beyond the Outro.
+One unit equals the selected Section Length. With the default two-bar unit this produces a 32-bar form; a four-bar unit produces a 64-bar form. Repeated Verse/Chorus/Breakdown units intentionally reuse the same seed-related section idea instead of creating unrelated random material. Style changes may change the macro-form; VARIATION keeps the form itself stable. The scheduler selects the correct cached five-role section per host timeline unit, including when one large offline render block crosses multiple section boundaries. The complete form repeats if the host timeline continues beyond the Outro.
 
 ## Drum mapping
 

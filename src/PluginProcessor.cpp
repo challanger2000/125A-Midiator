@@ -1978,7 +1978,8 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         const midiator::Phrase* synth = &synthPhrase_;
 
         if (songMode_ && songCacheValid_) {
-            const auto section = midiator::songSectionForUnit(cycle);
+            const auto section =
+                midiator::songSectionForUnit(cycle, settings_.style);
             const auto& snapshot =
                 (*songSections_)[static_cast<std::size_t>(section)];
             guitar = &snapshot.guitar;

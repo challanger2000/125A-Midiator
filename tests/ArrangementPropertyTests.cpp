@@ -3,6 +3,7 @@
 #include "DrumBrain.h"
 #include "PadBrain.h"
 #include "SynthBrain.h"
+#include "SongArrangement.h"
 
 #include <algorithm>
 #include <array>
@@ -36,6 +37,28 @@ bool isExactOctavePair(const PadStep& step) {
 } // namespace
 
 int main() {
+    require(kNdhIndustrialSongForm.size() == 16 &&
+            kDarkRockGothicSongForm.size() == 16 &&
+            kHeavyIndustrialSongForm.size() == 16,
+            "every automatic song form must remain exactly 16 units");
+    require(kNdhIndustrialSongForm != kDarkRockGothicSongForm &&
+            kNdhIndustrialSongForm != kHeavyIndustrialSongForm &&
+            kDarkRockGothicSongForm != kHeavyIndustrialSongForm,
+            "the three Styles must not collapse to one generic song form");
+
+    require(songSectionForUnit(0, StyleId::NDHIndustrial) == SectionType::Intro &&
+            songSectionForUnit(15, StyleId::NDHIndustrial) == SectionType::Outro,
+            "NDH song form must open with Intro and close with Outro");
+    require(songSectionForUnit(1, StyleId::DarkRockGothic) == SectionType::Intro &&
+            songSectionForUnit(10, StyleId::DarkRockGothic) == SectionType::Breakdown,
+            "Dark Rock / Gothic form must reserve more atmospheric Intro and Breakdown space");
+    require(songSectionForUnit(3, StyleId::HeavyIndustrial) == SectionType::Chorus &&
+            songSectionForUnit(6, StyleId::HeavyIndustrial) == SectionType::Breakdown,
+            "Heavy Industrial form must reach impact sections earlier");
+    require(songSectionForUnit(16, StyleId::HeavyIndustrial) == SectionType::Intro &&
+            songSectionForUnit(-1, StyleId::HeavyIndustrial) == SectionType::Outro,
+            "automatic forms must wrap deterministically in both timeline directions");
+
     static constexpr std::array<int,4> barsList{{1,2,4,8}};
     long long arrangements = 0;
 
