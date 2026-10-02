@@ -427,11 +427,80 @@ void testVoiceLeadingAvoidsWildJumps() {
             "Pad harmonic voice-leading must average no more than one octave of motion");
 }
 
+
+void testExpandedStylesKeepDistinctPadLanguages() {
+    Phrase guitar{}, bass{};
+    makeContext(guitar, bass);
+
+    struct Stats {
+        double span = 0.0;
+        double octaveDoubleShare = 0.0;
+        double voices = 0.0;
+    };
+
+    auto measure = [&](StyleId style) {
+        long long chords = 0;
+        long long voices = 0;
+        long long octaveDoubles = 0;
+        long long spanSum = 0;
+
+        for (unsigned seed = 1; seed <= 256; ++seed) {
+            PadSettings s{};
+            s.style = style;
+            const auto p = PadBrain::generate(
+                guitar, bass, s,
+                0x50414453u + seed +
+                static_cast<unsigned>(static_cast<int>(style)) * 10000u);
+
+            for (int i = 0; i < p.usedSteps(); ++i) {
+                const auto& st = p.steps[i];
+                if (st.noteCount <= 0)
+                    continue;
+                ++chords;
+                voices += st.noteCount;
+
+                int lo = 127, hi = 0;
+                bool octavePair = false;
+                for (int n = 0; n < st.noteCount; ++n) {
+                    lo = std::min(lo, st.notes[n].pitch);
+                    hi = std::max(hi, st.notes[n].pitch);
+                    for (int m = n + 1; m < st.noteCount; ++m)
+                        octavePair |=
+                            std::abs(st.notes[n].pitch - st.notes[m].pitch) == 12;
+                }
+                spanSum += hi - lo;
+                octaveDoubles += octavePair ? 1 : 0;
+            }
+        }
+
+        Stats out{};
+        const double denom = std::max<long long>(1, chords);
+        out.span = spanSum / denom;
+        out.octaveDoubleShare = octaveDoubles / denom;
+        out.voices = voices / denom;
+        return out;
+    };
+
+    const auto groove = measure(StyleId::Groove);
+    const auto death = measure(StyleId::Death);
+    const auto doom = measure(StyleId::Doom);
+    const auto djent = measure(StyleId::DjentProgressive);
+
+    require(doom.span > death.span + 6.0,
+            "Doom pads must retain substantially wider voicings than Death Metal");
+    require(doom.octaveDoubleShare > djent.octaveDoubleShare + 0.04,
+            "Doom pads must use octave-doubled breadth more often than Djent");
+    require(groove.voices > djent.voices + 0.30,
+            "Groove Metal pads must retain richer average voicing than Djent");
+}
+
+
 } // namespace
 
 int main() {
     testDeterministicPolyphonicScaleSafe();
     testAllStylesStayWithinTwoOrThreeHarmonicPitchClasses();
+    testExpandedStylesKeepDistinctPadLanguages();
     testFourthPadVoiceIsOctaveDoubleOnly();
     testPadNotesReachNextChordBoundary();
     testMovementIncreasesHarmonicActivity();

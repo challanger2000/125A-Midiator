@@ -251,20 +251,60 @@ void testShortChordStabsOccur(){
 
 void testStylesDiffer(){
     Phrase g{},b{}; PadPhrase p{}; makeContext(g,b,p);
-    auto avgPitch=[&](StyleId style){
-        long long count=0,sum=0;
-        for(unsigned seed=1;seed<=128;++seed){
+
+    struct Stats {
+        double hits=0.0;
+        double avgPitch=0.0;
+        double offbeatShare=0.0;
+        double dyadShare=0.0;
+    };
+
+    auto measure=[&](StyleId style){
+        long long hits=0,pitchSum=0,offbeats=0,dyads=0;
+        for(unsigned seed=1;seed<=256;++seed){
             SynthSettings s{}; s.style=style;
-            const auto q=SynthBrain::generate(g,b,p,s,40000u+seed);
-            for(int i=0;i<q.usedSteps();++i) if(q.steps[i].noteCount>0){
-                sum+=q.steps[i].notes[0].pitch; ++count;
+            const auto q=SynthBrain::generate(
+                g,b,p,s,
+                40000u+seed+
+                static_cast<unsigned>(static_cast<int>(style))*10000u);
+            for(int i=0;i<q.usedSteps();++i){
+                if(q.steps[i].noteCount<=0) continue;
+                ++hits;
+                pitchSum+=q.steps[i].notes[0].pitch;
+                if((i%2)!=0) ++offbeats;
+                if(q.steps[i].noteCount>1) ++dyads;
             }
         }
-        return count?static_cast<double>(sum)/count:0.0;
+        Stats out{};
+        out.hits=static_cast<double>(hits)/256.0;
+        const double hc=std::max<long long>(1,hits);
+        out.avgPitch=pitchSum/hc;
+        out.offbeatShare=offbeats/hc;
+        out.dyadShare=dyads/hc;
+        return out;
     };
-    const auto ndh=avgPitch(StyleId::NDHIndustrial);
-    const auto dark=avgPitch(StyleId::DarkRockGothic);
-    require(dark>ndh+2.0,"Dark Rock/Gothic synth should occupy a higher melodic register than NDH");
+
+    const auto ndh=measure(StyleId::NDHIndustrial);
+    const auto dark=measure(StyleId::DarkRockGothic);
+    const auto thrash=measure(StyleId::Thrash);
+    const auto groove=measure(StyleId::Groove);
+    const auto death=measure(StyleId::Death);
+    const auto melodicDeath=measure(StyleId::MelodicDeath);
+    const auto metalcore=measure(StyleId::Metalcore);
+    const auto nu=measure(StyleId::NuMetal);
+    const auto doom=measure(StyleId::Doom);
+    const auto djent=measure(StyleId::DjentProgressive);
+
+    require(dark.avgPitch>ndh.avgPitch+2.0,
+            "Dark Rock/Gothic synth should occupy a higher melodic register than NDH");
+    require(melodicDeath.avgPitch>nu.avgPitch+3.0,
+            "Melodic Death synth must retain a higher melodic register than Nu Metal");
+    require(djent.offbeatShare>doom.offbeatShare+0.05,
+            "Djent/Progressive synth must retain more syncopated offbeat activity than Doom");
+    require(groove.hits>thrash.hits+7.0,
+            "Groove Metal synth must remain more active than the sparse Thrash support role");
+    require(metalcore.dyadShare>death.dyadShare+0.05,
+            "Metalcore synth must retain more chord-stab support than Death Metal");
 }
 }
 

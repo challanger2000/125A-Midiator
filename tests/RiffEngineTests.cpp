@@ -796,6 +796,85 @@ void testNewRiffAcceptanceMatchesStyleDensity() {
 }
 
 
+
+void testExpandedMetalStylesKeepDistinctSignatures() {
+    using midiator::GeneratorSettings;
+    using midiator::RiffEngine;
+    using midiator::StyleId;
+
+    struct Stats {
+        double hits = 0.0;
+        double muteShare = 0.0;
+        double longShare = 0.0;
+        double avgJump = 0.0;
+    };
+
+    auto measure = [](StyleId style) {
+        long long hits = 0;
+        long long mute = 0;
+        long long longNotes = 0;
+        long long jumpSum = 0;
+        long long jumps = 0;
+
+        for (unsigned seed = 1; seed <= 256; ++seed) {
+            GeneratorSettings s{};
+            s.bars = 4;
+            s.style = style;
+            const auto p = RiffEngine::generate(
+                s, 0x4D455441u + seed +
+                static_cast<unsigned>(static_cast<int>(style)) * 10000u);
+
+            int previousPitch = -1;
+            for (int i = 0; i < p.usedSteps(); ++i) {
+                const auto& st = p.steps[i];
+                if (st.noteCount <= 0)
+                    continue;
+                ++hits;
+                const auto& n = st.notes[0];
+                if (n.velocity <= 40) ++mute;
+                if (n.lengthSteps > 1) ++longNotes;
+                if (previousPitch >= 0) {
+                    jumpSum += std::abs(n.pitch - previousPitch);
+                    ++jumps;
+                }
+                previousPitch = n.pitch;
+            }
+        }
+
+        Stats out{};
+        out.hits = static_cast<double>(hits) / 256.0;
+        out.muteShare =
+            static_cast<double>(mute) / std::max<long long>(1, hits);
+        out.longShare =
+            static_cast<double>(longNotes) / std::max<long long>(1, hits);
+        out.avgJump =
+            static_cast<double>(jumpSum) / std::max<long long>(1, jumps);
+        return out;
+    };
+
+    const auto thrash = measure(StyleId::Thrash);
+    const auto groove = measure(StyleId::Groove);
+    const auto death = measure(StyleId::Death);
+    const auto melodicDeath = measure(StyleId::MelodicDeath);
+    const auto nu = measure(StyleId::NuMetal);
+    const auto doom = measure(StyleId::Doom);
+    const auto djent = measure(StyleId::DjentProgressive);
+
+    require(death.hits > doom.hits * 2.0,
+            "Death Metal guitar must remain dramatically denser than Doom");
+    require(thrash.hits > nu.hits + 15.0,
+            "Thrash guitar must remain materially denser than Nu Metal");
+    require(groove.hits > nu.hits + 4.0,
+            "Groove Metal must retain more continuous riff motion than Nu Metal");
+    require(doom.longShare > death.longShare + 0.35,
+            "Doom guitar must retain substantially longer sustained notes than Death Metal");
+    require(djent.muteShare > doom.muteShare + 0.45,
+            "Djent/Progressive must retain far stronger palm-muted articulation than Doom");
+    require(melodicDeath.avgJump > nu.avgJump + 1.8,
+            "Melodic Death must retain materially more melodic pitch travel than Nu Metal");
+}
+
+
 } // namespace
 
 int main() {
@@ -814,6 +893,7 @@ int main() {
     testVariationRespectsPowerChordsOff();
     testFastSixteenthBurstsExist();
     testStyleEnginesHaveDistinctRhythmLanguages();
+    testExpandedMetalStylesKeepDistinctSignatures();
     testFourBarRoleDevelopment();
     testEightBarMacroDevelopmentStaysMusical();
     testSixteenBarMacroDevelopmentStaysMusical();

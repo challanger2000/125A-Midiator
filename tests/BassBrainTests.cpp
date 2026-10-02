@@ -195,6 +195,11 @@ void testStylesHaveDistinctBassRoles() {
     const auto ndh=measure(StyleId::NDHIndustrial);
     const auto dark=measure(StyleId::DarkRockGothic);
     const auto heavy=measure(StyleId::HeavyIndustrial);
+    const auto thrash=measure(StyleId::Thrash);
+    const auto death=measure(StyleId::Death);
+    const auto melodicDeath=measure(StyleId::MelodicDeath);
+    const auto nu=measure(StyleId::NuMetal);
+    const auto doom=measure(StyleId::Doom);
 
     require(ndh.root > dark.root + 0.05,
             "NDH bass must remain more pedal-root focused than Dark Rock/Gothic");
@@ -204,6 +209,15 @@ void testStylesHaveDistinctBassRoles() {
             "Heavy Industrial bass must lock to the riff more strongly than Dark Rock/Gothic");
     require(heavy.upper > ndh.upper + 0.02,
             "Heavy Industrial bass must use selective upper-octave reinforcement more than NDH");
+
+    require(doom.longs > death.longs + 0.12,
+            "Doom bass must sustain materially longer than Death Metal bass");
+    require(death.lock > doom.lock + 0.08,
+            "Death Metal bass must lock to the guitar more strongly than Doom");
+    require(melodicDeath.upper > nu.upper + 0.04,
+            "Melodic Death bass must use more upper-register movement than Nu Metal");
+    require(thrash.root > melodicDeath.root + 0.07,
+            "Thrash bass must remain more pedal-root driven than Melodic Death");
 }
 
 void testNoOverlapAndDownbeatAnchor() {
