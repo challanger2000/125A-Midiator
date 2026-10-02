@@ -180,6 +180,9 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
     // Velocity humanization must never perturb structural generation.
     // Keep a separate deterministic stream so Humanize changes dynamics only.
     Rng velocityRng(seed ^ 0x48A91E37u);
+    // Section-transition fills use their own stream so enabling/expanding
+    // transition language never rewrites the underlying groove topology.
+    Rng transitionRng(seed ^ 0x46494C4Cu);
 
     for (int step = 0; step < out.usedSteps(); ++step) {
         const int local = step % kStepsPerBar;
@@ -280,6 +283,65 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
                 if (local >= 14) tom = DrumVoice::MidTom;
                 if (local == 15) tom = DrumVoice::HighTom;
                 addHit(ds, tom, humanizedVelocity(velocityRng, 96 + (local - 12) * 4, s.humanize));
+            }
+        }
+
+        // Major section transition: every eighth bar gets a deliberate
+        // drummer-like fill on its final beat. This is structural, not a
+        // random decoration: the next cycle/section then lands on the existing
+        // opening Crash. Keep all hits on the 1/16 grid; faster 1/32 rolls are
+        // a separate future ratchet/substep feature.
+        const bool eightBarBoundary =
+            ((bar + 1) % 8) == 0 && local >= 12;
+
+        if (eightBarBoundary) {
+            const bool fullRoll =
+                s.complexity >= 0.20f || transitionRng.chance(0.55f);
+
+            if (s.style == StyleId::NDHIndustrial) {
+                // Mechanical snare roll with a final tom punctuation.
+                if ((local == 12 || local == 14 || local == 15) ||
+                    (local == 13 && fullRoll)) {
+                    addHit(ds, DrumVoice::Snare,
+                           humanizedVelocity(
+                               velocityRng,
+                               92 + (local - 12) * 7,
+                               s.humanize));
+                }
+                if (local == 15 && s.complexity >= 0.25f)
+                    addHit(ds, DrumVoice::HighTom,
+                           humanizedVelocity(velocityRng, 108, s.humanize));
+            } else if (s.style == StyleId::HeavyIndustrial) {
+                // Aggressive machine-like roll: snare each sixteenth, kick
+                // reinforcement and an ascending tom at the end.
+                addHit(ds, DrumVoice::Snare,
+                       humanizedVelocity(
+                           velocityRng,
+                           94 + (local - 12) * 7,
+                           s.humanize));
+                if (local == 12 || local == 14)
+                    addHit(ds, DrumVoice::Kick,
+                           humanizedVelocity(velocityRng, 108, s.humanize));
+                if (local == 14)
+                    addHit(ds, DrumVoice::MidTom,
+                           humanizedVelocity(velocityRng, 105, s.humanize));
+                if (local == 15)
+                    addHit(ds, DrumVoice::HighTom,
+                           humanizedVelocity(velocityRng, 114, s.humanize));
+            } else if (s.style == StyleId::DarkRockGothic) {
+                // More organic tom run with a restrained snare pickup.
+                if (local == 12)
+                    addHit(ds, DrumVoice::LowTom,
+                           humanizedVelocity(velocityRng, 98, s.humanize));
+                if (local == 13 && fullRoll)
+                    addHit(ds, DrumVoice::Snare,
+                           humanizedVelocity(velocityRng, 92, s.humanize));
+                if (local == 14)
+                    addHit(ds, DrumVoice::MidTom,
+                           humanizedVelocity(velocityRng, 104, s.humanize));
+                if (local == 15)
+                    addHit(ds, DrumVoice::HighTom,
+                           humanizedVelocity(velocityRng, 112, s.humanize));
             }
         }
     }

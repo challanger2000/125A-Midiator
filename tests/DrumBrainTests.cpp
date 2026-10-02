@@ -178,6 +178,57 @@ void testDensityAndComplexityHaveDistinctMaterialEffects() {
 }
 
 
+void testEightBarSectionTransitionFill() {
+    GeneratorSettings gs{};
+    gs.bars = 8;
+    gs.style = StyleId::NDHIndustrial;
+    const auto guitar = RiffEngine::generate(gs, 0xD12A8001u);
+
+    BassSettings bs{};
+    bs.style = gs.style;
+    const auto bass = BassBrain::generate(guitar, bs, 0xD12A8002u);
+
+    auto countTransitionVoices = [](const DrumPhrase& d, int bar) {
+        int count = 0;
+        for (int local = 12; local < 16; ++local) {
+            const auto& st = d.steps[bar * kStepsPerBar + local];
+            for (int h = 0; h < st.hitCount; ++h) {
+                const auto voice = st.hits[h].voice;
+                if (voice == DrumVoice::Snare ||
+                    voice == DrumVoice::LowTom ||
+                    voice == DrumVoice::MidTom ||
+                    voice == DrumVoice::HighTom)
+                    ++count;
+            }
+        }
+        return count;
+    };
+
+    for (StyleId style : {
+            StyleId::NDHIndustrial,
+            StyleId::DarkRockGothic,
+            StyleId::HeavyIndustrial}) {
+        DrumSettings s{};
+        s.style = style;
+        s.complexity = 0.30f; // current default-like setting
+
+        long long bar7Fill = 0;
+        long long bar8Fill = 0;
+        for (unsigned seed = 1; seed <= 128; ++seed) {
+            const auto d = DrumBrain::generate(
+                guitar, bass, s, 910000u + seed +
+                static_cast<unsigned>(static_cast<int>(style)) * 10000u);
+            require(d.bars == 8,
+                    "section-fill fixture must remain eight bars");
+            bar7Fill += countTransitionVoices(d, 6);
+            bar8Fill += countTransitionVoices(d, 7);
+        }
+
+        require(bar8Fill > bar7Fill + 300,
+                "eighth bar must contain a materially stronger transition fill than bar seven");
+    }
+}
+
 void testHumanizeChangesVelocityNotPattern() {
     Phrase guitar{}, bass{};
     makeContext(guitar, bass);
@@ -380,6 +431,7 @@ int main() {
     testBackbeatAndStructuralCrash();
     testFollowControlsKickLock();
     testDensityAndComplexityHaveDistinctMaterialEffects();
+    testEightBarSectionTransitionFill();
     testHumanizeChangesVelocityNotPattern();
     testStylesHaveDistinctDrumLanguages();
     testVerifiedMapsNeverEmitSamePitchTwicePerStep();
