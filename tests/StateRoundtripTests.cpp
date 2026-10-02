@@ -532,16 +532,31 @@ int main() {
         v5.rewind();
         MidiatorProcessor migrated;
         require(migrated.setState(&v5) == kResultOk,
-                "frozen V5 five-role state must migrate to V7");
+                "frozen V5 five-role state must migrate to V8");
 
         MemoryStream upgraded;
         require(migrated.getState(&upgraded) == kResultOk,
-                "migrated V5 state must serialize as V7");
-        require(upgraded.bytes().size() >= 100 + oldPayload.size(),
-                "upgraded V5 state must contain full V7 header and payload");
-        require(std::equal(oldPayload.begin(), oldPayload.end(),
-                           upgraded.bytes().begin() + 100),
-                "V5 migration must preserve exact Guitar/Bass/Drums/Pad/Synth payload bytes");
+                "migrated V5 state must serialize as V8");
+        require(upgraded.bytes().size() > 100 + oldPayload.size(),
+                "upgraded V5 state must contain expanded V8 payload");
+
+        size_t legacyOffset = 0;
+        auto requireLegacyPrefix = [&](size_t upgradedOffset, size_t bytes) {
+            require(std::equal(oldPayload.begin() + legacyOffset,
+                               oldPayload.begin() + legacyOffset + bytes,
+                               upgraded.bytes().begin() + upgradedOffset),
+                    "V5 migration must preserve every legacy role payload prefix");
+            legacyOffset += bytes;
+        };
+        requireLegacyPrefix(100, kLegacyPhraseBytes);
+        requireLegacyPrefix(100 + kPhraseBytes, kLegacyPhraseBytes);
+        requireLegacyPrefix(100 + 2 * kPhraseBytes, kLegacyDrumPhraseBytes);
+        requireLegacyPrefix(100 + 2 * kPhraseBytes + kDrumPhraseBytes,
+                            kLegacyPadPhraseBytes);
+        requireLegacyPrefix(100 + 2 * kPhraseBytes + kDrumPhraseBytes + kPadPhraseBytes,
+                            kLegacyPhraseBytes);
+        require(legacyOffset == oldPayload.size(),
+                "V5 legacy payload comparison must cover all five roles");
 
         // V5 predates Drum Map and role shaping.
         const int32 expectedMap =
@@ -608,14 +623,29 @@ int main() {
         v6.rewind();
         MidiatorProcessor migrated;
         require(migrated.setState(&v6) == kResultOk,
-                "frozen V6 Drum-Map state must migrate to V7");
+                "frozen V6 Drum-Map state must migrate to V8");
 
         MemoryStream upgraded;
         require(migrated.getState(&upgraded) == kResultOk,
-                "migrated V6 state must serialize as V7");
-        require(std::equal(oldPayload.begin(), oldPayload.end(),
-                           upgraded.bytes().begin() + 100),
-                "V6 migration must preserve exact five-role payload bytes");
+                "migrated V6 state must serialize as V8");
+
+        size_t legacyOffset = 0;
+        auto requireLegacyPrefix = [&](size_t upgradedOffset, size_t bytes) {
+            require(std::equal(oldPayload.begin() + legacyOffset,
+                               oldPayload.begin() + legacyOffset + bytes,
+                               upgraded.bytes().begin() + upgradedOffset),
+                    "V6 migration must preserve every legacy role payload prefix");
+            legacyOffset += bytes;
+        };
+        requireLegacyPrefix(100, kLegacyPhraseBytes);
+        requireLegacyPrefix(100 + kPhraseBytes, kLegacyPhraseBytes);
+        requireLegacyPrefix(100 + 2 * kPhraseBytes, kLegacyDrumPhraseBytes);
+        requireLegacyPrefix(100 + 2 * kPhraseBytes + kDrumPhraseBytes,
+                            kLegacyPadPhraseBytes);
+        requireLegacyPrefix(100 + 2 * kPhraseBytes + kDrumPhraseBytes + kPadPhraseBytes,
+                            kLegacyPhraseBytes);
+        require(legacyOffset == oldPayload.size(),
+                "V6 legacy payload comparison must cover all five roles");
 
         int32 storedMap = -1;
         std::memcpy(&storedMap, upgraded.bytes().data() + 64, sizeof(storedMap));
