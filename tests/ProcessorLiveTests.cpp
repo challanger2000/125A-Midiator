@@ -2585,6 +2585,66 @@ void testSongModeV11StateRoundtripPreservesCompleteCache() {
             "V11 controller recall must restore Song Mode AUTO");
 }
 
+
+void testSongModeRepeatedSectionUsesContinuationDrums() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "song continuation drum fixture must start");
+
+    ParameterChanges setup;
+    int32 qi = 0;
+    int32 pi = 0;
+    auto* songQ = setup.addParameterData(kSongModeId, qi);
+    require(songQ && songQ->addPoint(0, 1.0, pi) == kResultOk,
+            "song continuation fixture must enable AUTO");
+    auto* complexityQ = setup.addParameterData(kDrumComplexityId, qi);
+    require(complexityQ && complexityQ->addPoint(0, 1.0, pi) == kResultOk,
+            "song continuation fixture must request full Drum Complexity");
+    auto* fillQ = setup.addParameterData(kFillIntensityId, qi);
+    require(fillQ && fillQ->addPoint(0, 1.0, pi) == kResultOk,
+            "song continuation fixture must request full Fill Intensity");
+
+    auto stopped = makeContext(0.0, false);
+    EventList stoppedOut;
+    auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &setup);
+    require(processor.process(stoppedData) == kResultOk,
+            "song continuation setup must process");
+
+    // Default NDH form at two bars per unit:
+    // 0-8 INTRO, 8-16 VERSE, 16-24 VERSE.
+    auto running = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(running, output, 576000);
+    require(processor.process(data) == kResultOk,
+            "song continuation drum capture must process");
+
+    bool firstVerseCrash = false;
+    bool continuedVerseCrash = false;
+    bool firstVerseEndTom = false;
+
+    for (const auto& e : output.events) {
+        if (e.type != Event::kNoteOnEvent || e.busIndex != kDrumsOutBus)
+            continue;
+
+        const int pitch = e.noteOn.pitch;
+        if (pitch == 49 && std::abs(e.ppqPosition - 8.0) < 1e-9)
+            firstVerseCrash = true;
+        if (pitch == 49 && std::abs(e.ppqPosition - 16.0) < 1e-9)
+            continuedVerseCrash = true;
+
+        const bool isTom = pitch == 41 || pitch == 47 || pitch == 50;
+        if (isTom && e.ppqPosition >= 15.0 && e.ppqPosition < 16.0)
+            firstVerseEndTom = true;
+    }
+
+    require(firstVerseCrash,
+            "first Verse unit must keep its section-opening crash");
+    require(!continuedVerseCrash,
+            "continued Verse unit must not restart with another opening crash");
+    require(!firstVerseEndTom,
+            "first Verse unit must suppress phrase-end tom fills when Verse continues");
+}
+
 } // namespace
 
 int main() {
@@ -2608,6 +2668,7 @@ int main() {
     testSectionRolesReuseSeedAndRemainReversible();
     testSectionEnergyProfilesAreMusicallyOrdered();
     testSongModeArrangesDeterministicSectionForm();
+    testSongModeRepeatedSectionUsesContinuationDrums();
     testSongModeV11StateRoundtripPreservesCompleteCache();
     testPowerChordTogglePreservesRiffOnsetsAndPitches();
     testLargeOfflineBlockKeepsNoteEventsBalanced();

@@ -1807,17 +1807,46 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     };
 
     auto scheduleDrumCycle = [&](const midiator::DrumPhrase& drums,
-                                  double cycleStartQn) {
+                                  double cycleStartQn,
+                                  bool continuationFromSameSection,
+                                  bool continuesIntoSameSection) {
         constexpr double kDrumGateQn = kStepQuarterNotes; // exact 1/16-note gate
+        const int lastBar = std::max(0, drums.bars - 1);
+
         for (int stepIndex = 0; stepIndex < drums.usedSteps(); ++stepIndex) {
             const auto& step = drums.steps[stepIndex];
             if (step.hitCount <= 0)
                 continue;
+
+            const int bar = stepIndex / midiator::kStepsPerBar;
+            const int local = stepIndex % midiator::kStepsPerBar;
+            const bool finalBeatBeforeContinuation =
+                continuesIntoSameSection && bar == lastBar && local >= 12;
+
             const double onQn =
                 cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
             const double offQn = onQn + kDrumGateQn;
+
             for (int n = 0; n < step.hitCount; ++n) {
                 const auto& hit = step.hits[n];
+
+                // A repeated Song-Mode unit is a continuation, not a new
+                // section entrance. Avoid the mechanical "crash every unit"
+                // effect while leaving kick/snare/hat groove untouched.
+                if (continuationFromSameSection &&
+                    stepIndex == 0 &&
+                    hit.voice == midiator::DrumVoice::Crash)
+                    continue;
+
+                // DrumBrain's small phrase-end fills use toms. If another unit
+                // of the same Section follows, keep the first unit as groove
+                // and reserve those tom pickups for the real transition.
+                if (finalBeatBeforeContinuation &&
+                    (hit.voice == midiator::DrumVoice::LowTom ||
+                     hit.voice == midiator::DrumVoice::MidTom ||
+                     hit.voice == midiator::DrumVoice::HighTom))
+                    continue;
+
                 const int pitch = drumMap_.midiNote(hit.voice);
                 addScheduled(onQn, true, pitch, hit.velocity, kDrumsOutBus, offQn);
                 addScheduled(offQn, false, pitch, 0, kDrumsOutBus);
@@ -1976,10 +2005,20 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         const midiator::DrumPhrase* drums = &drumPhrase_;
         const midiator::PadPhrase* pads = &padPhrase_;
         const midiator::Phrase* synth = &synthPhrase_;
+        bool continuationFromSameSection = false;
+        bool continuesIntoSameSection = false;
 
         if (songMode_ && songCacheValid_) {
             const auto section =
                 midiator::songSectionForUnit(cycle, settings_.style);
+            const auto previousSection =
+                midiator::songSectionForUnit(cycle - 1, settings_.style);
+            const auto nextSection =
+                midiator::songSectionForUnit(cycle + 1, settings_.style);
+
+            continuationFromSameSection = previousSection == section;
+            continuesIntoSameSection = nextSection == section;
+
             const auto& snapshot =
                 (*songSections_)[static_cast<std::size_t>(section)];
             guitar = &snapshot.guitar;
@@ -1991,7 +2030,9 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
 
         schedulePhraseCycle(*guitar, kGuitarOutBus, cycleStartQn);
         schedulePhraseCycle(*bass, kBassOutBus, cycleStartQn);
-        scheduleDrumCycle(*drums, cycleStartQn);
+        scheduleDrumCycle(*drums, cycleStartQn,
+                          continuationFromSameSection,
+                          continuesIntoSameSection);
         schedulePadCycle(*pads, cycleStartQn);
         scheduleSynthCycle(*synth, cycleStartQn);
 
