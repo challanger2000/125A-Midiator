@@ -238,7 +238,8 @@ void verifyLegacyControllerMigration(uint32_t version,
             std::abs(controller.getParamNormalized(kPadSpreadId) - 0.42) < kRoleEpsilon &&
             std::abs(controller.getParamNormalized(kPadTensionId) - 0.18) < kRoleEpsilon &&
             std::abs(controller.getParamNormalized(kSynthActivityId) - 0.46) < kRoleEpsilon &&
-            std::abs(controller.getParamNormalized(kSynthMovementId) - 0.42) < kRoleEpsilon,
+            std::abs(controller.getParamNormalized(kSynthMovementId) - 0.42) < kRoleEpsilon &&
+            std::abs(controller.getParamNormalized(kFillIntensityId) - 0.50) < kRoleEpsilon,
             "legacy role controls must migrate to documented defaults");
 
     fixture.rewind();
@@ -331,7 +332,7 @@ int main() {
     MemoryStream companionPatched;
     companionPatched.bytes() = first.bytes();
 
-    constexpr size_t kHeaderBytes = 100;
+    constexpr size_t kHeaderBytes = 104;
     constexpr size_t kPhraseBytes =
         sizeof(int32) + midiator::kMaxSteps *
         (sizeof(int32) + midiator::kMaxNotesPerStep * 3 * sizeof(int32));
@@ -430,6 +431,17 @@ int main() {
         MemoryStream damaged;
         damaged.bytes() = first.bytes();
         const float nanValue = std::numeric_limits<float>::quiet_NaN();
+        patchFixtureValue(damaged, 100, nanValue);
+        damaged.rewind();
+        MidiatorProcessor target;
+        require(target.setState(&damaged) != kResultOk,
+                "V9 NaN Fill Intensity must be rejected");
+    }
+
+    {
+        MemoryStream damaged;
+        damaged.bytes() = first.bytes();
+        const float nanValue = std::numeric_limits<float>::quiet_NaN();
         patchFixtureValue(damaged, 20, nanValue);
         damaged.rewind();
         MidiatorProcessor target;
@@ -508,7 +520,7 @@ int main() {
         v5.bytes().insert(v5.bytes().end(),
                           current.bytes().begin(),
                           current.bytes().begin() + 64);
-        const size_t curGuitar = 100;
+        const size_t curGuitar = 104;
         const size_t curBass = curGuitar + kPhraseBytes;
         const size_t curDrums = curBass + kPhraseBytes;
         const size_t curPads = curDrums + kDrumPhraseBytes;
@@ -548,12 +560,12 @@ int main() {
                     "V5 migration must preserve every legacy role payload prefix");
             legacyOffset += bytes;
         };
-        requireLegacyPrefix(100, kLegacyPhraseBytes);
-        requireLegacyPrefix(100 + kPhraseBytes, kLegacyPhraseBytes);
-        requireLegacyPrefix(100 + 2 * kPhraseBytes, kLegacyDrumPhraseBytes);
-        requireLegacyPrefix(100 + 2 * kPhraseBytes + kDrumPhraseBytes,
+        requireLegacyPrefix(104, kLegacyPhraseBytes);
+        requireLegacyPrefix(104 + kPhraseBytes, kLegacyPhraseBytes);
+        requireLegacyPrefix(104 + 2 * kPhraseBytes, kLegacyDrumPhraseBytes);
+        requireLegacyPrefix(104 + 2 * kPhraseBytes + kDrumPhraseBytes,
                             kLegacyPadPhraseBytes);
-        requireLegacyPrefix(100 + 2 * kPhraseBytes + kDrumPhraseBytes + kPadPhraseBytes,
+        requireLegacyPrefix(104 + 2 * kPhraseBytes + kDrumPhraseBytes + kPadPhraseBytes,
                             kLegacyPhraseBytes);
         require(legacyOffset == oldPayload.size(),
                 "V5 legacy payload comparison must cover all five roles");
@@ -578,6 +590,10 @@ int main() {
             require(std::abs(value - expectedRoleDefaults[i]) < 1e-6f,
                     "V5 migration must install documented role-control defaults");
         }
+        float fillIntensity = 0.0f;
+        std::memcpy(&fillIntensity, upgraded.bytes().data() + 100, sizeof(fillIntensity));
+        require(std::abs(fillIntensity - 0.50f) < 1e-6f,
+                "V5 migration must default Fill Intensity to 50%");
     }
 
     // V6 added the verified Drum Map at byte 64 but still predates the eight
@@ -599,7 +615,7 @@ int main() {
         v6.bytes().insert(v6.bytes().end(),
                           current.bytes().begin(),
                           current.bytes().begin() + 68);
-        const size_t curGuitar = 100;
+        const size_t curGuitar = 104;
         const size_t curBass = curGuitar + kPhraseBytes;
         const size_t curDrums = curBass + kPhraseBytes;
         const size_t curPads = curDrums + kDrumPhraseBytes;
@@ -637,12 +653,12 @@ int main() {
                     "V6 migration must preserve every legacy role payload prefix");
             legacyOffset += bytes;
         };
-        requireLegacyPrefix(100, kLegacyPhraseBytes);
-        requireLegacyPrefix(100 + kPhraseBytes, kLegacyPhraseBytes);
-        requireLegacyPrefix(100 + 2 * kPhraseBytes, kLegacyDrumPhraseBytes);
-        requireLegacyPrefix(100 + 2 * kPhraseBytes + kDrumPhraseBytes,
+        requireLegacyPrefix(104, kLegacyPhraseBytes);
+        requireLegacyPrefix(104 + kPhraseBytes, kLegacyPhraseBytes);
+        requireLegacyPrefix(104 + 2 * kPhraseBytes, kLegacyDrumPhraseBytes);
+        requireLegacyPrefix(104 + 2 * kPhraseBytes + kDrumPhraseBytes,
                             kLegacyPadPhraseBytes);
-        requireLegacyPrefix(100 + 2 * kPhraseBytes + kDrumPhraseBytes + kPadPhraseBytes,
+        requireLegacyPrefix(104 + 2 * kPhraseBytes + kDrumPhraseBytes + kPadPhraseBytes,
                             kLegacyPhraseBytes);
         require(legacyOffset == oldPayload.size(),
                 "V6 legacy payload comparison must cover all five roles");
@@ -663,7 +679,7 @@ int main() {
         v7.bytes().insert(v7.bytes().end(),
                           current.bytes().begin(),
                           current.bytes().begin() + 100);
-        const size_t curGuitar = 100;
+        const size_t curGuitar = 104;
         const size_t curBass = curGuitar + kPhraseBytes;
         const size_t curDrums = curBass + kPhraseBytes;
         const size_t curPads = curDrums + kDrumPhraseBytes;
@@ -692,6 +708,42 @@ int main() {
                 "migrated V7 state must serialize as V8");
         require(upgraded.bytes().size() > oldSize,
                 "V8 state must expand the old 128-step payload to 256 steps");
+    }
+
+    {
+        // V8 already used 256-step role payloads but did not yet store Fill
+        // Intensity. Reconstruct that exact 100-byte-header layout and verify
+        // the V9 loader supplies the musical 50% default without touching the
+        // 16-bar-capable payload.
+        MemoryStream current;
+        MidiatorProcessor source;
+        require(source.getState(&current) == kResultOk,
+                "current V9 fixture for V8 migration must serialize");
+
+        MemoryStream v8;
+        v8.bytes().insert(v8.bytes().end(),
+                          current.bytes().begin(),
+                          current.bytes().begin() + 100);
+        v8.bytes().insert(v8.bytes().end(),
+                          current.bytes().begin() + 104,
+                          current.bytes().end());
+        const uint32_t v8Version = 8u;
+        patchFixtureValue(v8, sizeof(uint32_t), v8Version);
+
+        v8.rewind();
+        MidiatorProcessor migrated;
+        require(migrated.setState(&v8) == kResultOk,
+                "frozen V8 256-step state must migrate to V9");
+
+        MemoryStream upgraded;
+        require(migrated.getState(&upgraded) == kResultOk,
+                "migrated V8 state must serialize as V9");
+        float fillIntensity = 0.0f;
+        std::memcpy(&fillIntensity,
+                    upgraded.bytes().data() + 100,
+                    sizeof(fillIntensity));
+        require(std::abs(fillIntensity - 0.50f) < 1e-6f,
+                "V8 migration must default Fill Intensity to 50%");
     }
 
     std::cout << "Midiator processor-state roundtrip test: PASS\n";

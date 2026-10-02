@@ -212,7 +212,7 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
 
         // Backbeat remains musically stable.
         if (beat == 1 && local % 4 == 0)
-            addHit(ds, DrumVoice::Snare, humanizedVelocity(velocityRng, 112, s.humanize));
+            addHit(ds, DrumVoice::Snare, humanizedVelocity(velocityRng, static_cast<int>(100.0f + 12.0f * fillIntensity), s.humanize));
         if (beat == 3 && local % 4 == 0)
             addHit(ds, DrumVoice::Snare, humanizedVelocity(velocityRng, 116, s.humanize));
 
@@ -272,9 +272,17 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
                        humanizedVelocity(velocityRng, 118, s.humanize));
         }
 
-        // Simple tom fill language on the final beat of every second bar.
         const int bar = step / kStepsPerBar;
-        if ((bar % 2) == 1 && local >= 12 && s.complexity > 0.35f) {
+        const float fillIntensity = std::clamp(s.fillIntensity, 0.0f, 1.0f);
+        const int fillStart =
+            fillIntensity >= 0.875f ? 12 :
+            fillIntensity >= 0.625f ? 13 :
+            fillIntensity >= 0.375f ? 14 : 15;
+
+        // Small two-bar fills keep their musical occurrence logic; intensity
+        // changes how much of the final beat they are allowed to occupy.
+        if (fillIntensity > 0.0001f &&
+            (bar % 2) == 1 && local >= fillStart && s.complexity > 0.35f) {
             const float p = std::clamp(
                 (0.10f + 0.42f * s.complexity) * fillFactor,
                 0.0f, 1.0f);
@@ -282,21 +290,25 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
                 DrumVoice tom = DrumVoice::LowTom;
                 if (local >= 14) tom = DrumVoice::MidTom;
                 if (local == 15) tom = DrumVoice::HighTom;
-                addHit(ds, tom, humanizedVelocity(velocityRng, 96 + (local - 12) * 4, s.humanize));
+                const int velocity = static_cast<int>(std::lround(
+                    86.0f + 18.0f * fillIntensity + (local - 12) * 4.0f));
+                addHit(ds, tom,
+                       humanizedVelocity(velocityRng, velocity, s.humanize));
             }
         }
 
         // Major section transition: every eighth bar gets a deliberate
-        // drummer-like fill on its final beat. This is structural, not a
-        // random decoration: the next cycle/section then lands on the existing
-        // opening Crash. Keep all hits on the 1/16 grid; faster 1/32 rolls are
-        // a separate future ratchet/substep feature.
+        // drummer-like fill. Fill Intensity controls its span: low settings
+        // are a pickup on the final sixteenth, 100% uses the full last beat.
+        // Faster 1/32 rolls remain a future ratchet/substep feature.
         const bool eightBarBoundary =
-            ((bar + 1) % 8) == 0 && local >= 12;
+            fillIntensity > 0.0001f &&
+            ((bar + 1) % 8) == 0 && local >= fillStart;
 
         if (eightBarBoundary) {
             const bool fullRoll =
-                s.complexity >= 0.20f || transitionRng.chance(0.55f);
+                fillIntensity >= 0.50f &&
+                (s.complexity >= 0.20f || transitionRng.chance(0.55f));
 
             if (s.style == StyleId::NDHIndustrial) {
                 // Mechanical snare roll with a final tom punctuation.
@@ -305,43 +317,43 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
                     addHit(ds, DrumVoice::Snare,
                            humanizedVelocity(
                                velocityRng,
-                               92 + (local - 12) * 7,
+                               static_cast<int>(84.0f + 14.0f * fillIntensity) + (local - 12) * 7,
                                s.humanize));
                 }
                 if (local == 15 && s.complexity >= 0.25f)
                     addHit(ds, DrumVoice::HighTom,
-                           humanizedVelocity(velocityRng, 108, s.humanize));
+                           humanizedVelocity(velocityRng, static_cast<int>(96.0f + 12.0f * fillIntensity), s.humanize));
             } else if (s.style == StyleId::HeavyIndustrial) {
                 // Aggressive machine-like roll: snare each sixteenth, kick
                 // reinforcement and an ascending tom at the end.
                 addHit(ds, DrumVoice::Snare,
                        humanizedVelocity(
                            velocityRng,
-                           94 + (local - 12) * 7,
+                           static_cast<int>(86.0f + 12.0f * fillIntensity) + (local - 12) * 7,
                            s.humanize));
                 if (local == 12 || local == 14)
                     addHit(ds, DrumVoice::Kick,
-                           humanizedVelocity(velocityRng, 108, s.humanize));
+                           humanizedVelocity(velocityRng, static_cast<int>(96.0f + 12.0f * fillIntensity), s.humanize));
                 if (local == 14)
                     addHit(ds, DrumVoice::MidTom,
-                           humanizedVelocity(velocityRng, 105, s.humanize));
+                           humanizedVelocity(velocityRng, static_cast<int>(94.0f + 11.0f * fillIntensity), s.humanize));
                 if (local == 15)
                     addHit(ds, DrumVoice::HighTom,
-                           humanizedVelocity(velocityRng, 114, s.humanize));
+                           humanizedVelocity(velocityRng, static_cast<int>(100.0f + 14.0f * fillIntensity), s.humanize));
             } else if (s.style == StyleId::DarkRockGothic) {
                 // More organic tom run with a restrained snare pickup.
                 if (local == 12)
                     addHit(ds, DrumVoice::LowTom,
-                           humanizedVelocity(velocityRng, 98, s.humanize));
+                           humanizedVelocity(velocityRng, static_cast<int>(90.0f + 8.0f * fillIntensity), s.humanize));
                 if (local == 13 && fullRoll)
                     addHit(ds, DrumVoice::Snare,
-                           humanizedVelocity(velocityRng, 92, s.humanize));
+                           humanizedVelocity(velocityRng, static_cast<int>(84.0f + 8.0f * fillIntensity), s.humanize));
                 if (local == 14)
                     addHit(ds, DrumVoice::MidTom,
-                           humanizedVelocity(velocityRng, 104, s.humanize));
+                           humanizedVelocity(velocityRng, static_cast<int>(94.0f + 10.0f * fillIntensity), s.humanize));
                 if (local == 15)
                     addHit(ds, DrumVoice::HighTom,
-                           humanizedVelocity(velocityRng, 112, s.humanize));
+                           humanizedVelocity(velocityRng, static_cast<int>(100.0f + 12.0f * fillIntensity), s.humanize));
             }
         }
     }

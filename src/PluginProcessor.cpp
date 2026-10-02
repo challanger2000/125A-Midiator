@@ -20,7 +20,7 @@ namespace {
 constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 8192;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 8u;
+constexpr uint32_t kStateVersion = 9u;
 constexpr int kLegacyStateSteps = 128; // V1-V7 fixed phrase payload width
 constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
 constexpr const char* kMsgVariation = "125A.Midiator.Variation";
@@ -366,11 +366,22 @@ bool readStateHeader(IBStream* state,
             for (float value : values)
                 if (!std::isfinite(value) || value < 0.0f || value > 1.0f)
                     return false;
+
+            if (version >= 9u) {
+                if (!readValue(state, drumSettings.fillIntensity) ||
+                    !std::isfinite(drumSettings.fillIntensity) ||
+                    drumSettings.fillIntensity < 0.0f ||
+                    drumSettings.fillIntensity > 1.0f)
+                    return false;
+            } else {
+                drumSettings.fillIntensity = 0.50f;
+            }
         } else {
             bassSettings.follow = 0.72f;
             bassSettings.movement = 0.34f;
             drumSettings.density = 0.48f;
             drumSettings.complexity = 0.30f;
+            drumSettings.fillIntensity = 0.50f;
             padSettings.spread = 0.42f;
             padSettings.tension = 0.18f;
             synthSettings.activity = 0.46f;
@@ -388,6 +399,7 @@ bool readStateHeader(IBStream* state,
         bassSettings.movement = 0.34f;
         drumSettings.density = 0.48f;
         drumSettings.complexity = 0.30f;
+        drumSettings.fillIntensity = 0.50f;
         padSettings.spread = 0.42f;
         padSettings.tension = 0.18f;
         synthSettings.activity = 0.46f;
@@ -535,7 +547,8 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
         !writeValue(state, padSettings_.spread) ||
         !writeValue(state, padSettings_.tension) ||
         !writeValue(state, synthSettings_.activity) ||
-        !writeValue(state, synthSettings_.movement))
+        !writeValue(state, synthSettings_.movement) ||
+        !writeValue(state, drumSettings_.fillIntensity))
         return kResultFalse;
 
     if (!writePhraseState(state, phrase_) ||
@@ -927,6 +940,8 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         float drumDensity = 0.0f;
         bool hasDrumComplexity = false;
         float drumComplexity = 0.0f;
+        bool hasFillIntensity = false;
+        float fillIntensity = 0.0f;
         bool hasPadSpread = false;
         float padSpread = 0.0f;
         bool hasPadTension = false;
@@ -1051,6 +1066,10 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
                 pending.hasDrumComplexity = true;
                 pending.drumComplexity = static_cast<float>(v);
                 break;
+            case kFillIntensityId:
+                pending.hasFillIntensity = true;
+                pending.fillIntensity = static_cast<float>(v);
+                break;
             case kPadSpreadId:
                 pending.hasPadSpread = true;
                 pending.padSpread = static_cast<float>(v);
@@ -1114,6 +1133,10 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     }
     if (pending.hasDrumComplexity && pending.drumComplexity != drumSettings_.complexity) {
         drumSettings_.complexity = pending.drumComplexity;
+        drumRoleChanged = true;
+    }
+    if (pending.hasFillIntensity && pending.fillIntensity != drumSettings_.fillIntensity) {
+        drumSettings_.fillIntensity = pending.fillIntensity;
         drumRoleChanged = true;
     }
     if (pending.hasPadSpread && pending.padSpread != padSettings_.spread) {
@@ -1772,6 +1795,7 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     addPercent(STR16("Bass Movement"), kBassMovementId, 34.0);
     addPercent(STR16("Drum Density"), kDrumDensityId, 48.0);
     addPercent(STR16("Drum Complexity"), kDrumComplexityId, 30.0);
+    addPercent(STR16("Fill Intensity"), kFillIntensityId, 50.0);
     addPercent(STR16("Pad Spread"), kPadSpreadId, 42.0);
     addPercent(STR16("Pad Tension"), kPadTensionId, 18.0);
     addPercent(STR16("Synth Activity"), kSynthActivityId, 46.0);
@@ -1884,6 +1908,7 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     setParamNormalized(kBassMovementId, bassSettings.movement);
     setParamNormalized(kDrumDensityId, drumSettings.density);
     setParamNormalized(kDrumComplexityId, drumSettings.complexity);
+    setParamNormalized(kFillIntensityId, drumSettings.fillIntensity);
     setParamNormalized(kPadSpreadId, padSettings.spread);
     setParamNormalized(kPadTensionId, padSettings.tension);
     setParamNormalized(kSynthActivityId, synthSettings.activity);

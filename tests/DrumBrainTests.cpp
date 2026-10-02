@@ -229,6 +229,59 @@ void testEightBarSectionTransitionFill() {
     }
 }
 
+void testFillIntensityScalesSectionTransitions() {
+    GeneratorSettings gs{};
+    gs.bars = 8;
+    gs.style = StyleId::NDHIndustrial;
+    const auto guitar = RiffEngine::generate(gs, 0xF1110001u);
+    BassSettings bs{};
+    const auto bass = BassBrain::generate(guitar, bs, 0xF1110002u);
+
+    auto transitionActivity = [](const DrumPhrase& d) {
+        long long count = 0;
+        const int bar = 7;
+        for (int local = 12; local < 16; ++local) {
+            const auto& st = d.steps[bar * kStepsPerBar + local];
+            for (int h = 0; h < st.hitCount; ++h) {
+                const auto v = st.hits[h].voice;
+                if (v == DrumVoice::Kick || v == DrumVoice::Snare ||
+                    v == DrumVoice::LowTom || v == DrumVoice::MidTom ||
+                    v == DrumVoice::HighTom)
+                    ++count;
+            }
+        }
+        return count;
+    };
+
+    for (StyleId style : {StyleId::NDHIndustrial,
+                          StyleId::DarkRockGothic,
+                          StyleId::HeavyIndustrial}) {
+        long long off = 0, mid = 0, high = 0;
+        for (unsigned seed = 1; seed <= 128; ++seed) {
+            DrumSettings s{};
+            s.style = style;
+            s.complexity = 0.50f;
+
+            s.fillIntensity = 0.0f;
+            off += transitionActivity(
+                DrumBrain::generate(guitar, bass, s, 930000u + seed));
+
+            s.fillIntensity = 0.50f;
+            mid += transitionActivity(
+                DrumBrain::generate(guitar, bass, s, 930000u + seed));
+
+            s.fillIntensity = 1.0f;
+            high += transitionActivity(
+                DrumBrain::generate(guitar, bass, s, 930000u + seed));
+        }
+
+        require(mid > off + 80,
+                "50% Fill Intensity must add a clearly audible section transition");
+        require(high > mid + 80,
+                "100% Fill Intensity must be materially larger than 50%");
+    }
+}
+
 void testHumanizeChangesVelocityNotPattern() {
     Phrase guitar{}, bass{};
     makeContext(guitar, bass);
@@ -432,6 +485,7 @@ int main() {
     testFollowControlsKickLock();
     testDensityAndComplexityHaveDistinctMaterialEffects();
     testEightBarSectionTransitionFill();
+    testFillIntensityScalesSectionTransitions();
     testHumanizeChangesVelocityNotPattern();
     testStylesHaveDistinctDrumLanguages();
     testVerifiedMapsNeverEmitSamePitchTwicePerStep();

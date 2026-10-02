@@ -47,7 +47,8 @@ struct DrumSettings {
     StyleId style = StyleId::NDHIndustrial;
     float follow = 0.72f;      // lock kick accents to guitar/bass context
     float density = 0.48f;     // overall activity
-    float complexity = 0.30f;  // fills, hat motion, tom movement
+    float complexity = 0.30f;  // hat motion, ghost detail, tom vocabulary
+    float fillIntensity = 0.50f; // size of structural fills; 0 = off
     float humanize = 0.20f;    // velocity variance only for now
     bool crashOnDownbeat = true;
 };

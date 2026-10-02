@@ -37,10 +37,10 @@ int main() {
             xml.find("maxSize=\"1720, 1460\"") != std::string::npos,
             "resizable editor contract must expose non-identical min/max sizes");
 
-    for (int tag = 100; tag <= 123; ++tag) {
+    for (int tag = 100; tag <= 124; ++tag) {
         const std::string needle = "tag=\"" + std::to_string(tag) + "\"";
         require(xml.find(needle) != std::string::npos,
-                "all Midiator parameter tags 100..123 must be declared");
+                "all Midiator parameter tags 100..124 must be declared");
     }
 
     const char* theoryIds[] = {
@@ -78,7 +78,7 @@ int main() {
             "SECTION LENGTH selector must be bound");
     for (const char* roleTag : {"BassFollow", "BassMovement", "DrumDensity",
                                 "DrumComplexity", "PadSpread", "PadTension",
-                                "SynthActivity", "SynthMovement"}) {
+                                "SynthActivity", "SynthMovement", "FillIntensity"}) {
         const std::string needle = std::string("control-tag=\"") + roleTag + "\"";
         require(xml.find(needle) != std::string::npos,
                 "every focused role control must be bound in the GUI");
@@ -98,7 +98,7 @@ int main() {
                 "every slider must use the visible native slider drawing");
         pos = end + 2;
     }
-    require(sliderCount == 14, "exactly fourteen visible native sliders are required");
+    require(sliderCount == 15, "exactly fifteen visible native sliders are required");
 
     size_t textEditCount = 0;
     pos = 0;
@@ -106,8 +106,8 @@ int main() {
         ++textEditCount;
         pos += 10;
     }
-    require(textEditCount == 14,
-            "fourteen editable percentage value fields must accompany the fourteen sliders");
+    require(textEditCount == 15,
+            "fifteen editable percentage value fields must accompany the fifteen sliders");
 
     std::cout << "Midiator UI contract test: PASS\n";
     return 0;
