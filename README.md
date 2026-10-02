@@ -36,7 +36,7 @@ Bass is style-aware; Drums derive kick pressure from Guitar/Bass context; Pads u
 
 ## GUI controls currently exposed
 
-Root / Root Source, Scale / Mode, Section Length (1/2/4/8/16), Style, Density, Complexity, Repetition, Power Chords on/off and amount, Palm Mute, Variation Amount, NEW RIFF and VARIATION.
+Root / Root Source, Scale / Mode, Section Length (1/2/4/8/16), Section (FREE / Intro / Verse / Pre / Chorus / Breakdown / Outro), Style, Density, Complexity, Repetition, Power Chords on/off and amount, Palm Mute, Variation Amount, NEW RIFF and VARIATION.
 
 The GUI exposes a deliberately small role-shaping layer instead of every internal generator parameter:
 
@@ -61,7 +61,7 @@ The processor requests VST3 musical timeline, tempo, time signature and transpor
 
 ## State
 
-State V9 stores the shared musical settings, verified Drum Map selection, the exposed role-shaping controls including Fill Intensity, and the exact generated Guitar, Bass, Drum, Pad and Synth phrases. V8 expanded the exact phrase payload from 128 to 256 steps so 16-bar sections can be recalled without regeneration; V9 adds persisted Fill Intensity while retaining the V8 phrase layout. Legacy V1-V4 states remain supported by regenerating missing companion roles once during migration; V5 preserves its exact five-role payload, V6 additionally preserves its verified Drum Map, V7 preserves the original eight role-shaping controls with the 128-step payload, and V8 preserves the 256-step payload. All migrated states are then saved in V9 format.
+State V10 stores the shared musical settings, verified Drum Map selection, the exposed role-shaping controls including Fill Intensity, the selected Section role, and the exact generated Guitar, Bass, Drum, Pad and Synth phrases. Section FREE preserves the former generator behavior exactly; other Section roles reuse the same seed so related sections remain musically connected instead of becoming unrelated random riffs. V8 expanded the exact phrase payload from 128 to 256 steps so 16-bar sections can be recalled without regeneration; V9 adds persisted Fill Intensity while retaining the V8 phrase layout. Legacy V1-V4 states remain supported by regenerating missing companion roles once during migration; V5 preserves its exact five-role payload, V6 additionally preserves its verified Drum Map, V7 preserves the original eight role-shaping controls with the 128-step payload, and V8 preserves the 256-step payload. All migrated states are then saved in V9 format.
 
 ## Automated verification
 

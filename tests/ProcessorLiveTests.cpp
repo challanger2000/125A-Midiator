@@ -902,6 +902,65 @@ void testSectionLengthSupportsSixteenBarsAndLegacyBarsStayStable() {
             "legacy Bars normalized 1.0 must remain eight bars, never become sixteen");
 }
 
+void testSectionRolesReuseSeedAndRemainReversible() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "section-role fixture must start");
+
+    auto captureGuitar = [&](double startQn) {
+        auto context = makeContext(startQn, true);
+        EventList output;
+        auto data = makeProcessData(context, output, 192000);
+        require(processor.process(data) == kResultOk,
+                "section-role Guitar capture must succeed");
+        std::vector<std::pair<int,int>> notes;
+        for (const auto& e : output.events) {
+            if (e.type != Event::kNoteOnEvent || e.busIndex != kGuitarOutBus)
+                continue;
+            const int step = static_cast<int>(
+                std::lround((e.ppqPosition - startQn) / 0.25));
+            notes.emplace_back(step, e.noteOn.pitch);
+        }
+        return notes;
+    };
+
+    auto selectSection = [&](double value, double qn) {
+        ParameterChanges changes;
+        int32 qi = 0;
+        auto* q = changes.addParameterData(kSectionTypeId, qi);
+        int32 pi = 0;
+        require(q && q->addPoint(0, value, pi) == kResultOk,
+                "section selector value must be accepted");
+        auto stopped = makeContext(qn, false);
+        EventList output;
+        auto data = makeProcessData(stopped, output, 64, &changes);
+        require(processor.process(data) == kResultOk,
+                "section selector change must process");
+    };
+
+    const auto freeA = captureGuitar(0.0);
+
+    selectSection(4.0 / 6.0, 8.0); // CHORUS
+    const auto chorusA = captureGuitar(8.0);
+    require(chorusA != freeA,
+            "CHORUS must reshape the riff rather than behave like FREE");
+
+    selectSection(2.0 / 6.0, 16.0); // VERSE
+    const auto verse = captureGuitar(16.0);
+    require(verse != chorusA,
+            "VERSE and CHORUS must produce distinct section treatments");
+
+    selectSection(4.0 / 6.0, 24.0); // CHORUS again
+    const auto chorusB = captureGuitar(24.0);
+    require(chorusB == chorusA,
+            "returning to CHORUS must reproduce the same seed-related section");
+
+    selectSection(0.0, 32.0); // FREE
+    const auto freeB = captureGuitar(32.0);
+    require(freeB == freeA,
+            "returning to FREE must restore the original seed-derived riff");
+}
+
 void testPowerChordTogglePreservesRiffOnsetsAndPitches() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
@@ -2222,6 +2281,7 @@ int main() {
     testBarsResizePreservesExistingRiff();
     testSectionLengthResizePreservesRiffToSixteenBars();
     testSectionLengthSupportsSixteenBarsAndLegacyBarsStayStable();
+    testSectionRolesReuseSeedAndRemainReversible();
     testPowerChordTogglePreservesRiffOnsetsAndPitches();
     testLargeOfflineBlockKeepsNoteEventsBalanced();
     testStopFlushesEveryActiveInstrumentBus();

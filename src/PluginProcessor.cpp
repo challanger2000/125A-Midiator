@@ -20,7 +20,7 @@ namespace {
 constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 8192;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 9u;
+constexpr uint32_t kStateVersion = 10u;
 constexpr int kLegacyStateSteps = 128; // V1-V7 fixed phrase payload width
 constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
 constexpr const char* kMsgVariation = "125A.Midiator.Variation";
@@ -376,6 +376,19 @@ bool readStateHeader(IBStream* state,
             } else {
                 drumSettings.fillIntensity = 0.50f;
             }
+
+            if (version >= 10u) {
+                int32 storedSection = 0;
+                if (!readValue(state, storedSection))
+                    return false;
+                const int32 maxSection =
+                    static_cast<int32>(midiator::SectionType::Count) - 1;
+                if (storedSection < 0 || storedSection > maxSection)
+                    return false;
+                settings.section = static_cast<midiator::SectionType>(storedSection);
+            } else {
+                settings.section = midiator::SectionType::Free;
+            }
         } else {
             bassSettings.follow = 0.72f;
             bassSettings.movement = 0.34f;
@@ -404,6 +417,7 @@ bool readStateHeader(IBStream* state,
         padSettings.tension = 0.18f;
         synthSettings.activity = 0.46f;
         synthSettings.movement = 0.42f;
+        settings.section = midiator::SectionType::Free;
     }
 
     settings.scale = static_cast<midiator::ScaleId>(
@@ -430,6 +444,184 @@ int normalizedIndex(ParamValue v, int count) {
     if (count <= 1)
         return 0;
     return std::clamp(static_cast<int>(std::lround(std::clamp(v, 0.0, 1.0) * (count - 1))), 0, count - 1);
+}
+
+float clampUnit(float v) {
+    return std::clamp(v, 0.0f, 1.0f);
+}
+
+midiator::GeneratorSettings sectionGeneratorSettings(
+    const midiator::GeneratorSettings& base) {
+    auto s = base;
+    using midiator::SectionType;
+    switch (base.section) {
+        case SectionType::Free:
+            return s;
+        case SectionType::Intro:
+            s.density *= 0.62f;
+            s.complexity *= 0.70f;
+            s.repetition += 0.10f;
+            s.powerChordChance *= 0.55f;
+            s.palmMuteChance *= 0.85f;
+            break;
+        case SectionType::Verse:
+            s.density *= 0.90f;
+            s.complexity *= 0.88f;
+            s.repetition += 0.06f;
+            s.powerChordChance *= 0.78f;
+            s.palmMuteChance *= 1.05f;
+            break;
+        case SectionType::PreChorus:
+            s.density *= 1.00f;
+            s.complexity *= 1.08f;
+            s.repetition -= 0.06f;
+            s.powerChordChance *= 0.95f;
+            s.palmMuteChance *= 0.95f;
+            break;
+        case SectionType::Chorus:
+            s.density *= 1.10f;
+            s.complexity *= 1.00f;
+            s.repetition += 0.04f;
+            s.powerChordChance *= 1.25f;
+            s.palmMuteChance *= 0.70f;
+            break;
+        case SectionType::Breakdown:
+            s.density *= 0.78f;
+            s.complexity *= 0.70f;
+            s.repetition += 0.12f;
+            s.powerChordChance *= 1.20f;
+            s.palmMuteChance *= 1.15f;
+            break;
+        case SectionType::Outro:
+            s.density *= 0.68f;
+            s.complexity *= 0.65f;
+            s.repetition += 0.10f;
+            s.powerChordChance *= 0.70f;
+            s.palmMuteChance *= 0.75f;
+            break;
+        case SectionType::Count:
+            break;
+    }
+    s.density = clampUnit(s.density);
+    s.complexity = clampUnit(s.complexity);
+    s.repetition = clampUnit(s.repetition);
+    s.powerChordChance = clampUnit(s.powerChordChance);
+    s.palmMuteChance = clampUnit(s.palmMuteChance);
+    return s;
+}
+
+midiator::BassSettings sectionBassSettings(
+    const midiator::BassSettings& base, midiator::SectionType section) {
+    auto s = base;
+    using midiator::SectionType;
+    switch (section) {
+        case SectionType::Free: return s;
+        case SectionType::Intro:
+            s.follow *= 0.85f; s.movement *= 0.80f; s.passing *= 0.70f;
+            s.octaveChance *= 0.65f; s.sustain *= 1.15f; break;
+        case SectionType::Verse:
+            s.follow *= 1.00f; s.movement *= 0.95f; s.passing *= 0.90f; break;
+        case SectionType::PreChorus:
+            s.follow *= 1.03f; s.movement *= 1.08f; s.passing *= 1.10f; break;
+        case SectionType::Chorus:
+            s.follow *= 1.05f; s.movement *= 1.00f; s.octaveChance *= 1.30f;
+            s.sustain *= 1.10f; break;
+        case SectionType::Breakdown:
+            s.follow *= 1.12f; s.movement *= 0.70f; s.passing *= 0.65f;
+            s.sustain *= 1.25f; break;
+        case SectionType::Outro:
+            s.follow *= 0.90f; s.movement *= 0.85f; s.passing *= 0.75f;
+            s.sustain *= 1.15f; break;
+        case SectionType::Count: break;
+    }
+    s.follow=clampUnit(s.follow); s.movement=clampUnit(s.movement);
+    s.passing=clampUnit(s.passing); s.octaveChance=clampUnit(s.octaveChance);
+    s.sustain=clampUnit(s.sustain);
+    return s;
+}
+
+midiator::DrumSettings sectionDrumSettings(
+    const midiator::DrumSettings& base, midiator::SectionType section) {
+    auto s = base;
+    using midiator::SectionType;
+    switch (section) {
+        case SectionType::Free: return s;
+        case SectionType::Intro:
+            s.density *= 0.55f; s.complexity *= 0.55f;
+            s.fillIntensity *= 0.50f; s.crashOnDownbeat = false; break;
+        case SectionType::Verse:
+            s.density *= 0.90f; s.complexity *= 0.85f; s.fillIntensity *= 0.75f; break;
+        case SectionType::PreChorus:
+            s.density *= 1.05f; s.complexity *= 1.10f; s.fillIntensity *= 1.15f; break;
+        case SectionType::Chorus:
+            s.density *= 1.12f; s.complexity *= 1.00f; s.fillIntensity *= 1.00f;
+            s.crashOnDownbeat = true; break;
+        case SectionType::Breakdown:
+            s.density *= 0.78f; s.complexity *= 0.75f; s.fillIntensity *= 0.70f; break;
+        case SectionType::Outro:
+            s.density *= 0.65f; s.complexity *= 0.65f; s.fillIntensity *= 0.80f; break;
+        case SectionType::Count: break;
+    }
+    s.density=clampUnit(s.density); s.complexity=clampUnit(s.complexity);
+    s.fillIntensity=clampUnit(s.fillIntensity);
+    return s;
+}
+
+midiator::PadSettings sectionPadSettings(
+    const midiator::PadSettings& base, midiator::SectionType section) {
+    auto s=base;
+    using midiator::SectionType;
+    switch(section) {
+        case SectionType::Free: return s;
+        case SectionType::Intro:
+            s.movement*=0.80f; s.spread*=1.10f; s.tension*=0.75f;
+            s.sustain*=1.10f; s.contextFollow*=0.90f; break;
+        case SectionType::Verse:
+            s.movement*=0.90f; s.spread*=0.90f; s.tension*=0.90f; break;
+        case SectionType::PreChorus:
+            s.movement*=1.05f; s.spread*=1.05f; s.tension*=1.15f; break;
+        case SectionType::Chorus:
+            s.movement*=1.10f; s.spread*=1.18f; s.tension*=0.95f; break;
+        case SectionType::Breakdown:
+            s.movement*=0.70f; s.spread*=0.85f; s.tension*=1.10f; break;
+        case SectionType::Outro:
+            s.movement*=0.75f; s.spread*=1.10f; s.tension*=0.80f; break;
+        case SectionType::Count: break;
+    }
+    s.movement=clampUnit(s.movement); s.spread=clampUnit(s.spread);
+    s.tension=clampUnit(s.tension); s.sustain=clampUnit(s.sustain);
+    s.contextFollow=clampUnit(s.contextFollow);
+    return s;
+}
+
+midiator::SynthSettings sectionSynthSettings(
+    const midiator::SynthSettings& base, midiator::SectionType section) {
+    auto s=base;
+    using midiator::SectionType;
+    switch(section) {
+        case SectionType::Free: return s;
+        case SectionType::Intro:
+            s.activity*=0.55f; s.movement*=0.75f; s.repetition+=0.10f;
+            s.syncopation*=0.65f; s.sustain*=1.20f; break;
+        case SectionType::Verse:
+            s.activity*=0.75f; s.movement*=0.90f; s.repetition+=0.06f; break;
+        case SectionType::PreChorus:
+            s.activity*=1.00f; s.movement*=1.10f; s.repetition-=0.05f;
+            s.syncopation*=1.10f; break;
+        case SectionType::Chorus:
+            s.activity*=1.10f; s.movement*=1.05f; s.repetition+=0.05f;
+            s.sustain*=1.05f; break;
+        case SectionType::Breakdown:
+            s.activity*=0.45f; s.movement*=0.80f; s.repetition+=0.12f;
+            s.syncopation*=0.60f; break;
+        case SectionType::Outro:
+            s.activity*=0.55f; s.movement*=0.80f; s.repetition+=0.10f; break;
+        case SectionType::Count: break;
+    }
+    s.activity=clampUnit(s.activity); s.movement=clampUnit(s.movement);
+    s.repetition=clampUnit(s.repetition); s.syncopation=clampUnit(s.syncopation);
+    s.sustain=clampUnit(s.sustain); s.harmonicFollow=clampUnit(s.harmonicFollow);
+    return s;
 }
 
 } // namespace
@@ -548,7 +740,8 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
         !writeValue(state, padSettings_.tension) ||
         !writeValue(state, synthSettings_.activity) ||
         !writeValue(state, synthSettings_.movement) ||
-        !writeValue(state, drumSettings_.fillIntensity))
+        !writeValue(state, drumSettings_.fillIntensity) ||
+        !writeValue(state, static_cast<int32>(settings_.section)))
         return kResultFalse;
 
     if (!writePhraseState(state, phrase_) ||
@@ -710,7 +903,8 @@ void MidiatorProcessor::generateNew() {
 
     for (int attempt = 0; attempt < 32; ++attempt) {
         seed_ = nextSeed(seed_);
-        candidate = midiator::RiffEngine::generate(settings_, seed_);
+        const auto effectiveSettings = sectionGeneratorSettings(settings_);
+        candidate = midiator::RiffEngine::generate(effectiveSettings, seed_);
 
         if (!havePrevious) {
             bestCandidate = candidate;
@@ -744,7 +938,9 @@ void MidiatorProcessor::generateNew() {
 }
 void MidiatorProcessor::generateVariation() {
     seed_ = nextSeed(seed_);
-    phrase_ = midiator::RiffEngine::vary(phrase_, settings_, variationAmount_, seed_);
+    const auto effectiveSettings = sectionGeneratorSettings(settings_);
+    phrase_ = midiator::RiffEngine::vary(
+        phrase_, effectiveSettings, variationAmount_, seed_);
     regenerateBass();
     phraseChangedNeedsFlush_ = true;
 }
@@ -753,15 +949,19 @@ void MidiatorProcessor::regenerateBass() {
     bassSettings_.rootPitchClass = settings_.rootPitchClass;
     bassSettings_.scale = settings_.scale;
     bassSettings_.style = settings_.style;
+    const auto effectiveBass =
+        sectionBassSettings(bassSettings_, settings_.section);
     bassPhrase_ = midiator::BassBrain::generate(
-        phrase_, bassSettings_, seed_ ^ 0xB4552026u);
+        phrase_, effectiveBass, seed_ ^ 0xB4552026u);
     regenerateDrums();
 }
 
 void MidiatorProcessor::regenerateDrums() {
     drumSettings_.style = settings_.style;
+    const auto effectiveDrums =
+        sectionDrumSettings(drumSettings_, settings_.section);
     drumPhrase_ = midiator::DrumBrain::generate(
-        phrase_, bassPhrase_, drumSettings_, seed_ ^ 0xD12A2026u);
+        phrase_, bassPhrase_, effectiveDrums, seed_ ^ 0xD12A2026u);
     regeneratePads();
 }
 
@@ -769,8 +969,10 @@ void MidiatorProcessor::regeneratePads() {
     padSettings_.rootPitchClass = settings_.rootPitchClass;
     padSettings_.scale = settings_.scale;
     padSettings_.style = settings_.style;
+    const auto effectivePads =
+        sectionPadSettings(padSettings_, settings_.section);
     padPhrase_ = midiator::PadBrain::generate(
-        phrase_, bassPhrase_, padSettings_, seed_ ^ 0x50414426u);
+        phrase_, bassPhrase_, effectivePads, seed_ ^ 0x50414426u);
     regenerateSynth();
 }
 
@@ -778,8 +980,20 @@ void MidiatorProcessor::regenerateSynth() {
     synthSettings_.rootPitchClass = settings_.rootPitchClass;
     synthSettings_.scale = settings_.scale;
     synthSettings_.style = settings_.style;
+    const auto effectiveSynth =
+        sectionSynthSettings(synthSettings_, settings_.section);
     synthPhrase_ = midiator::SynthBrain::generate(
-        phrase_, bassPhrase_, padPhrase_, synthSettings_, seed_ ^ 0x53594E26u);
+        phrase_, bassPhrase_, padPhrase_, effectiveSynth, seed_ ^ 0x53594E26u);
+}
+
+void MidiatorProcessor::regenerateSectionFromCurrentSeed() {
+    // A section change is an arrangement decision, not a new-composition
+    // command. Reuse the current seed so Verse/Chorus/etc. remain recognizably
+    // related and switching back to FREE restores the same core riff.
+    const auto effectiveSettings = sectionGeneratorSettings(settings_);
+    phrase_ = midiator::RiffEngine::generate(effectiveSettings, seed_);
+    regenerateBass();
+    phraseChangedNeedsFlush_ = true;
 }
 
 void MidiatorProcessor::resizePhraseBars(int newBars, bool regenerateCompanions) {
@@ -912,6 +1126,8 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         int bars = 2;
         bool hasSectionLength = false;
         int sectionBars = 2;
+        bool hasSectionType = false;
+        midiator::SectionType sectionType = midiator::SectionType::Free;
         bool hasDensity = false;
         float density = 0.0f;
         bool hasComplexity = false;
@@ -1004,6 +1220,11 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
                 pending.sectionBars = bars[normalizedIndex(v, 5)];
                 break;
             }
+            case kSectionTypeId:
+                pending.hasSectionType = true;
+                pending.sectionType = static_cast<midiator::SectionType>(
+                    normalizedIndex(v, static_cast<int>(midiator::SectionType::Count)));
+                break;
             case kDensityId:
                 pending.hasDensity = true;
                 pending.density = static_cast<float>(v);
@@ -1158,10 +1379,13 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
 
     const auto oldScale = settings_.scale;
     const auto oldStyle = settings_.style;
+    const auto oldSection = settings_.section;
     if (pending.hasScale)
         settings_.scale = pending.scale;
     if (pending.hasStyle)
         settings_.style = pending.style;
+    if (pending.hasSectionType)
+        settings_.section = pending.sectionType;
 
     if (pending.hasRoot)
         manualRootPitchClass_ = pending.root;
@@ -1194,6 +1418,7 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
 
     const bool tonalFrameChanged =
         settings_.scale != oldScale || settings_.style != oldStyle;
+    const bool sectionChanged = settings_.section != oldSection;
     const bool freshGeneration = tonalFrameChanged || pending.newRiff;
 
     bool guitarEdited = false;
@@ -1206,7 +1431,7 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         finalRootPitchClass = finalMidiPitchClass;
 
     if (finalRootPitchClass != settings_.rootPitchClass) {
-        if (freshGeneration) {
+        if (freshGeneration || sectionChanged) {
             settings_.rootPitchClass = finalRootPitchClass;
         } else {
             transposePhraseToRoot(finalRootPitchClass, false);
@@ -1224,7 +1449,7 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     // already required. Otherwise the generator creates the requested length
     // directly, avoiding an intermediate companion-role cascade.
     if (hasRequestedBars && requestedBars != settings_.bars) {
-        if (freshGeneration) {
+        if (freshGeneration || sectionChanged) {
             settings_.bars = requestedBars;
         } else {
             resizePhraseBars(requestedBars, false);
@@ -1235,7 +1460,7 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     // Apply the chord toggle after final Style/Amount/Bars/Root are known.
     if (pending.hasPowerChordsEnabled &&
         pending.powerChordsEnabled != settings_.powerChordsEnabled) {
-        if (freshGeneration) {
+        if (freshGeneration || sectionChanged) {
             settings_.powerChordsEnabled = pending.powerChordsEnabled;
         } else {
             applyPowerChordMode(pending.powerChordsEnabled, false);
@@ -1245,6 +1470,8 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
 
     if (freshGeneration) {
         generateNew();
+    } else if (sectionChanged) {
+        regenerateSectionFromCurrentSeed();
     } else if (guitarEdited && !pending.variation) {
         // Root/Bars/Power-Chord edits may all occur in one host block. Refresh
         // Bass -> Drums -> Pad -> Synth once from the final Guitar state.
@@ -1257,7 +1484,7 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         generateVariation();
 
     const bool arrangementAlreadyRegenerated =
-        freshGeneration || guitarEdited || pending.variation;
+        freshGeneration || sectionChanged || guitarEdited || pending.variation;
 
     if (!arrangementAlreadyRegenerated) {
         if (bassRoleChanged)
@@ -1763,6 +1990,19 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     sectionLength->setNormalized(0.25);
     parameters.addParameter(sectionLength);
 
+    auto* sectionType =
+        new StringListParameter(STR16("Section"), kSectionTypeId);
+    sectionType->appendString(STR16("FREE"));
+    sectionType->appendString(STR16("INTRO"));
+    sectionType->appendString(STR16("VERSE"));
+    sectionType->appendString(STR16("PRE"));
+    sectionType->appendString(STR16("CHORUS"));
+    sectionType->appendString(STR16("BREAKDOWN"));
+    sectionType->appendString(STR16("OUTRO"));
+    sectionType->getInfo().defaultNormalizedValue = 0.0;
+    sectionType->setNormalized(0.0);
+    parameters.addParameter(sectionType);
+
     auto addPercent = [&](const char16_t* name, ParamID id, double defaultValue) {
         auto* p = new RangeParameter(name, id, STR16("%"), 0.0, 100.0, defaultValue, 0,
                                      ParameterInfo::kCanAutomate);
@@ -1898,6 +2138,10 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
                                   static_cast<double>(static_cast<int>(midiator::ScaleId::Count) - 1));
     setParamNormalized(kBarsId, legacyBarsIndex(restored.bars));
     setParamNormalized(kSectionLengthId, sectionBarsIndex(restored.bars));
+    setParamNormalized(
+        kSectionTypeId,
+        static_cast<double>(static_cast<int>(restored.section)) /
+        static_cast<double>(static_cast<int>(midiator::SectionType::Count) - 1));
     setParamNormalized(kDensityId, restored.density);
     setParamNormalized(kComplexityId, restored.complexity);
     setParamNormalized(kRepetitionId, restored.repetition);

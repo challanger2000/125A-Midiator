@@ -332,7 +332,7 @@ int main() {
     MemoryStream companionPatched;
     companionPatched.bytes() = first.bytes();
 
-    constexpr size_t kHeaderBytes = 104;
+    constexpr size_t kHeaderBytes = 108;
     constexpr size_t kPhraseBytes =
         sizeof(int32) + midiator::kMaxSteps *
         (sizeof(int32) + midiator::kMaxNotesPerStep * 3 * sizeof(int32));
@@ -435,8 +435,10 @@ int main() {
         damaged.rewind();
         MidiatorProcessor target;
         require(target.setState(&damaged) != kResultOk,
-                "V9 NaN Fill Intensity must be rejected");
+                "V10 NaN Fill Intensity must be rejected");
     }
+    expectRejectedPatch(104, 99,
+                        "V10 invalid Section Type must be rejected");
 
     {
         MemoryStream damaged;
@@ -520,7 +522,7 @@ int main() {
         v5.bytes().insert(v5.bytes().end(),
                           current.bytes().begin(),
                           current.bytes().begin() + 64);
-        const size_t curGuitar = 104;
+        const size_t curGuitar = 108;
         const size_t curBass = curGuitar + kPhraseBytes;
         const size_t curDrums = curBass + kPhraseBytes;
         const size_t curPads = curDrums + kDrumPhraseBytes;
@@ -560,12 +562,12 @@ int main() {
                     "V5 migration must preserve every legacy role payload prefix");
             legacyOffset += bytes;
         };
-        requireLegacyPrefix(104, kLegacyPhraseBytes);
-        requireLegacyPrefix(104 + kPhraseBytes, kLegacyPhraseBytes);
-        requireLegacyPrefix(104 + 2 * kPhraseBytes, kLegacyDrumPhraseBytes);
-        requireLegacyPrefix(104 + 2 * kPhraseBytes + kDrumPhraseBytes,
+        requireLegacyPrefix(108, kLegacyPhraseBytes);
+        requireLegacyPrefix(108 + kPhraseBytes, kLegacyPhraseBytes);
+        requireLegacyPrefix(108 + 2 * kPhraseBytes, kLegacyDrumPhraseBytes);
+        requireLegacyPrefix(108 + 2 * kPhraseBytes + kDrumPhraseBytes,
                             kLegacyPadPhraseBytes);
-        requireLegacyPrefix(104 + 2 * kPhraseBytes + kDrumPhraseBytes + kPadPhraseBytes,
+        requireLegacyPrefix(108 + 2 * kPhraseBytes + kDrumPhraseBytes + kPadPhraseBytes,
                             kLegacyPhraseBytes);
         require(legacyOffset == oldPayload.size(),
                 "V5 legacy payload comparison must cover all five roles");
@@ -594,6 +596,10 @@ int main() {
         std::memcpy(&fillIntensity, upgraded.bytes().data() + 100, sizeof(fillIntensity));
         require(std::abs(fillIntensity - 0.50f) < 1e-6f,
                 "V5 migration must default Fill Intensity to 50%");
+        int32 sectionType = -1;
+        std::memcpy(&sectionType, upgraded.bytes().data() + 104, sizeof(sectionType));
+        require(sectionType == static_cast<int32>(midiator::SectionType::Free),
+                "legacy migration must default Section Type to FREE");
     }
 
     // V6 added the verified Drum Map at byte 64 but still predates the eight
@@ -615,7 +621,7 @@ int main() {
         v6.bytes().insert(v6.bytes().end(),
                           current.bytes().begin(),
                           current.bytes().begin() + 68);
-        const size_t curGuitar = 104;
+        const size_t curGuitar = 108;
         const size_t curBass = curGuitar + kPhraseBytes;
         const size_t curDrums = curBass + kPhraseBytes;
         const size_t curPads = curDrums + kDrumPhraseBytes;
@@ -653,12 +659,12 @@ int main() {
                     "V6 migration must preserve every legacy role payload prefix");
             legacyOffset += bytes;
         };
-        requireLegacyPrefix(104, kLegacyPhraseBytes);
-        requireLegacyPrefix(104 + kPhraseBytes, kLegacyPhraseBytes);
-        requireLegacyPrefix(104 + 2 * kPhraseBytes, kLegacyDrumPhraseBytes);
-        requireLegacyPrefix(104 + 2 * kPhraseBytes + kDrumPhraseBytes,
+        requireLegacyPrefix(108, kLegacyPhraseBytes);
+        requireLegacyPrefix(108 + kPhraseBytes, kLegacyPhraseBytes);
+        requireLegacyPrefix(108 + 2 * kPhraseBytes, kLegacyDrumPhraseBytes);
+        requireLegacyPrefix(108 + 2 * kPhraseBytes + kDrumPhraseBytes,
                             kLegacyPadPhraseBytes);
-        requireLegacyPrefix(104 + 2 * kPhraseBytes + kDrumPhraseBytes + kPadPhraseBytes,
+        requireLegacyPrefix(108 + 2 * kPhraseBytes + kDrumPhraseBytes + kPadPhraseBytes,
                             kLegacyPhraseBytes);
         require(legacyOffset == oldPayload.size(),
                 "V6 legacy payload comparison must cover all five roles");
@@ -679,7 +685,7 @@ int main() {
         v7.bytes().insert(v7.bytes().end(),
                           current.bytes().begin(),
                           current.bytes().begin() + 100);
-        const size_t curGuitar = 104;
+        const size_t curGuitar = 108;
         const size_t curBass = curGuitar + kPhraseBytes;
         const size_t curDrums = curBass + kPhraseBytes;
         const size_t curPads = curDrums + kDrumPhraseBytes;
@@ -725,7 +731,7 @@ int main() {
                           current.bytes().begin(),
                           current.bytes().begin() + 100);
         v8.bytes().insert(v8.bytes().end(),
-                          current.bytes().begin() + 104,
+                          current.bytes().begin() + 108,
                           current.bytes().end());
         const uint32_t v8Version = 8u;
         patchFixtureValue(v8, sizeof(uint32_t), v8Version);
@@ -744,6 +750,41 @@ int main() {
                     sizeof(fillIntensity));
         require(std::abs(fillIntensity - 0.50f) < 1e-6f,
                 "V8 migration must default Fill Intensity to 50%");
+    }
+
+    {
+        // V9 stored Fill Intensity at byte 100 and then immediately started
+        // the 256-step phrase payload. V10 appends the persistent Section Type
+        // at byte 104; old V9 projects must therefore default to FREE.
+        MemoryStream current;
+        MidiatorProcessor source;
+        require(source.getState(&current) == kResultOk,
+                "current V10 fixture for V9 migration must serialize");
+
+        MemoryStream v9;
+        v9.bytes().insert(v9.bytes().end(),
+                          current.bytes().begin(),
+                          current.bytes().begin() + 104);
+        v9.bytes().insert(v9.bytes().end(),
+                          current.bytes().begin() + 108,
+                          current.bytes().end());
+        const uint32_t v9Version = 9u;
+        patchFixtureValue(v9, sizeof(uint32_t), v9Version);
+
+        v9.rewind();
+        MidiatorProcessor migrated;
+        require(migrated.setState(&v9) == kResultOk,
+                "frozen V9 state must migrate to V10");
+
+        MemoryStream upgraded;
+        require(migrated.getState(&upgraded) == kResultOk,
+                "migrated V9 state must serialize as V10");
+        int32 sectionType = -1;
+        std::memcpy(&sectionType,
+                    upgraded.bytes().data() + 104,
+                    sizeof(sectionType));
+        require(sectionType == static_cast<int32>(midiator::SectionType::Free),
+                "V9 migration must default Section Type to FREE");
     }
 
     std::cout << "Midiator processor-state roundtrip test: PASS\n";

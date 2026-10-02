@@ -55,7 +55,8 @@ enum : ParamID {
     // New host/UI length contract. kBarsId=102 is frozen for legacy
     // automation with the historic {1,2,4,8} normalization.
     kSectionLengthId = 123,
-    kFillIntensityId = 124
+    kFillIntensityId = 124,
+    kSectionTypeId = 125
 };
 
 static const FUID ProcessorUID(0x125A4001, 0x6D494449, 0x41544F52, 0x00000100);
@@ -134,6 +135,7 @@ private:
     void regenerateDrums();
     void regeneratePads();
     void regenerateSynth();
+    void regenerateSectionFromCurrentSeed();
     void resizePhraseBars(int newBars, bool regenerateCompanions = true);
     void applyPowerChordMode(bool enabled, bool regenerateCompanions = true);
     void transposePhraseToRoot(int newRootPitchClass, bool regenerateCompanions = true);

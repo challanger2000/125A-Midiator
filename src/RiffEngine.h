@@ -17,6 +17,17 @@ enum class StyleId : int {
     Count
 };
 
+enum class SectionType : int {
+    Free = 0,
+    Intro,
+    Verse,
+    PreChorus,
+    Chorus,
+    Breakdown,
+    Outro,
+    Count
+};
+
 enum class ScaleId : int {
     NaturalMinor = 0,
     Phrygian,
@@ -40,6 +51,7 @@ struct GeneratorSettings {
     int rootPitchClass = 9;       // A
     ScaleId scale = ScaleId::Phrygian;
     StyleId style = StyleId::NDHIndustrial;
+    SectionType section = SectionType::Free;
     int bars = 2;
     float density = 0.56f;
     float complexity = 0.42f;
