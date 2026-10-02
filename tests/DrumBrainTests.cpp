@@ -285,6 +285,51 @@ void testFillIntensityScalesSectionTransitions() {
     }
 }
 
+void testSixteenBarFinalTransitionExceedsEightBarMidpoint() {
+    GeneratorSettings gs{};
+    gs.bars = 16;
+    gs.style = StyleId::NDHIndustrial;
+    const auto guitar = RiffEngine::generate(gs, 0xF1160001u);
+    BassSettings bs{};
+    const auto bass = BassBrain::generate(guitar, bs, 0xF1160002u);
+
+    auto transitionActivity = [](const DrumPhrase& d, int bar) {
+        long long count = 0;
+        for (int local = 12; local < 16; ++local) {
+            const auto& st = d.steps[bar * kStepsPerBar + local];
+            for (int h = 0; h < st.hitCount; ++h) {
+                const auto v = st.hits[h].voice;
+                if (v == DrumVoice::Kick || v == DrumVoice::Snare ||
+                    v == DrumVoice::LowTom || v == DrumVoice::MidTom ||
+                    v == DrumVoice::HighTom)
+                    ++count;
+            }
+        }
+        return count;
+    };
+
+    for (StyleId style : {StyleId::NDHIndustrial,
+                          StyleId::DarkRockGothic,
+                          StyleId::HeavyIndustrial}) {
+        long long midpoint = 0;
+        long long final = 0;
+        for (unsigned seed = 1; seed <= 128; ++seed) {
+            DrumSettings s{};
+            s.style = style;
+            s.complexity = 0.50f;
+            s.fillIntensity = 0.50f;
+            const auto drums = DrumBrain::generate(
+                guitar, bass, s,
+                940000u + seed +
+                static_cast<unsigned>(static_cast<int>(style)) * 10000u);
+            midpoint += transitionActivity(drums, 7);
+            final += transitionActivity(drums, 15);
+        }
+        require(final > midpoint + 80,
+                "bar 16 must be a materially larger section close than bar 8 at equal Fill Intensity");
+    }
+}
+
 void testHumanizeChangesVelocityNotPattern() {
     Phrase guitar{}, bass{};
     makeContext(guitar, bass);
@@ -489,6 +534,7 @@ int main() {
     testDensityAndComplexityHaveDistinctMaterialEffects();
     testEightBarSectionTransitionFill();
     testFillIntensityScalesSectionTransitions();
+    testSixteenBarFinalTransitionExceedsEightBarMidpoint();
     testHumanizeChangesVelocityNotPattern();
     testStylesHaveDistinctDrumLanguages();
     testVerifiedMapsNeverEmitSamePitchTwicePerStep();
