@@ -301,7 +301,8 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
         // Major section transition: every eighth bar gets a deliberate
         // drummer-like fill. Fill Intensity controls its span: low settings
         // are a pickup on the final sixteenth, 100% uses the full last beat.
-        // Faster 1/32 rolls remain a future ratchet/substep feature.
+        // Drum timing intentionally stays on the 1/16 grid; this role does
+        // not emit 1/32 ratchets or substep hits.
         const bool sixteenBarBoundary = ((bar + 1) % 16) == 0;
         const float majorFillIntensity = sixteenBarBoundary
             ? std::min(1.0f, fillIntensity * 1.25f)

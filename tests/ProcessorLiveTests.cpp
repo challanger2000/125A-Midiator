@@ -1719,6 +1719,12 @@ void testRoleSpecificGateRules() {
         for (const auto& e : output.events) {
             if (e.type != Event::kNoteOnEvent || e.busIndex != kDrumsOutBus)
                 continue;
+
+            const double gridStep =
+                (e.ppqPosition - startQn) / kSixteenthQn;
+            require(std::abs(gridStep - std::round(gridStep)) < eps,
+                    "every Drum note-on must stay exactly on the 16th-note grid");
+
             const double expectedOff = e.ppqPosition + kSixteenthQn;
             const double blockEndQn =
                 startQn + static_cast<double>(data.numSamples) *
