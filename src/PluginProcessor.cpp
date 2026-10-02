@@ -1460,6 +1460,8 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     const bool tonalFrameChanged =
         settings_.scale != oldScale || settings_.style != oldStyle;
     const bool sectionChanged = settings_.section != oldSection;
+    const bool sectionActsAsCompositionChange =
+        sectionChanged && !songMode_;
     const bool freshGeneration = tonalFrameChanged || pending.newRiff;
 
     bool guitarEdited = false;
@@ -1472,7 +1474,7 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         finalRootPitchClass = finalMidiPitchClass;
 
     if (finalRootPitchClass != settings_.rootPitchClass) {
-        if (freshGeneration || sectionChanged) {
+        if (freshGeneration || sectionActsAsCompositionChange) {
             settings_.rootPitchClass = finalRootPitchClass;
         } else {
             transposePhraseToRoot(finalRootPitchClass, false);
@@ -1490,7 +1492,7 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     // already required. Otherwise the generator creates the requested length
     // directly, avoiding an intermediate companion-role cascade.
     if (hasRequestedBars && requestedBars != settings_.bars) {
-        if (freshGeneration || sectionChanged) {
+        if (freshGeneration || sectionActsAsCompositionChange) {
             settings_.bars = requestedBars;
         } else {
             resizePhraseBars(requestedBars, false);
@@ -1501,7 +1503,7 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     // Apply the chord toggle after final Style/Amount/Bars/Root are known.
     if (pending.hasPowerChordsEnabled &&
         pending.powerChordsEnabled != settings_.powerChordsEnabled) {
-        if (freshGeneration || sectionChanged) {
+        if (freshGeneration || sectionActsAsCompositionChange) {
             settings_.powerChordsEnabled = pending.powerChordsEnabled;
         } else {
             applyPowerChordMode(pending.powerChordsEnabled, false);
@@ -1546,10 +1548,24 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         const bool rebuild =
             songModeEnabled || !songCacheValid_ || freshGeneration ||
             guitarEdited || (!pending.variation && roleChanged);
-        if (rebuild)
-            rebuildSongCache(true);
-        else if (sectionChanged)
+        if (rebuild) {
+            // If SECTION also changed in this same host block, phrase_ may
+            // still represent the previous manual fallback. Regenerate every
+            // cached Section from the final settings instead of preserving
+            // that stale slot, then select the requested manual fallback.
+            const bool preserveCurrentManualSection = !sectionChanged;
+            rebuildSongCache(preserveCurrentManualSection);
+            if (sectionChanged)
+                syncManualFromSongCache(false);
+
+            // A same-block SECTION + role edit bypasses the normal role-only
+            // regeneration path above. The rebuilt AUTO cache still changed,
+            // so held notes from the previous bank must be flushed.
+            if (roleChanged)
+                phraseChangedNeedsFlush_ = true;
+        } else if (sectionChanged) {
             syncManualFromSongCache(false);
+        }
     }
 
     // Variation is always last so Style/Scale/New-Riff and structural edits

@@ -2879,6 +2879,55 @@ void testSongModeManualSectionSelectionDoesNotInterruptAuto() {
             "manual SECTION selection during AUTO must not flush the currently playing automatic Section");
 }
 
+
+void testSongModeSectionAndRoleCoEditRefreshesAutoBank() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "AUTO section-role co-edit fixture must start");
+
+    ParameterChanges enable;
+    int32 qi = 0;
+    int32 pi = 0;
+    auto* songQ = enable.addParameterData(kSongModeId, qi);
+    require(songQ && songQ->addPoint(0, 1.0, pi) == kResultOk,
+            "AUTO section-role co-edit fixture must enable Song Mode");
+
+    auto stopped = makeContext(0.0, false);
+    EventList stoppedOut;
+    auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &enable);
+    require(processor.process(stoppedData) == kResultOk,
+            "AUTO section-role co-edit setup must process");
+
+    auto first = makeContext(0.0, true);
+    EventList firstOut;
+    auto firstData = makeProcessData(first, firstOut, 64);
+    require(processor.process(firstData) == kResultOk,
+            "AUTO section-role co-edit playback must start");
+    require(containsType(firstOut, Event::kNoteOnEvent),
+            "AUTO section-role co-edit fixture needs active notes");
+
+    ParameterChanges changes;
+    qi = 0;
+    pi = 0;
+    auto* sectionQ = changes.addParameterData(kSectionTypeId, qi);
+    require(sectionQ &&
+            sectionQ->addPoint(0, 4.0 / 6.0, pi) == kResultOk,
+            "AUTO co-edit CHORUS fallback must be accepted");
+    auto* drumsQ = changes.addParameterData(kDrumDensityId, qi);
+    require(drumsQ && drumsQ->addPoint(0, 1.0, pi) == kResultOk,
+            "AUTO co-edit Drum Density must be accepted");
+
+    const double nextQn = 64.0 / 24000.0;
+    auto next = makeContext(nextQn, true);
+    EventList nextOut;
+    auto nextData = makeProcessData(next, nextOut, 64, &changes);
+    require(processor.process(nextData) == kResultOk,
+            "AUTO SECTION + role co-edit must process");
+
+    require(containsType(nextOut, Event::kNoteOffEvent),
+            "AUTO SECTION + role co-edit must flush held notes because the automatic role bank changed");
+}
+
 } // namespace
 
 int main() {
@@ -2907,6 +2956,7 @@ int main() {
     testSongModeTimelineJumpFlushesEveryBusAndRestarts();
     testSongModeActionsPreserveRunningSectionPosition();
     testSongModeManualSectionSelectionDoesNotInterruptAuto();
+    testSongModeSectionAndRoleCoEditRefreshesAutoBank();
     testSongModeV11StateRoundtripPreservesCompleteCache();
     testPowerChordTogglePreservesRiffOnsetsAndPitches();
     testLargeOfflineBlockKeepsNoteEventsBalanced();
