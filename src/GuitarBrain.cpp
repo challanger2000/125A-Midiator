@@ -496,16 +496,25 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
                 role == 3 ? 7.0f :   // turnaround
                             4.0f;     // second four-bar phrase restart
 
+            // Repetition decides how far a bar may depart from the motif;
+            // Complexity decides how busy that development becomes. Keeping
+            // these independent prevents low-Complexity riffs from receiving
+            // the same forced rhythmic churn as high-Complexity riffs.
+            const float developmentComplexity =
+                0.35f + 0.65f * s.complexity;
+
             int minRhythmChanges =
-                static_cast<int>(std::ceil(development * rhythmWeight));
+                static_cast<int>(std::ceil(
+                    development * rhythmWeight * developmentComplexity));
             if (bar >= 4)
-                minRhythmChanges +=
-                    static_cast<int>(std::ceil(development * 2.0f));
+                minRhythmChanges += static_cast<int>(std::ceil(
+                    development * (0.5f + 1.5f * s.complexity)));
             minRhythmChanges = std::clamp(minRhythmChanges, 0, 12);
 
             const int minStructuralChanges = std::clamp(
                 minRhythmChanges +
-                    static_cast<int>(std::ceil(development * 2.0f)),
+                    static_cast<int>(std::ceil(
+                        development * (0.75f + 1.25f * s.complexity))),
                 minRhythmChanges, 14);
 
             static constexpr int developmentPositions[] = {
