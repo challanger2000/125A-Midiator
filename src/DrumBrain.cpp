@@ -212,7 +212,8 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
 
         // Backbeat remains musically stable.
         if (beat == 1 && local % 4 == 0)
-            addHit(ds, DrumVoice::Snare, humanizedVelocity(velocityRng, static_cast<int>(100.0f + 12.0f * fillIntensity), s.humanize));
+            addHit(ds, DrumVoice::Snare,
+                   humanizedVelocity(velocityRng, 112, s.humanize));
         if (beat == 3 && local % 4 == 0)
             addHit(ds, DrumVoice::Snare, humanizedVelocity(velocityRng, 116, s.humanize));
 
