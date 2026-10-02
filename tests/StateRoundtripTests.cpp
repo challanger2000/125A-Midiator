@@ -823,6 +823,60 @@ int main() {
                 "V9 migration must default Section Type to FREE");
     }
 
+
+    {
+        // V10 had exactly three valid style IDs. V11 must not reinterpret a
+        // corrupt/impossible V10 value as one of the newly-added metal styles.
+        MemoryStream impossibleV10;
+        impossibleV10.bytes() = first.bytes();
+        const uint32_t v10Version = 10u;
+        const int32 impossibleOldStyle =
+            static_cast<int32>(midiator::StyleId::ClassicHeavy);
+        patchFixtureValue(impossibleV10, sizeof(uint32_t), v10Version);
+        patchFixtureValue(impossibleV10, 56, impossibleOldStyle);
+        impossibleV10.rewind();
+
+        MidiatorProcessor target;
+        require(target.setState(&impossibleV10) != kResultOk,
+                "V10 state must reject style IDs that did not exist in V10");
+    }
+
+    {
+        // V11 legitimately stores every expanded style ID without changing
+        // the historical byte layout.
+        MemoryStream deathV11;
+        deathV11.bytes() = first.bytes();
+        const int32 deathStyle =
+            static_cast<int32>(midiator::StyleId::Death);
+        patchFixtureValue(deathV11, 56, deathStyle);
+        deathV11.rewind();
+
+        MidiatorProcessor restoredDeath;
+        require(restoredDeath.setState(&deathV11) == kResultOk,
+                "V11 state must accept expanded metal style IDs");
+
+        MemoryStream serializedDeath;
+        require(restoredDeath.getState(&serializedDeath) == kResultOk,
+                "V11 expanded style state must serialize again");
+        int32 storedStyle = -1;
+        std::memcpy(&storedStyle,
+                    serializedDeath.bytes().data() + 56,
+                    sizeof(storedStyle));
+        require(storedStyle == deathStyle,
+                "V11 expanded style ID must survive exact state roundtrip");
+
+        deathV11.rewind();
+        MidiatorController deathController;
+        require(deathController.initialize(nullptr) == kResultOk,
+                "V11 expanded style controller must initialize");
+        require(deathController.setComponentState(&deathV11) == kResultOk,
+                "V11 expanded style controller must restore state");
+        require(std::abs(
+                    deathController.getParamNormalized(kMetalStyleId) -
+                    6.0 / 11.0) < 1e-9,
+                "V11 Death Metal state must restore the 12-style selector exactly");
+    }
+
     std::cout << "Midiator processor-state roundtrip test: PASS\n";
     return 0;
 }

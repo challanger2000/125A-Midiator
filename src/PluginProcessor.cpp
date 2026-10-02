@@ -308,8 +308,13 @@ bool readStateHeader(IBStream* state,
             int32 storedStyle = 0;
             if (!readValue(state, storedStyle))
                 return false;
+            // V3-V10 only knew the original three style IDs. V11 expands the
+            // enum, but historical states must not reinterpret formerly
+            // invalid values as new genres.
             const int32 maxStyle =
-                static_cast<int32>(midiator::StyleId::Count) - 1;
+                version >= 11u
+                    ? static_cast<int32>(midiator::StyleId::Count) - 1
+                    : static_cast<int32>(midiator::StyleId::HeavyIndustrial);
             if (strictCurrent && (storedStyle < 0 || storedStyle > maxStyle))
                 return false;
             settings.style = static_cast<midiator::StyleId>(
@@ -1232,12 +1237,20 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     const auto oldSection = settings_.section;
     if (pending.hasScale)
         settings_.scale = pending.scale;
-    // The new parameter wins if both generations of style automation arrive
-    // in one block; queue enumeration order cannot change the composition.
-    if (pending.hasMetalStyle)
+    // Resolve old/new automation without allowing the newly-added default
+    // value to overwrite a meaningful historical automation value (or vice
+    // versa). A non-default new style wins over legacy default NDH; a
+    // meaningful legacy style wins over a new default NDH.
+    if (pending.hasMetalStyle &&
+        (pending.metalStyle != midiator::StyleId::NDHIndustrial ||
+         !pending.hasLegacyStyle ||
+         pending.legacyStyle == midiator::StyleId::NDHIndustrial)) {
         settings_.style = pending.metalStyle;
-    else if (pending.hasLegacyStyle)
+    } else if (pending.hasLegacyStyle) {
         settings_.style = pending.legacyStyle;
+    } else if (pending.hasMetalStyle) {
+        settings_.style = pending.metalStyle;
+    }
     if (pending.hasSectionType)
         settings_.section = pending.sectionType;
 

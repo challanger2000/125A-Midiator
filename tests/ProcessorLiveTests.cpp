@@ -2376,6 +2376,72 @@ void testVerifiedDrumMapParameterChangesOutput() {
             "Perfect Drums map must emit closed hi-hat on note 64");
 }
 
+
+void testLegacyAndExpandedStyleAutomationCoexistSafely() {
+    auto captureAfterStyleQueues = [](bool includeLegacy,
+                                      double legacyValue,
+                                      bool includeMetal,
+                                      double metalValue,
+                                      bool reverseOrder) {
+        MidiatorProcessor processor;
+        require(processor.setProcessing(true) == kResultOk,
+                "style-compat fixture must start");
+
+        ParameterChanges changes;
+        int32 qi = 0;
+        int32 pi = 0;
+        auto addLegacy = [&]() {
+            if (!includeLegacy) return;
+            auto* q = changes.addParameterData(kStyleId, qi);
+            require(q && q->addPoint(0, legacyValue, pi) == kResultOk,
+                    "legacy style queue must be accepted");
+        };
+        auto addMetal = [&]() {
+            if (!includeMetal) return;
+            auto* q = changes.addParameterData(kMetalStyleId, qi);
+            require(q && q->addPoint(0, metalValue, pi) == kResultOk,
+                    "expanded style queue must be accepted");
+        };
+
+        if (reverseOrder) {
+            addMetal();
+            addLegacy();
+        } else {
+            addLegacy();
+            addMetal();
+        }
+
+        auto stopped = makeContext(0.0, false);
+        EventList stoppedOut;
+        auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &changes);
+        require(processor.process(stoppedData) == kResultOk,
+                "style-compat setup block must process");
+        return captureGuitarPhrase(processor, 0.0);
+    };
+
+    const auto legacyHeavy =
+        captureAfterStyleQueues(true, 1.0, false, 0.0, false);
+    const auto legacyHeavyPlusNewDefaultA =
+        captureAfterStyleQueues(true, 1.0, true, 0.0, false);
+    const auto legacyHeavyPlusNewDefaultB =
+        captureAfterStyleQueues(true, 1.0, true, 0.0, true);
+    require(legacyHeavy == legacyHeavyPlusNewDefaultA &&
+            legacyHeavy == legacyHeavyPlusNewDefaultB,
+            "new default NDH must not override historical Heavy Industrial automation");
+
+    // Death Metal is enum index 6 of 12 -> normalized 6/11.
+    const double deathValue = 6.0 / 11.0;
+    const auto newDeath =
+        captureAfterStyleQueues(false, 0.0, true, deathValue, false);
+    const auto newDeathPlusLegacyDefaultA =
+        captureAfterStyleQueues(true, 0.0, true, deathValue, false);
+    const auto newDeathPlusLegacyDefaultB =
+        captureAfterStyleQueues(true, 0.0, true, deathValue, true);
+    require(newDeath == newDeathPlusLegacyDefaultA &&
+            newDeath == newDeathPlusLegacyDefaultB,
+            "legacy default NDH must not override expanded Death Metal automation");
+}
+
 } // namespace
 
 int main() {
@@ -2417,6 +2483,7 @@ int main() {
     testGuiMessageBurstsAreCoalescedPerBlock();
     testGuiAndParameterActionsCoalesceSameBlock();
     testParameterQueueOrderCannotChangeCompositionCommands();
+    testLegacyAndExpandedStyleAutomationCoexistSafely();
 
     std::cout << "Midiator live processor tests: PASS\n";
     return 0;
