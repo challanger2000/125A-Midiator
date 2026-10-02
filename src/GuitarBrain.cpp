@@ -437,7 +437,6 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
     };
 
     for (int bar = 0; bar < s.bars; ++bar) {
-        int changedSteps = 0;
         const float roleFactor = roleFactorForBar(bar);
         const float development = 1.0f - s.repetition;
         const float mutationChance =
@@ -450,7 +449,6 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
             Step current = baseBar[i];
 
             if (bar > 0 && rng.chance(mutationChance)) {
-                ++changedSteps;
                 const float action = rng.unit();
 
                 if (current.noteCount == 0) {
@@ -477,7 +475,6 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
             // creating a phrase ending rather than a flat repeated loop.
             if (bar > 0 && (bar % 4) == 3 && i >= 12 &&
                 rng.chance(development * (0.10f + 0.18f * s.complexity))) {
-                ++changedSteps;
                 if (i == 15 && rng.chance(0.60f))
                     current = {};
                 else
@@ -581,6 +578,32 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
                     actualChanges += differsFromBase(pos) ? 1 : 0;
                     actualRhythmChanges += rhythmDiffersFromBase(pos) ? 1 : 0;
                 }
+            }
+
+            // Two independently developed bars can still land on the same
+            // result by chance. At any non-100% Repetition setting, guarantee
+            // at least one audible rhythmic distinction from the immediately
+            // preceding bar.
+            bool identicalToPrevious = true;
+            for (int pos = 0; pos < kStepsPerBar; ++pos) {
+                if (!(result.steps[bar * kStepsPerBar + pos] ==
+                      result.steps[(bar - 1) * kStepsPerBar + pos])) {
+                    identicalToPrevious = false;
+                    break;
+                }
+            }
+            if (identicalToPrevious) {
+                static constexpr int antiClonePositions[] = {
+                    15, 11, 7, 14, 10, 6, 13, 9, 5, 3
+                };
+                const int pos =
+                    antiClonePositions[static_cast<size_t>(bar) %
+                                       std::size(antiClonePositions)];
+                auto& target = result.steps[bar * kStepsPerBar + pos];
+                if (target.noteCount > 0)
+                    target = {};
+                else
+                    target = makeMusicalStep(pos, false);
             }
         }
     }

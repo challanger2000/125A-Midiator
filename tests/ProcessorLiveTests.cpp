@@ -1956,6 +1956,7 @@ void testRoleControlsRegenerateOnlyFromTheirDependencyBoundary() {
         const auto guitarBefore = captureBus(p, kGuitarOutBus, 0.0);
         const auto bassBefore = captureBus(p, kBassOutBus, 8.0);
         const auto drumsBefore = captureBus(p, kDrumsOutBus, 16.0);
+        apply(p, kPadSpreadId, 0.0, 24.0);
         const auto padsBefore = captureBus(p, kPadOutBus, 24.0);
         apply(p, kPadSpreadId, 1.0, 32.0);
         const auto guitarAfter = captureBus(p, kGuitarOutBus, 32.0);

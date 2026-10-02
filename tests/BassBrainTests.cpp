@@ -121,6 +121,8 @@ void testMovementReducesRootDominance() {
 
     const double lowShare = static_cast<double>(lowRoot) / std::max<long long>(1, lowNotes);
     const double highShare = static_cast<double>(highRoot) / std::max<long long>(1, highNotes);
+    std::cerr << "Bass Movement root share 0/100 = "
+              << lowShare << ", " << highShare << "\n";
     require(lowShare > highShare + 0.10,
             "Bass Movement must reduce pedal-root dominance");
 }

@@ -222,7 +222,7 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
                 (0.24f + 0.68f * s.follow) * context * kickContextFactor,
                 0.0f, 1.0f));
         }
-        if (!kick && quarter)
+        if (!kick && quarter && !guitarHit && !bassHit)
             kick = rng.chance(std::clamp(
                 (0.22f + 0.34f * (1.0f - s.follow)) * independentKickFactor,
                 0.0f, 1.0f));

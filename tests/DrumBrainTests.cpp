@@ -119,6 +119,8 @@ void testFollowControlsKickLock() {
 
     const double lowShare = static_cast<double>(lowLocked) / std::max<long long>(1, lowKick);
     const double highShare = static_cast<double>(highLocked) / std::max<long long>(1, highKick);
+    std::cerr << "Drum Follow kick lock 0/100 = "
+              << lowShare << ", " << highShare << "\n";
     require(highShare > lowShare + 0.15,
             "Drum Follow must materially increase kick lock to guitar/bass context");
 }
