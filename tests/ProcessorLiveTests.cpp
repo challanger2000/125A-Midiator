@@ -2645,6 +2645,119 @@ void testSongModeRepeatedSectionUsesContinuationDrums() {
             "first Verse unit must suppress phrase-end tom fills when Verse continues");
 }
 
+
+void testSongModeSixteenBarSectionsCrossOfflineBoundaries() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "16-bar song-mode fixture must start");
+
+    ParameterChanges setup;
+    int32 qi = 0;
+    int32 pi = 0;
+    auto* songQ = setup.addParameterData(kSongModeId, qi);
+    require(songQ && songQ->addPoint(0, 1.0, pi) == kResultOk,
+            "16-bar song-mode fixture must enable AUTO");
+    auto* lengthQ = setup.addParameterData(kSectionLengthId, qi);
+    require(lengthQ && lengthQ->addPoint(0, 1.0, pi) == kResultOk,
+            "16-bar song-mode fixture must select 16 bars");
+
+    auto stopped = makeContext(0.0, false);
+    EventList stoppedOut;
+    auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &setup);
+    require(processor.process(stoppedData) == kResultOk,
+            "16-bar song-mode setup must process");
+
+    // Two complete 16-bar units = 128 quarter notes = 3,072,000 samples
+    // at the fixed 120 BPM / 48 kHz test context. Add a small tail so one
+    // offline block really crosses the second unit boundary.
+    auto running = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(running, output, 3100000);
+    data.processMode = kOffline;
+    require(processor.process(data) == kResultOk,
+            "16-bar AUTO must cross multiple Section units in one offline block");
+
+    std::array<int, kEventOutputBusCount> secondUnitOns{};
+    for (const auto& e : output.events) {
+        if (e.type != Event::kNoteOnEvent ||
+            e.busIndex < 0 || e.busIndex >= kEventOutputBusCount)
+            continue;
+        if (e.ppqPosition >= 64.0 && e.ppqPosition < 128.0)
+            ++secondUnitOns[static_cast<std::size_t>(e.busIndex)];
+
+        if (e.ppqPosition >= 0.0 && e.ppqPosition < 128.0) {
+            const double unitEndQn =
+                (std::floor(e.ppqPosition / 64.0) + 1.0) * 64.0;
+            const double maxLengthSamples =
+                std::ceil((unitEndQn - e.ppqPosition) * 24000.0 + 1.0);
+            require(static_cast<double>(e.noteOn.length) <= maxLengthSamples,
+                    "16-bar AUTO note lengths must stop at the Section-unit boundary");
+        }
+    }
+
+    for (int bus = 0; bus < kEventOutputBusCount; ++bus)
+        require(secondUnitOns[static_cast<std::size_t>(bus)] > 0,
+                "second 16-bar AUTO unit must keep every MIDI role active");
+
+    auto end = makeContext(3100000.0 / 24000.0, false);
+    EventList endOut;
+    auto endData = makeProcessData(end, endOut, 64);
+    require(processor.process(endData) == kResultOk,
+            "stop after 16-bar AUTO offline render must cleanly flush");
+}
+
+void testSongModeTimelineJumpFlushesEveryBusAndRestarts() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "song-mode jump fixture must start");
+
+    ParameterChanges enable;
+    int32 qi = 0;
+    int32 pi = 0;
+    auto* songQ = enable.addParameterData(kSongModeId, qi);
+    require(songQ && songQ->addPoint(0, 1.0, pi) == kResultOk,
+            "song-mode jump fixture must enable AUTO");
+
+    auto stopped = makeContext(0.0, false);
+    EventList stoppedOut;
+    auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &enable);
+    require(processor.process(stoppedData) == kResultOk,
+            "song-mode jump setup must process");
+
+    auto first = makeContext(0.0, true);
+    EventList firstOut;
+    auto firstData = makeProcessData(first, firstOut, 64);
+    require(processor.process(firstData) == kResultOk,
+            "song-mode jump fixture must begin playback");
+    require(containsType(firstOut, Event::kNoteOnEvent),
+            "song-mode jump fixture needs active notes before the jump");
+
+    // Jump while still playing. Processor policy deliberately resets the
+    // AUTO anchor to the destination bar, but it must first panic every role
+    // so no instrument can retain a note from the old timeline position.
+    auto jumped = makeContext(20.0, true);
+    EventList jumpedOut;
+    auto jumpedData = makeProcessData(jumped, jumpedOut, 64);
+    require(processor.process(jumpedData) == kResultOk,
+            "song-mode timeline jump must process");
+
+    std::array<int, kEventOutputBusCount> offs{};
+    bool restartedWithNoteOn = false;
+    for (const auto& e : jumpedOut.events) {
+        if (e.type == Event::kNoteOffEvent &&
+            e.busIndex >= 0 && e.busIndex < kEventOutputBusCount)
+            ++offs[static_cast<std::size_t>(e.busIndex)];
+        if (e.type == Event::kNoteOnEvent)
+            restartedWithNoteOn = true;
+    }
+
+    for (int bus = 0; bus < kEventOutputBusCount; ++bus)
+        require(offs[static_cast<std::size_t>(bus)] >= 128,
+                "song-mode timeline jump must defensively flush all pitches on every bus");
+    require(restartedWithNoteOn,
+            "song-mode timeline jump must restart musical scheduling at the destination bar");
+}
+
 } // namespace
 
 int main() {
@@ -2669,6 +2782,8 @@ int main() {
     testSectionEnergyProfilesAreMusicallyOrdered();
     testSongModeArrangesDeterministicSectionForm();
     testSongModeRepeatedSectionUsesContinuationDrums();
+    testSongModeSixteenBarSectionsCrossOfflineBoundaries();
+    testSongModeTimelineJumpFlushesEveryBusAndRestarts();
     testSongModeV11StateRoundtripPreservesCompleteCache();
     testPowerChordTogglePreservesRiffOnsetsAndPitches();
     testLargeOfflineBlockKeepsNoteEventsBalanced();
