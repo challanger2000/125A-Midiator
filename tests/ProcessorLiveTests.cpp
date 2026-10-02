@@ -913,13 +913,15 @@ void testSectionRolesReuseSeedAndRemainReversible() {
         auto data = makeProcessData(context, output, 192000);
         require(processor.process(data) == kResultOk,
                 "section-role Guitar capture must succeed");
-        std::vector<std::pair<int,int>> notes;
+        std::vector<std::tuple<int,int,int>> notes;
         for (const auto& e : output.events) {
             if (e.type != Event::kNoteOnEvent || e.busIndex != kGuitarOutBus)
                 continue;
             const int step = static_cast<int>(
                 std::lround((e.ppqPosition - startQn) / 0.25));
-            notes.emplace_back(step, e.noteOn.pitch);
+            const int velocity = static_cast<int>(
+                std::lround(e.noteOn.velocity * 127.0f));
+            notes.emplace_back(step, e.noteOn.pitch, velocity);
         }
         return notes;
     };

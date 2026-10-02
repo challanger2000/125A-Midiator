@@ -399,6 +399,7 @@ bool readStateHeader(IBStream* state,
             padSettings.tension = 0.18f;
             synthSettings.activity = 0.46f;
             synthSettings.movement = 0.42f;
+            settings.section = midiator::SectionType::Free;
         }
     } else {
         // V1 had only one fixed root and therefore maps naturally to Manual.
@@ -900,6 +901,7 @@ void MidiatorProcessor::generateNew() {
     midiator::Phrase bestCandidate{};
     double bestOnsetJaccard = 2.0;
     int bestStructuralDifference = -1;
+    uint32_t bestSeed = seed_;
 
     for (int attempt = 0; attempt < 32; ++attempt) {
         seed_ = nextSeed(seed_);
@@ -910,6 +912,7 @@ void MidiatorProcessor::generateNew() {
             bestCandidate = candidate;
             bestStructuralDifference = candidate.usedSteps();
             bestOnsetJaccard = 0.0;
+            bestSeed = seed_;
             break;
         }
 
@@ -922,12 +925,14 @@ void MidiatorProcessor::generateNew() {
             bestCandidate = candidate;
             bestOnsetJaccard = jaccard;
             bestStructuralDifference = difference;
+            bestSeed = seed_;
         }
 
         if (difference >= requiredDifference && jaccard <= 0.48)
             break;
     }
 
+    seed_ = bestSeed;
     phrase_ = bestCandidate;
     regenerateBass();
     phraseChangedNeedsFlush_ = true;

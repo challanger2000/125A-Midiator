@@ -507,6 +507,49 @@ int main() {
         4u, 9, 8, true, static_cast<int32>(midiator::StyleId::DarkRockGothic),
         8.0 / 11.0, 1.0, 0.5, false);
 
+    // Legacy states must reset Section to FREE even when the target processor
+    // previously had a modern Section active.
+    {
+        MidiatorProcessor target;
+        require(target.setProcessing(true) == kResultOk,
+                "legacy-section reset fixture must start");
+
+        // Put the live processor into CHORUS first.
+        ParameterChanges changes;
+        int32 qi = 0;
+        auto* q = changes.addParameterData(kSectionTypeId, qi);
+        int32 pi = 0;
+        require(q && q->addPoint(0, 4.0 / 6.0, pi) == kResultOk,
+                "legacy-section fixture must accept CHORUS");
+        ProcessContext context{};
+        context.state = 0;
+        EventList output;
+        ProcessData data{};
+        data.numSamples = 64;
+        data.processMode = kRealtime;
+        data.symbolicSampleSize = kSample32;
+        data.processContext = &context;
+        data.inputParameterChanges = &changes;
+        data.outputEvents = &output;
+        require(target.process(data) == kResultOk,
+                "legacy-section fixture must apply CHORUS");
+
+        auto legacy = makeLegacyStateFixture(
+            4u, 9, 8, true,
+            static_cast<int32>(midiator::StyleId::DarkRockGothic), true);
+        legacy.rewind();
+        require(target.setState(&legacy) == kResultOk,
+                "V4 state must restore over an active modern Section");
+
+        MemoryStream migrated;
+        require(target.getState(&migrated) == kResultOk,
+                "legacy-over-section state must serialize");
+        int32 section = -1;
+        std::memcpy(&section, migrated.bytes().data() + 104, sizeof(section));
+        require(section == static_cast<int32>(midiator::SectionType::Free),
+                "legacy state must reset an active modern Section to FREE");
+    }
+
     // V5 was the first exact five-role payload format. It had a 64-byte
     // header and no Drum Map or role-shaping values. Reconstruct that exact
     // historical byte layout from a valid current state by removing the
