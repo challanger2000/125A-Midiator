@@ -213,22 +213,33 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
         if (beat == 3 && local % 4 == 0)
             addHit(ds, DrumVoice::Snare, humanizedVelocity(velocityRng, 116, s.humanize));
 
-        // Kick language: shared anchors from guitar/bass plus independent
-        // quarter-note support when Follow is low.
+        // Kick language: Follow continuously crossfades between an independent
+        // pulse and explicit Guitar/Bass reinforcement. Keep the low end of the
+        // control genuinely independent instead of accidentally landing most
+        // random kicks on already-dense context steps.
         bool kick = false;
+        const float shapedFollow =
+            0.22f * s.follow + 0.78f * s.follow * s.follow;
+
         if (guitarHit || bassHit) {
             const float context = (guitarHit && bassHit) ? 1.0f : 0.78f;
             kick = rng.chance(std::clamp(
-                (0.24f + 0.68f * s.follow) * context * kickContextFactor,
+                (0.10f + 0.86f * shapedFollow) *
+                    context * kickContextFactor,
                 0.0f, 1.0f));
         }
+
         if (!kick && quarter && !guitarHit && !bassHit)
             kick = rng.chance(std::clamp(
-                (0.22f + 0.34f * (1.0f - s.follow)) * independentKickFactor,
+                (0.30f + 0.42f * (1.0f - shapedFollow)) *
+                    independentKickFactor,
                 0.0f, 1.0f));
-        if (!kick && !quarter &&
+
+        if (!kick && !quarter && !guitarHit && !bassHit &&
             rng.chance(std::clamp(
-                (0.03f + 0.16f * s.density) * independentKickFactor,
+                (0.04f + 0.18f * s.density) *
+                    (0.40f + 0.60f * (1.0f - shapedFollow)) *
+                    independentKickFactor,
                 0.0f, 1.0f)))
             kick = true;
 

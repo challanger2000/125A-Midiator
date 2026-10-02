@@ -83,7 +83,7 @@ int chooseBassPitch(Rng& rng,
                     bool strongBeat) {
     // Heavy/NDH bass should live primarily on the pedal root, but selectively
     // follow important guitar movement instead of duplicating every guitar note.
-    float rootChance = 0.72f - 0.46f * s.movement;
+    float rootChance = 0.72f - 0.54f * s.movement;
     if (s.style == StyleId::NDHIndustrial)
         rootChance += 0.10f;
     else if (s.style == StyleId::DarkRockGothic)
