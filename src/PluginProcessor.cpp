@@ -889,20 +889,23 @@ void MidiatorProcessor::rebuildSongCache(bool preserveCurrentSection) {
     const auto selectedIndex =
         static_cast<std::size_t>(settings_.section);
 
-    SongSectionSnapshot preserved{};
-    if (preserveCurrentSection) {
-        preserved.guitar = phrase_;
-        preserved.bass = bassPhrase_;
-        preserved.drums = drumPhrase_;
-        preserved.pads = padPhrase_;
-        preserved.synth = synthPhrase_;
-    }
-
     for (int sectionIndex = 0;
          sectionIndex < static_cast<int>(midiator::SectionType::Count);
          ++sectionIndex) {
         const auto section = static_cast<midiator::SectionType>(sectionIndex);
         auto& snapshot = (*songSections_)[static_cast<std::size_t>(sectionIndex)];
+
+        if (preserveCurrentSection &&
+            static_cast<std::size_t>(sectionIndex) == selectedIndex) {
+            // Copy directly into the preallocated heap cache. Avoid a large
+            // temporary SongSectionSnapshot on the audio-thread stack.
+            snapshot.guitar = phrase_;
+            snapshot.bass = bassPhrase_;
+            snapshot.drums = drumPhrase_;
+            snapshot.pads = padPhrase_;
+            snapshot.synth = synthPhrase_;
+            continue;
+        }
 
         auto guitarSettings = settings_;
         guitarSettings.section = section;
@@ -941,10 +944,6 @@ void MidiatorProcessor::rebuildSongCache(bool preserveCurrentSection) {
             snapshot.guitar, snapshot.bass, snapshot.pads, effectiveSynth,
             seed_ ^ 0x53594E26u);
     }
-
-    if (preserveCurrentSection &&
-        selectedIndex < songSections_->size())
-        (*songSections_)[selectedIndex] = preserved;
 
     songCacheValid_ = true;
 }

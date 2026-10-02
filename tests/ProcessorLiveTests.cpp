@@ -5,8 +5,11 @@
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <string>
 #include <tuple>
@@ -27,6 +30,87 @@ void require(bool condition, const char* message) {
         std::exit(1);
     }
 }
+
+
+class MemoryStream final : public IBStream {
+public:
+    tresult PLUGIN_API queryInterface(const TUID iid, void** obj) SMTG_OVERRIDE {
+        if (!obj)
+            return kInvalidArgument;
+        if (FUnknownPrivate::iidEqual(iid, FUnknown::iid) ||
+            FUnknownPrivate::iidEqual(iid, IBStream::iid)) {
+            *obj = static_cast<IBStream*>(this);
+            return kResultOk;
+        }
+        *obj = nullptr;
+        return kNoInterface;
+    }
+
+    uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return 1; }
+    uint32 PLUGIN_API release() SMTG_OVERRIDE { return 1; }
+
+    tresult PLUGIN_API read(void* buffer, int32 numBytes, int32* numBytesRead) SMTG_OVERRIDE {
+        if (!buffer || numBytes < 0)
+            return kInvalidArgument;
+        const auto available =
+            position_ < bytes_.size() ? bytes_.size() - position_ : size_t{0};
+        const auto count =
+            std::min(available, static_cast<size_t>(numBytes));
+        if (count > 0)
+            std::memcpy(buffer, bytes_.data() + position_, count);
+        position_ += count;
+        if (numBytesRead)
+            *numBytesRead = static_cast<int32>(count);
+        return kResultOk;
+    }
+
+    tresult PLUGIN_API write(void* buffer, int32 numBytes, int32* numBytesWritten) SMTG_OVERRIDE {
+        if ((!buffer && numBytes > 0) || numBytes < 0)
+            return kInvalidArgument;
+        const auto count = static_cast<size_t>(numBytes);
+        const auto end = position_ + count;
+        if (end > bytes_.size())
+            bytes_.resize(end);
+        if (count > 0)
+            std::memcpy(bytes_.data() + position_, buffer, count);
+        position_ = end;
+        if (numBytesWritten)
+            *numBytesWritten = numBytes;
+        return kResultOk;
+    }
+
+    tresult PLUGIN_API seek(int64 pos, int32 mode, int64* result) SMTG_OVERRIDE {
+        int64 base = 0;
+        if (mode == kIBSeekCur)
+            base = static_cast<int64>(position_);
+        else if (mode == kIBSeekEnd)
+            base = static_cast<int64>(bytes_.size());
+        else if (mode != kIBSeekSet)
+            return kInvalidArgument;
+
+        const int64 next = base + pos;
+        if (next < 0)
+            return kInvalidArgument;
+        position_ = static_cast<size_t>(next);
+        if (result)
+            *result = next;
+        return kResultOk;
+    }
+
+    tresult PLUGIN_API tell(int64* pos) SMTG_OVERRIDE {
+        if (!pos)
+            return kInvalidArgument;
+        *pos = static_cast<int64>(position_);
+        return kResultOk;
+    }
+
+    void rewind() noexcept { position_ = 0; }
+    const std::vector<uint8_t>& bytes() const noexcept { return bytes_; }
+
+private:
+    std::vector<uint8_t> bytes_{};
+    size_t position_ = 0;
+};
 
 struct EventList final : FObject, IEventList {
     std::vector<Event> events;
@@ -2455,6 +2539,52 @@ void testSongModeArrangesDeterministicSectionForm() {
             "CHORUS must differ from VERSE in automatic song form");
 }
 
+
+void testSongModeV11StateRoundtripPreservesCompleteCache() {
+    MidiatorProcessor original;
+    require(original.setProcessing(true) == kResultOk,
+            "song-state original must start");
+
+    ParameterChanges enable;
+    int32 qi = 0;
+    auto* q = enable.addParameterData(kSongModeId, qi);
+    int32 pi = 0;
+    require(q && q->addPoint(0, 1.0, pi) == kResultOk,
+            "song-state AUTO value must be accepted");
+
+    auto stopped = makeContext(0.0, false);
+    EventList stoppedOut;
+    auto enableData = makeProcessData(stopped, stoppedOut, 64, &enable);
+    require(original.process(enableData) == kResultOk,
+            "song-state AUTO enable must process");
+
+    MemoryStream first;
+    require(original.getState(&first) == kResultOk,
+            "V11 song state must serialize");
+    require(first.bytes().size() > 100000,
+            "V11 AUTO state must contain the complete cached multi-section payload");
+
+    first.rewind();
+    MidiatorProcessor restored;
+    require(restored.setState(&first) == kResultOk,
+            "V11 song state must restore");
+
+    MemoryStream second;
+    require(restored.getState(&second) == kResultOk,
+            "restored V11 song state must serialize");
+    require(first.bytes() == second.bytes(),
+            "V11 AUTO roundtrip must preserve the exact complete song cache");
+
+    first.rewind();
+    MidiatorController controller;
+    require(controller.initialize(nullptr) == kResultOk,
+            "song-state controller must initialize");
+    require(controller.setComponentState(&first) == kResultOk,
+            "song-state controller must restore V11 state");
+    require(std::abs(controller.getParamNormalized(kSongModeId) - 1.0) < 1e-9,
+            "V11 controller recall must restore Song Mode AUTO");
+}
+
 } // namespace
 
 int main() {
@@ -2478,6 +2608,7 @@ int main() {
     testSectionRolesReuseSeedAndRemainReversible();
     testSectionEnergyProfilesAreMusicallyOrdered();
     testSongModeArrangesDeterministicSectionForm();
+    testSongModeV11StateRoundtripPreservesCompleteCache();
     testPowerChordTogglePreservesRiffOnsetsAndPitches();
     testLargeOfflineBlockKeepsNoteEventsBalanced();
     testStopFlushesEveryActiveInstrumentBus();
