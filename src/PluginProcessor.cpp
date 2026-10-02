@@ -12,6 +12,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace Steinberg::Vst {
 namespace {
@@ -428,31 +429,42 @@ tresult PLUGIN_API MidiatorProcessor::initialize(FUnknown* context) {
 }
 
 tresult PLUGIN_API MidiatorProcessor::setActive(TBool state) {
-    if (state) {
+    if (!state) {
+        // No event list is available from setActive(false), so never discard
+        // active-note knowledge here. Force a defensive all-note flush on the
+        // next process call after reactivation.
+        lifecyclePanicPending_ = true;
+    } else if (!lifecyclePanicPending_) {
+        // Initial activation has no preceding notes to preserve.
         for (auto& bus : activePitchesByBus_)
             bus.fill(false);
-        wasPlaying_ = false;
-        haveExpectedProjectTime_ = false;
-        expectedProjectTimeQn_ = 0.0;
-        haveTransportAnchor_ = false;
-        transportAnchorQn_ = 0.0;
-        phraseChangedNeedsFlush_ = false;
     }
-    return AudioEffect::setActive(state);
-}
 
-tresult PLUGIN_API MidiatorProcessor::setProcessing(TBool state) {
-    // Midiator has no audio DSP resources to start/stop, but hosts and
-    // stress-testers legitimately expect the VST3 processing transition
-    // to be implemented instead of inheriting kNotImplemented.
-    for (auto& bus : activePitchesByBus_)
-            bus.fill(false);
     wasPlaying_ = false;
     haveExpectedProjectTime_ = false;
     expectedProjectTimeQn_ = 0.0;
     haveTransportAnchor_ = false;
     transportAnchorQn_ = 0.0;
-    phraseChangedNeedsFlush_ = false;
+    return AudioEffect::setActive(state);
+}
+
+tresult PLUGIN_API MidiatorProcessor::setProcessing(TBool state) {
+    // Hosts may call setProcessing(false) before they deliver a final stopped
+    // process block. There is no IEventList here, so clearing active pitches
+    // would make a later NoteOff recovery impossible. Preserve the state and
+    // request an all-note panic on the next process call instead.
+    if (!state) {
+        lifecyclePanicPending_ = true;
+    } else if (!lifecyclePanicPending_) {
+        for (auto& bus : activePitchesByBus_)
+            bus.fill(false);
+    }
+
+    wasPlaying_ = false;
+    haveExpectedProjectTime_ = false;
+    expectedProjectTimeQn_ = 0.0;
+    haveTransportAnchor_ = false;
+    transportAnchorQn_ = 0.0;
     return kResultOk;
 }
 
@@ -1268,6 +1280,12 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     const bool playing = context && (context->state & ProcessContext::kPlaying);
     const double currentPpq = hasProjectTime ? context->projectTimeMusic : 0.0;
 
+    if (lifecyclePanicPending_) {
+        if (!flushActiveNotes(data.outputEvents, currentPpq, true))
+            return kResultFalse;
+        lifecyclePanicPending_ = false;
+    }
+
     if (phraseChangedNeedsFlush_) {
         if (!flushActiveNotes(data.outputEvents, currentPpq))
             return kResultFalse;
@@ -1346,7 +1364,8 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     int scheduledCount = 0;
     bool schedulerOverflow = false;
 
-    auto addScheduled = [&](double eventQn, bool noteOn, int pitch, int velocity, int32 busIndex) {
+    auto addScheduled = [&](double eventQn, bool noteOn, int pitch, int velocity,
+                            int32 busIndex, double noteOffQn = -1.0) {
         constexpr double eps = 1e-9;
         if (eventQn + eps < blockStartQn || eventQn >= blockEndQn - eps)
             return;
@@ -1366,6 +1385,15 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         e.pitch = std::clamp(pitch, 0, 127);
         e.velocity = std::clamp(velocity, 0, 126);
         e.busIndex = std::clamp<int32>(busIndex, 0, kEventOutputBusCount - 1);
+
+        if (noteOn && noteOffQn > eventQn) {
+            const double lengthSamples =
+                std::max(1.0, std::round((noteOffQn - eventQn) / qnPerSample));
+            e.noteLengthSamples = static_cast<int32>(std::min(
+                lengthSamples,
+                static_cast<double>(std::numeric_limits<int32>::max())));
+        }
+
         scheduled[scheduledCount++] = e;
     };
 
@@ -1410,7 +1438,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                                kStepQuarterNotes - kSustainGapQn;
                 const double offQn =
                     std::max(onQn, std::min(latestOffQn, requestedOffQn));
-                addScheduled(onQn, true, note.pitch, note.velocity, busIndex);
+                addScheduled(onQn, true, note.pitch, note.velocity, busIndex, offQn);
                 addScheduled(offQn, false, note.pitch, 0, busIndex);
             }
         }
@@ -1428,7 +1456,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
             for (int n = 0; n < step.hitCount; ++n) {
                 const auto& hit = step.hits[n];
                 const int pitch = drumMap_.midiNote(hit.voice);
-                addScheduled(onQn, true, pitch, hit.velocity, kDrumsOutBus);
+                addScheduled(onQn, true, pitch, hit.velocity, kDrumsOutBus, offQn);
                 addScheduled(offQn, false, pitch, 0, kDrumsOutBus);
             }
         }
@@ -1466,7 +1494,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                                kStepQuarterNotes - kPadReleaseGapQn;
                 const double offQn =
                     std::max(onQn, std::min(latestOffQn, requestedOffQn));
-                addScheduled(onQn, true, note.pitch, note.velocity, kPadOutBus);
+                addScheduled(onQn, true, note.pitch, note.velocity, kPadOutBus, offQn);
                 addScheduled(offQn, false, note.pitch, 0, kPadOutBus);
             }
         }
@@ -1503,7 +1531,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                     onQn + static_cast<double>(std::max(1, note.lengthSteps)) *
                                kStepQuarterNotes;
                 const double offQn = std::max(onQn, std::min(nextOnQn, requestedOffQn));
-                addScheduled(onQn, true, note.pitch, note.velocity, kSynthOutBus);
+                addScheduled(onQn, true, note.pitch, note.velocity, kSynthOutBus, offQn);
                 addScheduled(offQn, false, note.pitch, 0, kSynthOutBus);
             }
         }
@@ -1534,7 +1562,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                 e.noteOn.channel = 0;
                 e.noteOn.pitch = static_cast<int16>(s.pitch);
                 e.noteOn.velocity = static_cast<float>(s.velocity) / 127.0f;
-                e.noteOn.length = 0;
+                e.noteOn.length = s.noteLengthSamples;
                 e.noteOn.tuning = 0.0f;
                 e.noteOn.noteId = -1;
 

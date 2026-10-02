@@ -91,6 +91,7 @@ private:
         int pitch = 0;
         int velocity = 0;
         int32 busIndex = kGuitarOutBus;
+        int32 noteLengthSamples = 0;
     };
 
     midiator::GeneratorSettings settings_{};
@@ -117,6 +118,7 @@ private:
 
     float variationAmount_ = 0.35f;
     bool phraseChangedNeedsFlush_ = false;
+    bool lifecyclePanicPending_ = false;
     bool midiRootSource_ = true;
     int manualRootPitchClass_ = 9;
     std::atomic<uint32_t> pendingNewRiffCommands_{0};

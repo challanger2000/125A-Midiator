@@ -328,6 +328,66 @@ void testTransportStopSendsDefensivePanicNoteOffs() {
                 "transport stop must panic-flush all 128 pitches on every role bus");
 }
 
+void testLifecycleRestartPanicFlushesAllRoleBuses() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "lifecycle panic fixture must start");
+
+    auto running = makeContext(0.0, true);
+    EventList first;
+    auto firstData = makeProcessData(running, first, 64);
+    require(processor.process(firstData) == kResultOk,
+            "lifecycle panic fixture must create notes");
+    require(containsType(first, Event::kNoteOnEvent),
+            "lifecycle panic fixture needs NoteOns");
+
+    require(processor.setProcessing(false) == kResultOk,
+            "lifecycle panic fixture must stop processing");
+    require(processor.setProcessing(true) == kResultOk,
+            "lifecycle panic fixture must restart processing");
+
+    auto resumed = makeContext(4.0, true);
+    EventList output;
+    auto resumedData = makeProcessData(resumed, output, 64);
+    require(processor.process(resumedData) == kResultOk,
+            "first block after lifecycle restart must process");
+
+    std::array<int, kEventOutputBusCount> offsByBus{};
+    for (const auto& e : output.events) {
+        if (e.type == Event::kNoteOffEvent &&
+            e.busIndex >= 0 && e.busIndex < kEventOutputBusCount)
+            ++offsByBus[static_cast<size_t>(e.busIndex)];
+    }
+    for (int bus = 0; bus < kEventOutputBusCount; ++bus)
+        require(offsByBus[static_cast<size_t>(bus)] >= 128,
+                "lifecycle restart must panic-flush every role bus before new notes");
+}
+
+void testGeneratedNoteOnsCarryPlannedLength() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "note-length fixture must start");
+
+    auto running = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(running, output, 192000);
+    require(processor.process(data) == kResultOk,
+            "note-length fixture must process");
+
+    std::array<bool, kEventOutputBusCount> sawOn{};
+    for (const auto& e : output.events) {
+        if (e.type != Event::kNoteOnEvent ||
+            e.busIndex < 0 || e.busIndex >= kEventOutputBusCount)
+            continue;
+        sawOn[static_cast<size_t>(e.busIndex)] = true;
+        require(e.noteOn.length > 0,
+                "every generated NoteOn must carry its planned length in sample frames");
+    }
+    for (int bus = 0; bus < kEventOutputBusCount; ++bus)
+        require(sawOn[static_cast<size_t>(bus)],
+                "note-length fixture must exercise every role bus");
+}
+
 void testDedicatedInstrumentOutputBuses() {
     MidiatorProcessor processor;
     require(processor.initialize(nullptr) == kResultOk,
@@ -1952,6 +2012,8 @@ int main() {
     testRejectedScheduledEventForcesCleanupBeforeContinuing();
     testNonFourFourTimeSignatureStaysSilentAndFlushes();
     testTransportStopSendsDefensivePanicNoteOffs();
+    testLifecycleRestartPanicFlushesAllRoleBuses();
+    testGeneratedNoteOnsCarryPlannedLength();
     testAllInstrumentRolesUseSeparateOutputBuses();
     testDedicatedInstrumentOutputBuses();
     testVerifiedDrumMapParameterChangesOutput();
