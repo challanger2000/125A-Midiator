@@ -508,31 +508,19 @@ int main() {
         8.0 / 11.0, 1.0, 0.5, false);
 
     // Legacy states must reset Section to FREE even when the target processor
-    // previously had a modern Section active.
+    // previously restored a modern non-FREE state.
     {
         MidiatorProcessor target;
-        require(target.setProcessing(true) == kResultOk,
-                "legacy-section reset fixture must start");
 
-        // Put the live processor into CHORUS first.
-        ParameterChanges changes;
-        int32 qi = 0;
-        auto* q = changes.addParameterData(kSectionTypeId, qi);
-        int32 pi = 0;
-        require(q && q->addPoint(0, 4.0 / 6.0, pi) == kResultOk,
-                "legacy-section fixture must accept CHORUS");
-        ProcessContext context{};
-        context.state = 0;
-        EventList output;
-        ProcessData data{};
-        data.numSamples = 64;
-        data.processMode = kRealtime;
-        data.symbolicSampleSize = kSample32;
-        data.processContext = &context;
-        data.inputParameterChanges = &changes;
-        data.outputEvents = &output;
-        require(target.process(data) == kResultOk,
-                "legacy-section fixture must apply CHORUS");
+        MemoryStream modern;
+        require(target.getState(&modern) == kResultOk,
+                "modern-section fixture must serialize");
+        const int32 chorus =
+            static_cast<int32>(midiator::SectionType::Chorus);
+        patchFixtureValue(modern, 104, chorus);
+        modern.rewind();
+        require(target.setState(&modern) == kResultOk,
+                "modern CHORUS state must restore before legacy migration");
 
         auto legacy = makeLegacyStateFixture(
             4u, 9, 8, true,
