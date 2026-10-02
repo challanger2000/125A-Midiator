@@ -203,6 +203,9 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
     // Section-transition fills use their own stream so enabling/expanding
     // transition language never rewrites the underlying groove topology.
     Rng transitionRng(seed ^ 0x46494C4Cu);
+    // New genre-specific snare language is isolated as well: adding a blast/
+    // skank accent must not randomly rewrite the kick pattern underneath it.
+    Rng styleSnareRng(seed ^ 0x534E4152u);
 
     for (int step = 0; step < out.usedSteps(); ++step) {
         const int local = step % kStepsPerBar;
@@ -215,9 +218,13 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
 
         auto& ds = out.steps[step];
 
-        // Hat backbone: stable 8ths at low density, with controlled 16ths as
-        // density/complexity rise.
-        if (eighth || rng.chance(
+        // Hat backbone: stable 8ths for most styles. Doom deliberately drops
+        // to quarter-note cymbal time; density/complexity can still add motion.
+        // The original three styles retain their exact previous backbone.
+        bool hatBackbone = eighth;
+        if (s.style == StyleId::Doom)
+            hatBackbone = quarter;
+        if (hatBackbone || rng.chance(
                 std::clamp((0.10f + 0.55f * s.density * s.complexity) *
                                hatSixteenthFactor,
                            0.0f, 1.0f))) {
@@ -230,12 +237,47 @@ DrumPhrase DrumBrain::generate(const Phrase& guitar,
                    humanizedVelocity(velocityRng, eighth ? 86 : 70, s.humanize));
         }
 
-        // Backbeat remains musically stable.
-        if (beat == 1 && local % 4 == 0)
-            addHit(ds, DrumVoice::Snare,
-                   humanizedVelocity(velocityRng, 112, s.humanize));
-        if (beat == 3 && local % 4 == 0)
-            addHit(ds, DrumVoice::Snare, humanizedVelocity(velocityRng, 116, s.humanize));
+        // Backbeat language. Nu Metal and Doom intentionally sit in a
+        // half-time pocket (snare on beat 3). Fast extreme-metal families can
+        // add deterministic-probability skank/blast accents on the off-eighths.
+        if (s.style == StyleId::NuMetal || s.style == StyleId::Doom) {
+            if (local == 8)
+                addHit(ds, DrumVoice::Snare,
+                       humanizedVelocity(velocityRng, 116, s.humanize));
+        } else {
+            if (beat == 1 && local % 4 == 0)
+                addHit(ds, DrumVoice::Snare,
+                       humanizedVelocity(velocityRng, 112, s.humanize));
+            if (beat == 3 && local % 4 == 0)
+                addHit(ds, DrumVoice::Snare,
+                       humanizedVelocity(velocityRng, 116, s.humanize));
+        }
+
+        if ((local % 4) == 2) {
+            float fastSnareChance = 0.0f;
+            int fastSnareVelocity = 96;
+            if (s.style == StyleId::Thrash) {
+                fastSnareChance =
+                    0.10f + 0.28f * s.complexity + 0.08f * s.density;
+                fastSnareVelocity = 96;
+            } else if (s.style == StyleId::Death) {
+                fastSnareChance =
+                    0.18f + 0.40f * s.complexity + 0.15f * s.density;
+                fastSnareVelocity = 102;
+            } else if (s.style == StyleId::MelodicDeath) {
+                fastSnareChance =
+                    0.08f + 0.22f * s.complexity + 0.05f * s.density;
+                fastSnareVelocity = 98;
+            }
+
+            if (fastSnareChance > 0.0f &&
+                styleSnareRng.chance(
+                    std::clamp(fastSnareChance, 0.0f, 0.92f))) {
+                addHit(ds, DrumVoice::Snare,
+                       humanizedVelocity(
+                           velocityRng, fastSnareVelocity, s.humanize));
+            }
+        }
 
         // Kick language: Follow continuously crossfades between an independent
         // pulse and explicit Guitar/Bass reinforcement. Keep the low end of the

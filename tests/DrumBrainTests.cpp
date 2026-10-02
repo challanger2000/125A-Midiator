@@ -407,6 +407,8 @@ void testStylesHaveDistinctDrumLanguages() {
 
     struct Metrics {
         long long kicks = 0;
+        long long snares = 0;
+        long long hats = 0;
         long long hats16 = 0;
         long long openHats = 0;
         long long toms = 0;
@@ -427,10 +429,15 @@ void testStylesHaveDistinctDrumLanguages() {
                         case DrumVoice::Kick:
                             ++m.kicks;
                             break;
+                        case DrumVoice::Snare:
+                            ++m.snares;
+                            break;
                         case DrumVoice::ClosedHat:
+                            ++m.hats;
                             if ((local % 2) != 0) ++m.hats16;
                             break;
                         case DrumVoice::OpenHat:
+                            ++m.hats;
                             ++m.openHats;
                             if ((local % 2) != 0) ++m.hats16;
                             break;
@@ -451,6 +458,13 @@ void testStylesHaveDistinctDrumLanguages() {
     const auto ndh = measure(StyleId::NDHIndustrial);
     const auto dark = measure(StyleId::DarkRockGothic);
     const auto heavy = measure(StyleId::HeavyIndustrial);
+    const auto classic = measure(StyleId::ClassicHeavy);
+    const auto thrash = measure(StyleId::Thrash);
+    const auto groove = measure(StyleId::Groove);
+    const auto death = measure(StyleId::Death);
+    const auto melodicDeath = measure(StyleId::MelodicDeath);
+    const auto nu = measure(StyleId::NuMetal);
+    const auto doom = measure(StyleId::Doom);
 
     require(heavy.kicks > dark.kicks + 400,
             "Heavy Industrial drums must use materially more kick pressure than Dark Rock");
@@ -460,6 +474,19 @@ void testStylesHaveDistinctDrumLanguages() {
             "Dark Rock drums must breathe more through open hats than NDH");
     require(dark.toms > ndh.toms,
             "Dark Rock drums must permit more tom movement than NDH");
+
+    require(death.snares > classic.snares + 1500,
+            "Death Metal must add a materially faster snare language");
+    require(thrash.snares > classic.snares + 800,
+            "Thrash Metal must add clear skank/snare pressure over Classic Heavy");
+    require(melodicDeath.snares > classic.snares + 450,
+            "Melodic Death must sit between classic backbeat and full Death pressure");
+    require(classic.snares > doom.snares + 800,
+            "Doom Metal must use a clear half-time snare pocket");
+    require(groove.snares > nu.snares + 800,
+            "Nu Metal must be half-time relative to Groove Metal");
+    require(classic.hats > doom.hats + 2000,
+            "Doom Metal must use a materially slower cymbal backbone");
 }
 
 void testVerifiedMapsNeverEmitSamePitchTwicePerStep() {
