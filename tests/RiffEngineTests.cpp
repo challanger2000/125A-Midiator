@@ -557,6 +557,59 @@ void testEightBarMacroDevelopmentStaysMusical() {
             "bars 5-8 must develop the first four bars without becoming unrelated");
 }
 
+void testSixteenBarMacroDevelopmentStaysMusical() {
+    midiator::GeneratorSettings s{};
+    s.bars = 16;
+    s.rootPitchClass = 9;
+    s.scale = midiator::ScaleId::Phrygian;
+    s.style = midiator::StyleId::NDHIndustrial;
+    s.density = 0.56f;
+    s.complexity = 0.42f;
+    s.repetition = 0.72f;
+
+    auto jaccard = [](const midiator::Phrase& p, int a, int b) {
+        int intersection = 0;
+        int unionCount = 0;
+        for (int step = 0; step < midiator::kStepsPerBar; ++step) {
+            const bool ah =
+                p.steps[a * midiator::kStepsPerBar + step].noteCount > 0;
+            const bool bh =
+                p.steps[b * midiator::kStepsPerBar + step].noteCount > 0;
+            if (ah || bh) ++unionCount;
+            if (ah && bh) ++intersection;
+        }
+        return unionCount > 0
+            ? static_cast<double>(intersection) / unionCount : 1.0;
+    };
+
+    double adjacent = 0.0;
+    double halfMirror = 0.0;
+    int adjacentPairs = 0;
+    int halfPairs = 0;
+
+    for (unsigned seed = 1; seed <= 256; ++seed) {
+        const auto p = midiator::RiffEngine::generate(s, 980000u + seed);
+        for (int bar = 1; bar < 16; ++bar) {
+            adjacent += jaccard(p, bar - 1, bar);
+            ++adjacentPairs;
+        }
+        for (int bar = 0; bar < 8; ++bar) {
+            halfMirror += jaccard(p, bar, bar + 8);
+            ++halfPairs;
+        }
+    }
+
+    const double adjacentMean = adjacent / adjacentPairs;
+    const double halfMirrorMean = halfMirror / halfPairs;
+
+    require(adjacentMean >= 0.66 && adjacentMean <= 0.82,
+            "default 16-bar phrase must stay recognizable from bar to bar");
+    require(halfMirrorMean >= 0.45 && halfMirrorMean <= 0.68,
+            "bars 9-16 must develop bars 1-8 without becoming unrelated");
+    require(halfMirrorMean < adjacentMean - 0.10,
+            "the second eight-bar half must be more developed than immediate bar-to-bar motion");
+}
+
 void testRepetitionControlBehavior() {
     midiator::GeneratorSettings low{};
     low.bars = 4;
@@ -728,6 +781,7 @@ int main() {
     testStyleEnginesHaveDistinctRhythmLanguages();
     testFourBarRoleDevelopment();
     testEightBarMacroDevelopmentStaysMusical();
+    testSixteenBarMacroDevelopmentStaysMusical();
     testRepetitionControlBehavior();
     testComplexityControlBehavior();
 
