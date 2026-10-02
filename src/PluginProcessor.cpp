@@ -731,6 +731,7 @@ void MidiatorProcessor::generateNew() {
         seed_ = nextSeed(seed_);
         const auto effectiveSettings = sectionGeneratorSettings(settings_);
         candidate = midiator::RiffEngine::generate(effectiveSettings, seed_);
+        midiator::applySectionPhraseShape(candidate, settings_.section, seed_);
 
         if (!havePrevious) {
             bestCandidate = candidate;
@@ -770,6 +771,7 @@ void MidiatorProcessor::generateVariation() {
     const auto effectiveSettings = sectionGeneratorSettings(settings_);
     phrase_ = midiator::RiffEngine::vary(
         phrase_, effectiveSettings, variationAmount_, seed_);
+    midiator::applySectionPhraseShape(phrase_, settings_.section, seed_);
     regenerateBass();
     phraseChangedNeedsFlush_ = true;
 }
@@ -821,6 +823,7 @@ void MidiatorProcessor::regenerateSectionFromCurrentSeed() {
     // related and switching back to FREE restores the same core riff.
     const auto effectiveSettings = sectionGeneratorSettings(settings_);
     phrase_ = midiator::RiffEngine::generate(effectiveSettings, seed_);
+    midiator::applySectionPhraseShape(phrase_, settings_.section, seed_);
     regenerateBass();
     phraseChangedNeedsFlush_ = true;
 }

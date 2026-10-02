@@ -1208,8 +1208,9 @@ int main() {
             GeneratorSettings g = s;
             g.bars = 8;
             g.section = section;
-            const auto guitar = RiffEngine::generate(
+            auto guitar = RiffEngine::generate(
                 sectionGeneratorSettings(g), sectionSeed);
+            applySectionPhraseShape(guitar, section, sectionSeed);
 
             BassSettings b{};
             b.rootPitchClass = g.rootPitchClass;

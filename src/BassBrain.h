@@ -12,6 +12,7 @@ struct BassSettings {
     StyleId style = StyleId::NDHIndustrial;
     int lowRootMidi = 28;            // E1 reference region; root is aligned upward
     float follow = 0.72f;            // rhythmic lock to the guitar phrase
+    float activity = 1.0f;            // internal section-level note thinning
     float movement = 0.34f;          // chord/scale movement away from the pedal root
     float passing = 0.16f;           // controlled connecting notes
     float octaveChance = 0.10f;      // occasional octave reinforcement

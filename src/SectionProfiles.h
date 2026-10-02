@@ -46,30 +46,82 @@ inline GeneratorSettings sectionGeneratorSettings(const GeneratorSettings& base)
     return s;
 }
 
+inline void applySectionPhraseShape(Phrase& phrase,
+                                         SectionType section,
+                                         uint32_t seed) {
+    if (section == SectionType::Free ||
+        section == SectionType::Chorus ||
+        section == SectionType::PreChorus)
+        return;
+
+    float offbeatKeep = 1.0f;
+    float strongKeep = 1.0f;
+    switch (section) {
+        case SectionType::Intro:
+            offbeatKeep = 0.48f; strongKeep = 0.88f; break;
+        case SectionType::Verse:
+            offbeatKeep = 0.86f; strongKeep = 1.00f; break;
+        case SectionType::Breakdown:
+            offbeatKeep = 0.68f; strongKeep = 1.00f; break;
+        case SectionType::Outro:
+            offbeatKeep = 0.58f; strongKeep = 0.88f; break;
+        default:
+            return;
+    }
+
+    auto unitFor = [&](int step) {
+        uint32_t x = seed ^ (0x9E3779B9u * static_cast<uint32_t>(step + 1));
+        x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+        return static_cast<float>(x & 0x00ffffffu) /
+               static_cast<float>(0x01000000u);
+    };
+
+    for (int step=0; step<phrase.usedSteps(); ++step) {
+        auto& st = phrase.steps[step];
+        if (st.noteCount <= 0)
+            continue;
+        const int local = step % kStepsPerBar;
+        const bool strong = (local % 4) == 0;
+        const float keep = strong ? strongKeep : offbeatKeep;
+        if (unitFor(step) > keep)
+            st = {};
+    }
+
+    // Never let a section profile erase the opening musical anchor.
+    if (phrase.steps[0].noteCount == 0) {
+        // The raw generated phrase always owns a valid first step; section
+        // thinning only reaches this path defensively.
+        phrase.steps[0].noteCount = 1;
+        phrase.steps[0].notes[0] = {33, 100, 1};
+    }
+}
+
 inline BassSettings sectionBassSettings(const BassSettings& base, SectionType section) {
     auto s=base;
     switch(section) {
         case SectionType::Free: return s;
         case SectionType::Intro:
-            s.follow*=0.85f; s.movement*=0.80f; s.passing*=0.70f;
-            s.octaveChance*=0.65f; s.sustain*=1.15f; break;
+            s.follow*=0.90f; s.activity*=0.42f; s.movement*=0.80f;
+            s.passing*=0.65f; s.octaveChance*=0.65f; s.sustain*=1.15f; break;
         case SectionType::Verse:
-            s.follow*=1.00f; s.movement*=0.95f; s.passing*=0.90f; break;
+            s.follow*=1.00f; s.activity*=0.90f; s.movement*=0.95f;
+            s.passing*=0.90f; break;
         case SectionType::PreChorus:
             s.follow*=1.03f; s.movement*=1.08f; s.passing*=1.10f; break;
         case SectionType::Chorus:
             s.follow*=1.05f; s.movement*=1.00f; s.octaveChance*=1.30f;
             s.sustain*=1.10f; break;
         case SectionType::Breakdown:
-            s.follow*=1.12f; s.movement*=0.70f; s.passing*=0.65f;
-            s.sustain*=1.25f; break;
+            s.follow*=1.12f; s.activity*=0.78f; s.movement*=0.70f;
+            s.passing*=0.65f; s.sustain*=1.25f; break;
         case SectionType::Outro:
-            s.follow*=0.90f; s.movement*=0.85f; s.passing*=0.75f;
-            s.sustain*=1.15f; break;
+            s.follow*=0.92f; s.activity*=0.58f; s.movement*=0.85f;
+            s.passing*=0.70f; s.sustain*=1.15f; break;
         case SectionType::Count: break;
     }
-    s.follow=sectionClampUnit(s.follow); s.movement=sectionClampUnit(s.movement);
-    s.passing=sectionClampUnit(s.passing); s.octaveChance=sectionClampUnit(s.octaveChance);
+    s.follow=sectionClampUnit(s.follow); s.activity=sectionClampUnit(s.activity);
+    s.movement=sectionClampUnit(s.movement); s.passing=sectionClampUnit(s.passing);
+    s.octaveChance=sectionClampUnit(s.octaveChance);
     s.sustain=sectionClampUnit(s.sustain);
     return s;
 }

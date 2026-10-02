@@ -182,6 +182,7 @@ Phrase BassBrain::generate(const Phrase& guitar,
                            uint32_t seed) {
     BassSettings s = in;
     s.follow = std::clamp(s.follow, 0.0f, 1.0f);
+    s.activity = std::clamp(s.activity, 0.0f, 1.0f);
     s.movement = std::clamp(s.movement, 0.0f, 1.0f);
     s.passing = std::clamp(s.passing, 0.0f, 1.0f);
     s.octaveChance = std::clamp(s.octaveChance, 0.0f, 1.0f);
@@ -231,6 +232,15 @@ Phrase BassBrain::generate(const Phrase& guitar,
         }
 
         if (!hit)
+            continue;
+
+        // Section profiles can thin the Bass without abusing FOLLOW. At 1.0
+        // this adds no RNG call and therefore preserves the historical FREE
+        // sequence bit-for-bit.
+        if (s.activity < 0.9999f && !strongBeat && !rng.chance(s.activity))
+            continue;
+        if (s.activity < 0.50f && strongBeat &&
+            !guitarHit && !rng.chance(0.55f + 0.90f * s.activity))
             continue;
 
         int pitch = chooseBassPitch(rng, guitar, step, s, root, strongBeat);
