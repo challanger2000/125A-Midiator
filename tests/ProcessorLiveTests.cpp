@@ -971,6 +971,79 @@ void testGeneratedNoteLengthsAffectMidiOutput() {
     require(foundLong, "generated longer notes must produce audibly longer MIDI durations");
 }
 
+void testManualRootChangeTransposesLiveWithoutGenerate() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "manual-root live fixture must start");
+
+    auto captureGuitar = [](const EventList& list) {
+        std::vector<std::pair<int32, int>> notes;
+        for (const auto& e : list.events) {
+            if (e.type == Event::kNoteOnEvent && e.busIndex == kGuitarOutBus)
+                notes.emplace_back(e.sampleOffset, static_cast<int>(e.noteOn.pitch));
+        }
+        return notes;
+    };
+
+    // Capture the current generated A-root phrase. No NEW RIFF command is used.
+    auto firstContext = makeContext(0.0, true);
+    EventList first;
+    auto firstData = makeProcessData(firstContext, first, 192000);
+    require(processor.process(firstData) == kResultOk,
+            "manual-root baseline block must process");
+    const auto before = captureGuitar(first);
+    require(!before.empty(),
+            "manual-root baseline must contain Guitar NoteOns");
+
+    // While transport keeps running, switch Root Source to Manual and change
+    // Root Note from the default A to C in the same block. This must transpose
+    // the existing phrase rather than require or imply NEW RIFF/Generate.
+    ParameterChanges changes;
+    int32 sourceQueueIndex = 0;
+    auto* sourceQueue = changes.addParameterData(kRootSourceId, sourceQueueIndex);
+    require(sourceQueue != nullptr, "Root Source queue must be created");
+    int32 pointIndex = 0;
+    require(sourceQueue->addPoint(0, 0.0, pointIndex) == kResultOk,
+            "Manual Root Source value must be accepted");
+
+    int32 rootQueueIndex = 0;
+    auto* rootQueue = changes.addParameterData(kRootId, rootQueueIndex);
+    require(rootQueue != nullptr, "Root Note queue must be created");
+    require(rootQueue->addPoint(0, 0.0, pointIndex) == kResultOk,
+            "C Root Note value must be accepted");
+
+    auto secondContext = makeContext(8.0, true);
+    EventList second;
+    auto secondData = makeProcessData(secondContext, second, 192000, &changes);
+    require(processor.process(secondData) == kResultOk,
+            "live manual Root Note change must process without Generate");
+    const auto after = captureGuitar(second);
+
+    require(after.size() == before.size(),
+            "manual Root Note change must preserve the existing guitar rhythm");
+    for (size_t i = 0; i < before.size(); ++i) {
+        require(after[i].first == before[i].first,
+                "manual Root Note change must preserve Guitar onset positions");
+        require(after[i].second == before[i].second + 3,
+                "A-to-C manual Root Note change must transpose the existing Guitar phrase by +3 semitones");
+    }
+
+    // Companion tonal roles are regenerated from the transposed Guitar phrase
+    // in the same parameter change, so they must all emit usable material
+    // without a separate Generate action.
+    std::array<bool, kEventOutputBusCount> sawOn{};
+    for (const auto& e : second.events) {
+        if (e.type == Event::kNoteOnEvent &&
+            e.busIndex >= 0 && e.busIndex < kEventOutputBusCount)
+            sawOn[static_cast<size_t>(e.busIndex)] = true;
+    }
+    require(sawOn[kGuitarOutBus], "live Root change must keep Guitar active");
+    require(sawOn[kBassOutBus], "live Root change must refresh Bass immediately");
+    require(sawOn[kDrumsOutBus], "live Root change must keep Drums active");
+    require(sawOn[kPadOutBus], "live Root change must refresh Pads immediately");
+    require(sawOn[kSynthOutBus], "live Root change must refresh Synth immediately");
+}
+
 void testMidiRootSourceTransposesRiff() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
@@ -1895,6 +1968,7 @@ int main() {
     testGeneratedNoteLengthsAffectMidiOutput();
     testNormalParameterQueueOrderIsDeterministic();
     testRoleSpecificGateRules();
+    testManualRootChangeTransposesLiveWithoutGenerate();
     testMidiRootSourceTransposesRiff();
     testMidiRootBurstUsesFinalNote();
     testManualRootSourceIgnoresMidiRootNotes();
