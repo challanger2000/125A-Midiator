@@ -36,7 +36,7 @@ Bass is style-aware; Drums derive kick pressure from Guitar/Bass context; Pads u
 
 ## GUI controls currently exposed
 
-Root / Root Source, Scale / Mode, Section Length (1/2/4/8/16), Section (FREE / Intro / Verse / Pre / Chorus / Breakdown / Outro), Song Mode (OFF / AUTO), Style, Density, Complexity, Repetition, Power Chords on/off and amount, Palm Mute, Variation Amount, NEW RIFF and VARIATION.
+Root / Root Source, Scale / Mode, Section Length (1/2/4/8/16), Section (FREE / Intro / Verse / Pre / Chorus / Breakdown / Outro), Style, Density, Complexity, Repetition, Power Chords on/off and amount, Palm Mute, Variation Amount, NEW RIFF and VARIATION.
 
 The GUI exposes a deliberately small role-shaping layer instead of every internal generator parameter:
 
@@ -46,16 +46,6 @@ The GUI exposes a deliberately small role-shaping layer instead of every interna
 - Synth: Activity, Movement
 
 Less essential controls (for example Bass Sustain, Drum Humanize, Pad Context Follow and Synth Harmonic Follow) remain internal defaults for V1 so the workflow stays compact and musically predictable.
-
-## Automatic Song Mode
-
-AUTO arranges the existing section vocabulary into a deterministic 16-unit song form matched to the selected Style.
-
-- **NDH / Industrial:** INTRO → VERSE → VERSE → PRE → CHORUS → CHORUS → VERSE → VERSE → PRE → CHORUS → CHORUS → BREAKDOWN → BREAKDOWN → CHORUS → CHORUS → OUTRO
-- **Dark Rock / Gothic:** INTRO → INTRO → VERSE → VERSE → PRE → CHORUS → CHORUS → VERSE → VERSE → PRE → BREAKDOWN → BREAKDOWN → CHORUS → CHORUS → OUTRO → OUTRO
-- **Heavy Industrial:** INTRO → VERSE → VERSE → CHORUS → CHORUS → VERSE → BREAKDOWN → BREAKDOWN → VERSE → PRE → CHORUS → CHORUS → BREAKDOWN → CHORUS → CHORUS → OUTRO
-
-One unit equals the selected Section Length. With the default two-bar unit this produces a 32-bar form; a four-bar unit produces a 64-bar form. Repeated Verse/Chorus/Breakdown units intentionally reuse the same seed-related section idea instead of creating unrelated random material. In repeated units, AUTO treats the second unit as a continuation rather than a fresh entrance: duplicate opening crashes are suppressed, and phrase-end tom pickups are reserved for the final unit before a real Section change. Style changes may change the macro-form; VARIATION keeps the form itself stable. The scheduler selects the correct cached five-role section per host timeline unit, including when one large offline render block crosses multiple section boundaries. While AUTO is active, the SECTION menu acts only as the manual fallback selection for returning to OFF; changing it does not retrigger or flush the currently playing automatic Section. The complete form repeats if the host timeline continues beyond the Outro.
 
 ## Drum mapping
 
@@ -71,7 +61,7 @@ The processor requests VST3 musical timeline, tempo, time signature and transpor
 
 ## State
 
-State V11 stores the shared musical settings, verified Drum Map selection, the exposed role-shaping controls including Fill Intensity, the selected Section role, Song Mode state, and the exact generated Guitar, Bass, Drum, Pad and Synth phrases. When Song Mode is active, V11 also stores the complete cached five-role payload for every Section type so project recall does not depend on regenerating the automatic arrangement. Section FREE preserves the former generator behavior exactly; other Section roles reuse the same seed so related sections remain musically connected instead of becoming unrelated random riffs. V8 expanded the exact phrase payload from 128 to 256 steps so 16-bar sections can be recalled without regeneration; V9 adds persisted Fill Intensity while retaining the V8 phrase layout. Legacy V1-V4 states remain supported by regenerating missing companion roles once during migration; V5 preserves its exact five-role payload, V6 additionally preserves its verified Drum Map, V7 preserves the original eight role-shaping controls with the 128-step payload, and V8 preserves the 256-step payload. All migrated states are then saved in V11 format.
+State V10 stores the shared musical settings, verified Drum Map selection, the exposed role-shaping controls including Fill Intensity, the selected Section role, and the exact generated Guitar, Bass, Drum, Pad and Synth phrases. Section FREE preserves the former generator behavior exactly; other Section roles reuse the same seed so related sections remain musically connected instead of becoming unrelated random riffs. V8 expanded the exact phrase payload from 128 to 256 steps so 16-bar sections can be recalled without regeneration; V9 adds persisted Fill Intensity while retaining the V8 phrase layout. Legacy V1-V4 states remain supported by regenerating missing companion roles once during migration; V5 preserves its exact five-role payload, V6 additionally preserves its verified Drum Map, V7 preserves the original eight role-shaping controls with the 128-step payload, and V8 preserves the 256-step payload. All migrated states are then saved in V10 format.
 
 ## Automated verification
 

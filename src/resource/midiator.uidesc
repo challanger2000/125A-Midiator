@@ -58,7 +58,6 @@
     <control-tag name="SectionLength" tag="123"/>
     <control-tag name="FillIntensity" tag="124"/>
     <control-tag name="SectionType" tag="125"/>
-    <control-tag name="SongMode" tag="126"/>
   </control-tags>
 
   <template name="MidiatorView" class="CViewContainer" origin="0, 0" size="860, 730" minSize="645, 548" maxSize="1720, 1460" transparent="false" background-color="Bg">
@@ -94,14 +93,12 @@
     <!-- Riff shape -->
     <view class="CViewContainer" origin="24, 226" size="812, 248" transparent="false" background-color="Panel">
       <view class="CTextLabel" origin="18, 12" size="96, 18" title="RIFF SHAPE" font="Heading" font-color="Accent" transparent="true"/>
-      <view class="CTextLabel" origin="120, 13" size="52, 16" title="SECTION" font="Small" font-color="Dim" transparent="true"/>
-      <view class="COptionMenu" control-tag="SectionType" origin="174, 7" size="105, 28" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
-      <view class="CTextLabel" origin="291, 13" size="36, 16" title="SONG" font="Small" font-color="Dim" transparent="true"/>
-      <view class="COptionMenu" control-tag="SongMode" origin="329, 7" size="74, 28" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
-      <view class="CTextLabel" origin="415, 13" size="58, 16" title="DRUM MAP" font="Small" font-color="Dim" transparent="true"/>
-      <view class="COptionMenu" control-tag="DrumMap" origin="475, 7" size="115, 28" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
-      <view class="CTextLabel" origin="602, 13" size="40, 16" title="STYLE" font="Small" font-color="Dim" transparent="true"/>
-      <view class="COptionMenu" control-tag="Style" origin="644, 7" size="150, 28" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CTextLabel" origin="120, 13" size="58, 16" title="SECTION" font="Small" font-color="Dim" transparent="true"/>
+      <view class="COptionMenu" control-tag="SectionType" origin="180, 7" size="124, 28" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CTextLabel" origin="320, 13" size="66, 16" title="DRUM MAP" font="Small" font-color="Dim" transparent="true"/>
+      <view class="COptionMenu" control-tag="DrumMap" origin="388, 7" size="138, 28" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CTextLabel" origin="544, 13" size="48, 16" title="STYLE" font="Small" font-color="Dim" transparent="true"/>
+      <view class="COptionMenu" control-tag="Style" origin="594, 7" size="200, 28" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
       <view class="CView" origin="18, 42" size="776, 1" transparent="false" background-color="PanelEdge"/>
 
       <!-- Main shaping controls on a strict five-column grid -->

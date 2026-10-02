@@ -1,6 +1,5 @@
 #include "PluginProcessor.h"
 #include "SectionProfiles.h"
-#include "SongArrangement.h"
 
 #include "public.sdk/source/main/pluginfactory.h"
 #include "public.sdk/source/vst/vstparameters.h"
@@ -22,8 +21,7 @@ namespace {
 constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 8192;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 11u;
-constexpr int32 kStateSongModeFlag = 0x100;
+constexpr uint32_t kStateVersion = 10u;
 constexpr int kLegacyStateSteps = 128; // V1-V7 fixed phrase payload width
 constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
 constexpr const char* kMsgVariation = "125A.Midiator.Variation";
@@ -252,7 +250,6 @@ bool readStateHeader(IBStream* state,
                      int& manualRootPitchClass,
                      bool& midiRootSource,
                      bool& powerChordsEnabled,
-                     bool& songMode,
                      midiator::DrumMapId& drumMapId,
                      midiator::BassSettings& bassSettings,
                      midiator::DrumSettings& drumSettings,
@@ -263,7 +260,6 @@ bool readStateHeader(IBStream* state,
     int32 root = 0;
     int32 scale = 0;
     int32 bars = 0;
-    songMode = false;
 
     if (!readValue(state, magic) || !readValue(state, version) ||
         magic != kStateMagic || (version < 1u || version > kStateVersion) ||
@@ -383,20 +379,9 @@ bool readStateHeader(IBStream* state,
             }
 
             if (version >= 10u) {
-                int32 storedSectionWord = 0;
-                if (!readValue(state, storedSectionWord))
+                int32 storedSection = 0;
+                if (!readValue(state, storedSection))
                     return false;
-
-                int32 storedSection = storedSectionWord;
-                if (version >= 11u) {
-                    const int32 allowedMask = kStateSongModeFlag | 0xFF;
-                    if (storedSectionWord < 0 ||
-                        (storedSectionWord & ~allowedMask) != 0)
-                        return false;
-                    songMode = (storedSectionWord & kStateSongModeFlag) != 0;
-                    storedSection = storedSectionWord & 0xFF;
-                }
-
                 const int32 maxSection =
                     static_cast<int32>(midiator::SectionType::Count) - 1;
                 if (storedSection < 0 || storedSection > maxSection)
@@ -466,8 +451,7 @@ int normalizedIndex(ParamValue v, int count) {
 
 } // namespace
 
-MidiatorProcessor::MidiatorProcessor()
-: songSections_(std::make_unique<SongSectionCache>()) {
+MidiatorProcessor::MidiatorProcessor() {
     setControllerClass(ControllerUID);
 
     // The sequencer depends on musical timeline position, tempo and
@@ -552,9 +536,6 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
     if (!state)
         return kInvalidArgument;
 
-    if (songMode_ && !songCacheValid_)
-        rebuildSongCache(true);
-
     const int32 root = settings_.rootPitchClass;
     const int32 scale = static_cast<int32>(settings_.scale);
     const int32 bars = settings_.bars;
@@ -573,9 +554,6 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
     const int32 style = static_cast<int32>(settings_.style);
     const int32 powerChordsEnabled = settings_.powerChordsEnabled ? 1 : 0;
     const int32 drumMap = static_cast<int32>(drumMapId_);
-    int32 sectionState = static_cast<int32>(settings_.section);
-    if (songMode_)
-        sectionState |= kStateSongModeFlag;
     if (!writeValue(state, manualRoot) || !writeValue(state, rootSource) ||
         !writeValue(state, style) || !writeValue(state, powerChordsEnabled) ||
         !writeValue(state, drumMap) ||
@@ -588,7 +566,7 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
         !writeValue(state, synthSettings_.activity) ||
         !writeValue(state, synthSettings_.movement) ||
         !writeValue(state, drumSettings_.fillIntensity) ||
-        !writeValue(state, sectionState))
+        !writeValue(state, static_cast<int32>(settings_.section)))
         return kResultFalse;
 
     if (!writePhraseState(state, phrase_) ||
@@ -597,17 +575,6 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
         !writePadPhraseState(state, padPhrase_) ||
         !writePhraseState(state, synthPhrase_)) {
         return kResultFalse;
-    }
-
-    if (songMode_) {
-        for (const auto& section : *songSections_) {
-            if (!writePhraseState(state, section.guitar) ||
-                !writePhraseState(state, section.bass) ||
-                !writeDrumPhraseState(state, section.drums) ||
-                !writePadPhraseState(state, section.pads) ||
-                !writePhraseState(state, section.synth))
-                return kResultFalse;
-        }
     }
 
     return kResultOk;
@@ -623,7 +590,6 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     int restoredManualRoot = manualRootPitchClass_;
     bool restoredMidiRootSource = midiRootSource_;
     bool restoredPowerChordsEnabled = settings_.powerChordsEnabled;
-    bool restoredSongMode = false;
     midiator::DrumMapId restoredDrumMapId = drumMapId_;
     midiator::BassSettings restoredBassSettings = bassSettings_;
     midiator::DrumSettings restoredDrumSettings = drumSettings_;
@@ -633,8 +599,8 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     uint32_t restoredStateVersion = 0;
     if (!readStateHeader(state, restoredStateVersion, restored, restoredVariation, restoredSeed,
                          restoredManualRoot, restoredMidiRootSource,
-                         restoredPowerChordsEnabled, restoredSongMode,
-                         restoredDrumMapId, restoredBassSettings, restoredDrumSettings,
+                         restoredPowerChordsEnabled, restoredDrumMapId,
+                         restoredBassSettings, restoredDrumSettings,
                          restoredPadSettings, restoredSynthSettings))
         return kResultFalse;
 
@@ -665,25 +631,6 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
         }
     }
 
-    auto restoredSongSections = std::make_unique<SongSectionCache>();
-    bool restoredSongCacheValid = false;
-    if (restoredStateVersion >= 11u && restoredSongMode) {
-        for (auto& section : *restoredSongSections) {
-            if (!readPhraseState(state, section.guitar, restored.bars,
-                                 midiator::kMaxSteps, true, true) ||
-                !readPhraseState(state, section.bass, restored.bars,
-                                 midiator::kMaxSteps, true, true) ||
-                !readDrumPhraseState(state, section.drums, restored.bars,
-                                    midiator::kMaxSteps, true, true) ||
-                !readPadPhraseState(state, section.pads, restored.bars,
-                                   midiator::kMaxSteps, true, true) ||
-                !readPhraseState(state, section.synth, restored.bars,
-                                 midiator::kMaxSteps, true, true))
-                return kResultFalse;
-        }
-        restoredSongCacheValid = true;
-    }
-
     settings_ = restored;
     variationAmount_ = restoredVariation;
     seed_ = restoredSeed ? restoredSeed : 0x125A2026u;
@@ -696,9 +643,6 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     drumSettings_ = restoredDrumSettings;
     padSettings_ = restoredPadSettings;
     synthSettings_ = restoredSynthSettings;
-    songMode_ = restoredSongMode;
-    *songSections_ = *restoredSongSections;
-    songCacheValid_ = restoredSongCacheValid;
     phrase_ = restoredPhrase;
 
     if (restoredStateVersion >= 5u) {
@@ -884,146 +828,6 @@ void MidiatorProcessor::regenerateSectionFromCurrentSeed() {
     phraseChangedNeedsFlush_ = true;
 }
 
-
-void MidiatorProcessor::rebuildSongCache(bool preserveCurrentSection) {
-    const auto selectedIndex =
-        static_cast<std::size_t>(settings_.section);
-
-    for (int sectionIndex = 0;
-         sectionIndex < static_cast<int>(midiator::SectionType::Count);
-         ++sectionIndex) {
-        const auto section = static_cast<midiator::SectionType>(sectionIndex);
-        auto& snapshot = (*songSections_)[static_cast<std::size_t>(sectionIndex)];
-
-        if (preserveCurrentSection &&
-            static_cast<std::size_t>(sectionIndex) == selectedIndex) {
-            // Copy directly into the preallocated heap cache. Avoid a large
-            // temporary SongSectionSnapshot on the audio-thread stack.
-            snapshot.guitar = phrase_;
-            snapshot.bass = bassPhrase_;
-            snapshot.drums = drumPhrase_;
-            snapshot.pads = padPhrase_;
-            snapshot.synth = synthPhrase_;
-            continue;
-        }
-
-        auto guitarSettings = settings_;
-        guitarSettings.section = section;
-        const auto effectiveGuitar = sectionGeneratorSettings(guitarSettings);
-        snapshot.guitar = midiator::RiffEngine::generate(effectiveGuitar, seed_);
-        midiator::applySectionPhraseShape(snapshot.guitar, section, seed_);
-
-        auto bassSettings = bassSettings_;
-        bassSettings.rootPitchClass = settings_.rootPitchClass;
-        bassSettings.scale = settings_.scale;
-        bassSettings.style = settings_.style;
-        const auto effectiveBass = sectionBassSettings(bassSettings, section);
-        snapshot.bass = midiator::BassBrain::generate(
-            snapshot.guitar, effectiveBass, seed_ ^ 0xB4552026u);
-
-        auto drumSettings = drumSettings_;
-        drumSettings.style = settings_.style;
-        const auto effectiveDrums = sectionDrumSettings(drumSettings, section);
-        snapshot.drums = midiator::DrumBrain::generate(
-            snapshot.guitar, snapshot.bass, effectiveDrums, seed_ ^ 0xD12A2026u);
-
-        auto padSettings = padSettings_;
-        padSettings.rootPitchClass = settings_.rootPitchClass;
-        padSettings.scale = settings_.scale;
-        padSettings.style = settings_.style;
-        const auto effectivePads = sectionPadSettings(padSettings, section);
-        snapshot.pads = midiator::PadBrain::generate(
-            snapshot.guitar, snapshot.bass, effectivePads, seed_ ^ 0x50414426u);
-
-        auto synthSettings = synthSettings_;
-        synthSettings.rootPitchClass = settings_.rootPitchClass;
-        synthSettings.scale = settings_.scale;
-        synthSettings.style = settings_.style;
-        const auto effectiveSynth = sectionSynthSettings(synthSettings, section);
-        snapshot.synth = midiator::SynthBrain::generate(
-            snapshot.guitar, snapshot.bass, snapshot.pads, effectiveSynth,
-            seed_ ^ 0x53594E26u);
-    }
-
-    songCacheValid_ = true;
-}
-
-void MidiatorProcessor::syncManualFromSongCache(bool markPhraseChanged) {
-    const auto index = static_cast<std::size_t>(settings_.section);
-    if (!songCacheValid_ || index >= songSections_->size())
-        return;
-
-    const auto& snapshot = (*songSections_)[index];
-    phrase_ = snapshot.guitar;
-    bassPhrase_ = snapshot.bass;
-    drumPhrase_ = snapshot.drums;
-    padPhrase_ = snapshot.pads;
-    synthPhrase_ = snapshot.synth;
-
-    // In AUTO, SECTION is only the manual fallback selection. Updating that
-    // fallback must not interrupt the currently scheduled automatic Section.
-    if (markPhraseChanged)
-        phraseChangedNeedsFlush_ = true;
-}
-
-void MidiatorProcessor::varySongCache() {
-    if (!songCacheValid_)
-        rebuildSongCache(true);
-
-    seed_ = nextSeed(seed_);
-
-    for (int sectionIndex = 0;
-         sectionIndex < static_cast<int>(midiator::SectionType::Count);
-         ++sectionIndex) {
-        const auto section = static_cast<midiator::SectionType>(sectionIndex);
-        auto& snapshot = (*songSections_)[static_cast<std::size_t>(sectionIndex)];
-        const uint32_t sectionSeed =
-            seed_ ^ (0x9E3779B9u * static_cast<uint32_t>(sectionIndex + 1));
-
-        auto guitarSettings = settings_;
-        guitarSettings.section = section;
-        const auto effectiveGuitar = sectionGeneratorSettings(guitarSettings);
-        snapshot.guitar = midiator::RiffEngine::vary(
-            snapshot.guitar, effectiveGuitar, variationAmount_, sectionSeed);
-        midiator::applySectionPhraseShape(snapshot.guitar, section, sectionSeed);
-
-        auto bassSettings = bassSettings_;
-        bassSettings.rootPitchClass = settings_.rootPitchClass;
-        bassSettings.scale = settings_.scale;
-        bassSettings.style = settings_.style;
-        snapshot.bass = midiator::BassBrain::generate(
-            snapshot.guitar, sectionBassSettings(bassSettings, section),
-            sectionSeed ^ 0xB4552026u);
-
-        auto drumSettings = drumSettings_;
-        drumSettings.style = settings_.style;
-        snapshot.drums = midiator::DrumBrain::generate(
-            snapshot.guitar, snapshot.bass,
-            sectionDrumSettings(drumSettings, section),
-            sectionSeed ^ 0xD12A2026u);
-
-        auto padSettings = padSettings_;
-        padSettings.rootPitchClass = settings_.rootPitchClass;
-        padSettings.scale = settings_.scale;
-        padSettings.style = settings_.style;
-        snapshot.pads = midiator::PadBrain::generate(
-            snapshot.guitar, snapshot.bass,
-            sectionPadSettings(padSettings, section),
-            sectionSeed ^ 0x50414426u);
-
-        auto synthSettings = synthSettings_;
-        synthSettings.rootPitchClass = settings_.rootPitchClass;
-        synthSettings.scale = settings_.scale;
-        synthSettings.style = settings_.style;
-        snapshot.synth = midiator::SynthBrain::generate(
-            snapshot.guitar, snapshot.bass, snapshot.pads,
-            sectionSynthSettings(synthSettings, section),
-            sectionSeed ^ 0x53594E26u);
-    }
-
-    syncManualFromSongCache();
-}
-
 void MidiatorProcessor::resizePhraseBars(int newBars, bool regenerateCompanions) {
     if (newBars != 1 && newBars != 2 && newBars != 4 &&
         newBars != 8 && newBars != 16)
@@ -1156,8 +960,6 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         int sectionBars = 2;
         bool hasSectionType = false;
         midiator::SectionType sectionType = midiator::SectionType::Free;
-        bool hasSongMode = false;
-        bool songMode = false;
         bool hasDensity = false;
         float density = 0.0f;
         bool hasComplexity = false;
@@ -1254,10 +1056,6 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
                 pending.hasSectionType = true;
                 pending.sectionType = static_cast<midiator::SectionType>(
                     normalizedIndex(v, static_cast<int>(midiator::SectionType::Count)));
-                break;
-            case kSongModeId:
-                pending.hasSongMode = true;
-                pending.songMode = v > 0.5;
                 break;
             case kDensityId:
                 pending.hasDensity = true;
@@ -1369,13 +1167,6 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         phraseChangedNeedsFlush_ = true;
     }
 
-    const bool oldSongMode = songMode_;
-    if (pending.hasSongMode && pending.songMode != songMode_) {
-        songMode_ = pending.songMode;
-        phraseChangedNeedsFlush_ = true;
-    }
-    const bool songModeEnabled = songMode_ && !oldSongMode;
-
     bool bassRoleChanged = false;
     bool drumRoleChanged = false;
     bool padRoleChanged = false;
@@ -1460,8 +1251,6 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     const bool tonalFrameChanged =
         settings_.scale != oldScale || settings_.style != oldStyle;
     const bool sectionChanged = settings_.section != oldSection;
-    const bool sectionActsAsCompositionChange =
-        sectionChanged && !songMode_;
     const bool freshGeneration = tonalFrameChanged || pending.newRiff;
 
     bool guitarEdited = false;
@@ -1474,7 +1263,7 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         finalRootPitchClass = finalMidiPitchClass;
 
     if (finalRootPitchClass != settings_.rootPitchClass) {
-        if (freshGeneration || sectionActsAsCompositionChange) {
+        if (freshGeneration || sectionChanged) {
             settings_.rootPitchClass = finalRootPitchClass;
         } else {
             transposePhraseToRoot(finalRootPitchClass, false);
@@ -1492,7 +1281,7 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     // already required. Otherwise the generator creates the requested length
     // directly, avoiding an intermediate companion-role cascade.
     if (hasRequestedBars && requestedBars != settings_.bars) {
-        if (freshGeneration || sectionActsAsCompositionChange) {
+        if (freshGeneration || sectionChanged) {
             settings_.bars = requestedBars;
         } else {
             resizePhraseBars(requestedBars, false);
@@ -1503,7 +1292,7 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     // Apply the chord toggle after final Style/Amount/Bars/Root are known.
     if (pending.hasPowerChordsEnabled &&
         pending.powerChordsEnabled != settings_.powerChordsEnabled) {
-        if (freshGeneration || sectionActsAsCompositionChange) {
+        if (freshGeneration || sectionChanged) {
             settings_.powerChordsEnabled = pending.powerChordsEnabled;
         } else {
             applyPowerChordMode(pending.powerChordsEnabled, false);
@@ -1514,23 +1303,22 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     if (freshGeneration) {
         generateNew();
     } else if (sectionChanged) {
-        // While AUTO is running, SECTION only selects the phrase that will be
-        // used when the user returns to manual mode. The automatic scheduler
-        // itself is driven by SongArrangement, so do not flush/retrigger here.
-        if (!(songMode_ && songCacheValid_))
-            regenerateSectionFromCurrentSeed();
+        regenerateSectionFromCurrentSeed();
     } else if (guitarEdited && !pending.variation) {
         // Root/Bars/Power-Chord edits may all occur in one host block. Refresh
         // Bass -> Drums -> Pad -> Synth once from the final Guitar state.
         regenerateBass();
     }
 
-    const bool roleChanged =
-        bassRoleChanged || drumRoleChanged || padRoleChanged || synthRoleChanged;
-    const bool arrangementAlreadyRegenerated =
-        freshGeneration || sectionChanged || guitarEdited;
+    // Variation is always last so Style/Scale/New-Riff and structural edits
+    // have deterministic semantics independent of VST3 queue ordering.
+    if (pending.variation)
+        generateVariation();
 
-    if (!arrangementAlreadyRegenerated && !pending.variation) {
+    const bool arrangementAlreadyRegenerated =
+        freshGeneration || sectionChanged || guitarEdited || pending.variation;
+
+    if (!arrangementAlreadyRegenerated) {
         if (bassRoleChanged)
             regenerateBass();
         else if (drumRoleChanged)
@@ -1540,41 +1328,8 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         else if (synthRoleChanged)
             regenerateSynth();
 
-        if (roleChanged)
+        if (bassRoleChanged || drumRoleChanged || padRoleChanged || synthRoleChanged)
             phraseChangedNeedsFlush_ = true;
-    }
-
-    if (songMode_) {
-        const bool rebuild =
-            songModeEnabled || !songCacheValid_ || freshGeneration ||
-            guitarEdited || (!pending.variation && roleChanged);
-        if (rebuild) {
-            // If SECTION also changed in this same host block, phrase_ may
-            // still represent the previous manual fallback. Regenerate every
-            // cached Section from the final settings instead of preserving
-            // that stale slot, then select the requested manual fallback.
-            const bool preserveCurrentManualSection = !sectionChanged;
-            rebuildSongCache(preserveCurrentManualSection);
-            if (sectionChanged)
-                syncManualFromSongCache(false);
-
-            // A same-block SECTION + role edit bypasses the normal role-only
-            // regeneration path above. The rebuilt AUTO cache still changed,
-            // so held notes from the previous bank must be flushed.
-            if (roleChanged)
-                phraseChangedNeedsFlush_ = true;
-        } else if (sectionChanged) {
-            syncManualFromSongCache(false);
-        }
-    }
-
-    // Variation is always last so Style/Scale/New-Riff and structural edits
-    // have deterministic semantics independent of VST3 queue ordering.
-    if (pending.variation) {
-        if (songMode_)
-            varySongCache();
-        else
-            generateVariation();
     }
 }
 
@@ -1734,8 +1489,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     wasPlaying_ = true;
     haveExpectedProjectTime_ = true;
     expectedProjectTimeQn_ = blockEndQn;
-    const double patternLengthQn =
-        static_cast<double>(songMode_ ? settings_.bars : phrase_.bars) * 4.0;
+    const double patternLengthQn = static_cast<double>(phrase_.bars) * 4.0;
 
     if (patternLengthQn <= 0.0)
         return kResultOk;
@@ -1788,7 +1542,6 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                                    int32 busIndex,
                                    double cycleStartQn) {
         const int usedSteps = phrase.usedSteps();
-        const double cycleEndQn = cycleStartQn + patternLengthQn;
         constexpr double kSustainGapQn = 1.0 / 16.0;
 
         for (int stepIndex = 0; stepIndex < usedSteps; ++stepIndex) {
@@ -1810,8 +1563,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
             const double nextOnQn =
                 onQn + static_cast<double>(stepsToNextHit) * kStepQuarterNotes;
             const double latestOffQn =
-                std::min(cycleEndQn,
-                         std::max(onQn, nextOnQn - kSustainGapQn));
+                std::max(onQn, nextOnQn - kSustainGapQn);
 
             for (int n = 0; n < step.noteCount; ++n) {
                 const auto& note = step.notes[n];
@@ -1827,47 +1579,17 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         }
     };
 
-    auto scheduleDrumCycle = [&](const midiator::DrumPhrase& drums,
-                                  double cycleStartQn,
-                                  bool continuationFromSameSection,
-                                  bool continuesIntoSameSection) {
+    auto scheduleDrumCycle = [&](double cycleStartQn) {
         constexpr double kDrumGateQn = kStepQuarterNotes; // exact 1/16-note gate
-        const int lastBar = std::max(0, drums.bars - 1);
-
-        for (int stepIndex = 0; stepIndex < drums.usedSteps(); ++stepIndex) {
-            const auto& step = drums.steps[stepIndex];
+        for (int stepIndex = 0; stepIndex < drumPhrase_.usedSteps(); ++stepIndex) {
+            const auto& step = drumPhrase_.steps[stepIndex];
             if (step.hitCount <= 0)
                 continue;
-
-            const int bar = stepIndex / midiator::kStepsPerBar;
-            const int local = stepIndex % midiator::kStepsPerBar;
-            const bool finalBeatBeforeContinuation =
-                continuesIntoSameSection && bar == lastBar && local >= 12;
-
             const double onQn =
                 cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
             const double offQn = onQn + kDrumGateQn;
-
             for (int n = 0; n < step.hitCount; ++n) {
                 const auto& hit = step.hits[n];
-
-                // A repeated Song-Mode unit is a continuation, not a new
-                // section entrance. Avoid the mechanical "crash every unit"
-                // effect while leaving kick/snare/hat groove untouched.
-                if (continuationFromSameSection &&
-                    stepIndex == 0 &&
-                    hit.voice == midiator::DrumVoice::Crash)
-                    continue;
-
-                // DrumBrain's small phrase-end fills use toms. If another unit
-                // of the same Section follows, keep the first unit as groove
-                // and reserve those tom pickups for the real transition.
-                if (finalBeatBeforeContinuation &&
-                    (hit.voice == midiator::DrumVoice::LowTom ||
-                     hit.voice == midiator::DrumVoice::MidTom ||
-                     hit.voice == midiator::DrumVoice::HighTom))
-                    continue;
-
                 const int pitch = drumMap_.midiNote(hit.voice);
                 addScheduled(onQn, true, pitch, hit.velocity, kDrumsOutBus, offQn);
                 addScheduled(offQn, false, pitch, 0, kDrumsOutBus);
@@ -1875,21 +1597,19 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         }
     };
 
-    auto schedulePadCycle = [&](const midiator::PadPhrase& pads,
-                                 double cycleStartQn) {
+    auto schedulePadCycle = [&](double cycleStartQn) {
         constexpr double kPadReleaseGapQn = 1.0 / 16.0; // 1/64-note gap
-        const int usedSteps = pads.usedSteps();
-        const double cycleEndQn = cycleStartQn + patternLengthQn;
+        const int usedSteps = padPhrase_.usedSteps();
 
         for (int stepIndex = 0; stepIndex < usedSteps; ++stepIndex) {
-            const auto& step = pads.steps[stepIndex];
+            const auto& step = padPhrase_.steps[stepIndex];
             if (step.noteCount <= 0)
                 continue;
 
             int stepsToNextChord = usedSteps;
             for (int delta = 1; delta <= usedSteps; ++delta) {
                 const int nextIndex = (stepIndex + delta) % usedSteps;
-                if (pads.steps[nextIndex].noteCount > 0) {
+                if (padPhrase_.steps[nextIndex].noteCount > 0) {
                     stepsToNextChord = delta;
                     break;
                 }
@@ -1908,29 +1628,25 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                     onQn + static_cast<double>(std::max(1, note.lengthSteps)) *
                                kStepQuarterNotes - kPadReleaseGapQn;
                 const double offQn =
-                    std::max(onQn,
-                             std::min(cycleEndQn,
-                                      std::min(latestOffQn, requestedOffQn)));
+                    std::max(onQn, std::min(latestOffQn, requestedOffQn));
                 addScheduled(onQn, true, note.pitch, note.velocity, kPadOutBus, offQn);
                 addScheduled(offQn, false, note.pitch, 0, kPadOutBus);
             }
         }
     };
 
-    auto scheduleSynthCycle = [&](const midiator::Phrase& synth,
-                                   double cycleStartQn) {
-        const int usedSteps = synth.usedSteps();
-        const double cycleEndQn = cycleStartQn + patternLengthQn;
+    auto scheduleSynthCycle = [&](double cycleStartQn) {
+        const int usedSteps = synthPhrase_.usedSteps();
 
         for (int stepIndex = 0; stepIndex < usedSteps; ++stepIndex) {
-            const auto& step = synth.steps[stepIndex];
+            const auto& step = synthPhrase_.steps[stepIndex];
             if (step.noteCount <= 0)
                 continue;
 
             int stepsToNextHit = usedSteps;
             for (int delta = 1; delta <= usedSteps; ++delta) {
                 const int nextIndex = (stepIndex + delta) % usedSteps;
-                if (synth.steps[nextIndex].noteCount > 0) {
+                if (synthPhrase_.steps[nextIndex].noteCount > 0) {
                     stepsToNextHit = delta;
                     break;
                 }
@@ -1949,10 +1665,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                 const double requestedOffQn =
                     onQn + static_cast<double>(std::max(1, note.lengthSteps)) *
                                kStepQuarterNotes;
-                const double offQn =
-                    std::max(onQn,
-                             std::min(cycleEndQn,
-                                      std::min(nextOnQn, requestedOffQn)));
+                const double offQn = std::max(onQn, std::min(nextOnQn, requestedOffQn));
                 addScheduled(onQn, true, note.pitch, note.velocity, kSynthOutBus, offQn);
                 addScheduled(offQn, false, note.pitch, 0, kSynthOutBus);
             }
@@ -2021,41 +1734,11 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         const double cycleStartQn =
             transportAnchorQn_ + static_cast<double>(cycle) * patternLengthQn;
 
-        const midiator::Phrase* guitar = &phrase_;
-        const midiator::Phrase* bass = &bassPhrase_;
-        const midiator::DrumPhrase* drums = &drumPhrase_;
-        const midiator::PadPhrase* pads = &padPhrase_;
-        const midiator::Phrase* synth = &synthPhrase_;
-        bool continuationFromSameSection = false;
-        bool continuesIntoSameSection = false;
-
-        if (songMode_ && songCacheValid_) {
-            const auto section =
-                midiator::songSectionForUnit(cycle, settings_.style);
-            const auto previousSection =
-                midiator::songSectionForUnit(cycle - 1, settings_.style);
-            const auto nextSection =
-                midiator::songSectionForUnit(cycle + 1, settings_.style);
-
-            continuationFromSameSection = previousSection == section;
-            continuesIntoSameSection = nextSection == section;
-
-            const auto& snapshot =
-                (*songSections_)[static_cast<std::size_t>(section)];
-            guitar = &snapshot.guitar;
-            bass = &snapshot.bass;
-            drums = &snapshot.drums;
-            pads = &snapshot.pads;
-            synth = &snapshot.synth;
-        }
-
-        schedulePhraseCycle(*guitar, kGuitarOutBus, cycleStartQn);
-        schedulePhraseCycle(*bass, kBassOutBus, cycleStartQn);
-        scheduleDrumCycle(*drums, cycleStartQn,
-                          continuationFromSameSection,
-                          continuesIntoSameSection);
-        schedulePadCycle(*pads, cycleStartQn);
-        scheduleSynthCycle(*synth, cycleStartQn);
+        schedulePhraseCycle(phrase_, kGuitarOutBus, cycleStartQn);
+        schedulePhraseCycle(bassPhrase_, kBassOutBus, cycleStartQn);
+        scheduleDrumCycle(cycleStartQn);
+        schedulePadCycle(cycleStartQn);
+        scheduleSynthCycle(cycleStartQn);
 
         if (schedulerOverflow) {
             // This now represents excessive complexity inside one single
@@ -2152,14 +1835,6 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     sectionType->setNormalized(0.0);
     parameters.addParameter(sectionType);
 
-    auto* songMode =
-        new StringListParameter(STR16("Song Mode"), kSongModeId);
-    songMode->appendString(STR16("OFF"));
-    songMode->appendString(STR16("AUTO"));
-    songMode->getInfo().defaultNormalizedValue = 0.0;
-    songMode->setNormalized(0.0);
-    parameters.addParameter(songMode);
-
     auto addPercent = [&](const char16_t* name, ParamID id, double defaultValue) {
         auto* p = new RangeParameter(name, id, STR16("%"), 0.0, 100.0, defaultValue, 0,
                                      ParameterInfo::kCanAutomate);
@@ -2250,7 +1925,6 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     int manualRoot = restored.rootPitchClass;
     bool midiRootSource = true;
     bool powerChordsEnabled = true;
-    bool songMode = false;
     midiator::DrumMapId drumMapId = midiator::DrumMapId::GeneralMidi;
     midiator::BassSettings bassSettings{};
     midiator::DrumSettings drumSettings{};
@@ -2258,8 +1932,8 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     midiator::SynthSettings synthSettings{};
     uint32_t restoredStateVersion = 0;
     if (!readStateHeader(state, restoredStateVersion, restored, variationAmount, seed,
-                         manualRoot, midiRootSource, powerChordsEnabled, songMode,
-                         drumMapId, bassSettings, drumSettings, padSettings, synthSettings))
+                         manualRoot, midiRootSource, powerChordsEnabled, drumMapId,
+                         bassSettings, drumSettings, padSettings, synthSettings))
         return kResultFalse;
 
     auto legacyBarsIndex = [](int bars) -> double {
@@ -2300,7 +1974,6 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
         kSectionTypeId,
         static_cast<double>(static_cast<int>(restored.section)) /
         static_cast<double>(static_cast<int>(midiator::SectionType::Count) - 1));
-    setParamNormalized(kSongModeId, songMode ? 1.0 : 0.0);
     setParamNormalized(kDensityId, restored.density);
     setParamNormalized(kComplexityId, restored.complexity);
     setParamNormalized(kRepetitionId, restored.repetition);

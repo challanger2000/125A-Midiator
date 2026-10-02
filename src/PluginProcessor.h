@@ -15,9 +15,7 @@
 
 #include <array>
 #include <atomic>
-#include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <string>
 
 namespace VSTGUI {
@@ -58,8 +56,7 @@ enum : ParamID {
     // automation with the historic {1,2,4,8} normalization.
     kSectionLengthId = 123,
     kFillIntensityId = 124,
-    kSectionTypeId = 125,
-    kSongModeId = 126
+    kSectionTypeId = 125
 };
 
 static const FUID ProcessorUID(0x125A4001, 0x6D494449, 0x41544F52, 0x00000100);
@@ -102,14 +99,6 @@ private:
         int32 noteLengthSamples = 0;
     };
 
-    struct SongSectionSnapshot {
-        midiator::Phrase guitar{};
-        midiator::Phrase bass{};
-        midiator::DrumPhrase drums{};
-        midiator::PadPhrase pads{};
-        midiator::Phrase synth{};
-    };
-
     midiator::GeneratorSettings settings_{};
     midiator::Phrase phrase_{};
     midiator::BassSettings bassSettings_{};
@@ -123,16 +112,6 @@ private:
     midiator::SynthSettings synthSettings_{};
     midiator::Phrase synthPhrase_{};
     uint32_t seed_ = 0x125A2026u;
-    using SongSectionCache =
-        std::array<SongSectionSnapshot,
-                   static_cast<std::size_t>(midiator::SectionType::Count)>;
-
-    // Preallocated once with the processor object. Keeping the full automatic
-    // song bank off the callback/test thread stack avoids large-stack pressure
-    // without introducing allocation into process().
-    std::unique_ptr<SongSectionCache> songSections_{};
-    bool songMode_ = false;
-    bool songCacheValid_ = false;
 
     double sampleRate_ = 44100.0;
     bool wasPlaying_ = false;
@@ -157,9 +136,6 @@ private:
     void regeneratePads();
     void regenerateSynth();
     void regenerateSectionFromCurrentSeed();
-    void rebuildSongCache(bool preserveCurrentSection);
-    void varySongCache();
-    void syncManualFromSongCache(bool markPhraseChanged = true);
     void resizePhraseBars(int newBars, bool regenerateCompanions = true);
     void applyPowerChordMode(bool enabled, bool regenerateCompanions = true);
     void transposePhraseToRoot(int newRootPitchClass, bool regenerateCompanions = true);

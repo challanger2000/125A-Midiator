@@ -230,8 +230,6 @@ void verifyLegacyControllerMigration(uint32_t version,
             "legacy Power Chords Enabled migration must preserve/default correctly");
     require(std::abs(controller.getParamNormalized(kDrumMapId)) < 1e-9,
             "legacy Drum Map migration must default to General MIDI");
-    require(std::abs(controller.getParamNormalized(kSongModeId)) < 1e-9,
-            "legacy migration must default Song Mode to OFF");
     constexpr double kRoleEpsilon = 1e-6;
     require(std::abs(controller.getParamNormalized(kBassFollowId) - 0.72) < kRoleEpsilon &&
             std::abs(controller.getParamNormalized(kBassMovementId) - 0.34) < kRoleEpsilon &&
@@ -440,9 +438,7 @@ int main() {
                 "V10 NaN Fill Intensity must be rejected");
     }
     expectRejectedPatch(104, 99,
-                        "V11 invalid Section Type must be rejected");
-    expectRejectedPatch(104, 0x200,
-                        "V11 unknown state flag bits must be rejected");
+                        "V10 invalid Section Type must be rejected");
 
     {
         MemoryStream damaged;
