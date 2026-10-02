@@ -1433,11 +1433,12 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
 
             for (int n = 0; n < step.noteCount; ++n) {
                 const auto& note = step.notes[n];
-                const double requestedOffQn =
-                    onQn + static_cast<double>(std::max(1, note.lengthSteps)) *
-                               kStepQuarterNotes - kSustainGapQn;
-                const double offQn =
-                    std::max(onQn, std::min(latestOffQn, requestedOffQn));
+                // Guitar and Bass are sustained performance lanes. Keep each
+                // note alive until immediately before the next onset; the
+                // deliberate 1/64-note gap prevents overlap while avoiding
+                // audible holes. Articulation is encoded by the generated
+                // velocity/chord content, not by prematurely shortening gates.
+                const double offQn = latestOffQn;
                 addScheduled(onQn, true, note.pitch, note.velocity, busIndex, offQn);
                 addScheduled(offQn, false, note.pitch, 0, busIndex);
             }

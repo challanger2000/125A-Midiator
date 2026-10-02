@@ -1624,6 +1624,50 @@ void testRoleSpecificGateRules() {
         checkGapRole(kBassOutBus, sawBassBoundaryGap, true);
         checkGapRole(kPadOutBus, sawPadBoundaryGap, true);
 
+        auto requireEveryNoteEndsAtBoundary = [&](int bus) {
+            std::vector<double> roleOnsets;
+            for (const auto& e : output.events) {
+                if (e.type != Event::kNoteOnEvent || e.busIndex != bus)
+                    continue;
+                if (roleOnsets.empty() ||
+                    std::abs(roleOnsets.back() - e.ppqPosition) > eps)
+                    roleOnsets.push_back(e.ppqPosition);
+            }
+
+            for (const auto& on : output.events) {
+                if (on.type != Event::kNoteOnEvent || on.busIndex != bus)
+                    continue;
+
+                double nextOn = -1.0;
+                for (double candidate : roleOnsets) {
+                    if (candidate > on.ppqPosition + eps) {
+                        nextOn = candidate;
+                        break;
+                    }
+                }
+                if (nextOn < 0.0)
+                    continue;
+
+                const double expectedOff = nextOn - kSixtyFourthQn;
+                bool found = false;
+                for (const auto& off : output.events) {
+                    if (off.type == Event::kNoteOffEvent &&
+                        off.busIndex == bus &&
+                        off.noteOff.pitch == on.noteOn.pitch &&
+                        std::abs(off.ppqPosition - expectedOff) < eps) {
+                        found = true;
+                        break;
+                    }
+                }
+                require(found,
+                        "Guitar/Bass/Pad notes must end exactly one 64th before the next role onset");
+            }
+        };
+
+        requireEveryNoteEndsAtBoundary(kGuitarOutBus);
+        requireEveryNoteEndsAtBoundary(kBassOutBus);
+        requireEveryNoteEndsAtBoundary(kPadOutBus);
+
         // Synth is deliberately different: a generated note may end exactly
         // at the next monophonic onset, with NoteOff sorted before NoteOn.
         std::vector<double> synthOnsets;
