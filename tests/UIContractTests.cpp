@@ -37,7 +37,7 @@ int main() {
             xml.find("maxSize=\"1720, 1460\"") != std::string::npos,
             "resizable editor contract must expose non-identical min/max sizes");
 
-    for (int tag = 100; tag <= 125; ++tag) {
+    for (int tag = 100; tag <= 126; ++tag) {
         const std::string needle = "tag=\"" + std::to_string(tag) + "\"";
         require(xml.find(needle) != std::string::npos,
                 "all Midiator parameter tags 100..125 must be declared");
@@ -78,6 +78,8 @@ int main() {
             "SECTION LENGTH selector must be bound");
     require(xml.find("control-tag=\"SectionType\"") != std::string::npos,
             "SECTION selector must be bound");
+    require(xml.find("control-tag=\"SongMode\"") != std::string::npos,
+            "SONG MODE selector must be bound");
     for (const char* roleTag : {"BassFollow", "BassMovement", "DrumDensity",
                                 "DrumComplexity", "PadSpread", "PadTension",
                                 "SynthActivity", "SynthMovement", "FillIntensity"}) {

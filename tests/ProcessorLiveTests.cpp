@@ -2376,6 +2376,75 @@ void testVerifiedDrumMapParameterChangesOutput() {
             "Perfect Drums map must emit closed hi-hat on note 64");
 }
 
+
+void testSongModeArrangesDeterministicSectionForm() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "song-mode fixture must start");
+
+    ParameterChanges enable;
+    int32 qi = 0;
+    auto* songQ = enable.addParameterData(kSongModeId, qi);
+    int32 pi = 0;
+    require(songQ && songQ->addPoint(0, 1.0, pi) == kResultOk,
+            "song-mode AUTO value must be accepted");
+
+    auto stopped = makeContext(0.0, false);
+    EventList stoppedOut;
+    auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &enable);
+    require(processor.process(stoppedData) == kResultOk,
+            "enabling song mode must process cleanly");
+
+    // Default Section Length is two bars = 8 quarter notes per song unit.
+    // Six units cover INTRO, VERSE A/A, PRE, CHORUS A/A.
+    auto running = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(running, output, 1152000);
+    require(processor.process(data) == kResultOk,
+            "song mode must schedule across multiple section boundaries in one block");
+
+    std::array<std::vector<std::tuple<int,int,int>>, 6> guitarByUnit{};
+    std::array<int, kEventOutputBusCount> noteOnsByBus{};
+
+    for (const auto& e : output.events) {
+        if (e.type != Event::kNoteOnEvent)
+            continue;
+        if (e.busIndex >= 0 && e.busIndex < kEventOutputBusCount)
+            ++noteOnsByBus[static_cast<std::size_t>(e.busIndex)];
+        if (e.busIndex != kGuitarOutBus || e.ppqPosition < 0.0 || e.ppqPosition >= 48.0)
+            continue;
+
+        const int unit = static_cast<int>(std::floor(e.ppqPosition / 8.0));
+        if (unit < 0 || unit >= static_cast<int>(guitarByUnit.size()))
+            continue;
+        const double unitStart = static_cast<double>(unit) * 8.0;
+        const int step = static_cast<int>(
+            std::lround((e.ppqPosition - unitStart) / 0.25));
+        const int velocity = static_cast<int>(
+            std::lround(e.noteOn.velocity * 127.0f));
+        guitarByUnit[static_cast<std::size_t>(unit)].emplace_back(
+            step, e.noteOn.pitch, velocity);
+    }
+
+    for (int bus = 0; bus < kEventOutputBusCount; ++bus)
+        require(noteOnsByBus[static_cast<std::size_t>(bus)] > 0,
+                "song mode must keep all five MIDI roles active");
+
+    for (const auto& unit : guitarByUnit)
+        require(!unit.empty(), "each inspected song unit must contain Guitar material");
+
+    require(guitarByUnit[1] == guitarByUnit[2],
+            "the two Verse units must repeat the same seed-related Verse idea");
+    require(guitarByUnit[4] == guitarByUnit[5],
+            "the two Chorus units must repeat the same seed-related Chorus idea");
+    require(guitarByUnit[0] != guitarByUnit[1],
+            "INTRO must differ from VERSE in automatic song form");
+    require(guitarByUnit[1] != guitarByUnit[3],
+            "PRE must differ from VERSE in automatic song form");
+    require(guitarByUnit[1] != guitarByUnit[4],
+            "CHORUS must differ from VERSE in automatic song form");
+}
+
 } // namespace
 
 int main() {
@@ -2398,6 +2467,7 @@ int main() {
     testSectionLengthSupportsSixteenBarsAndLegacyBarsStayStable();
     testSectionRolesReuseSeedAndRemainReversible();
     testSectionEnergyProfilesAreMusicallyOrdered();
+    testSongModeArrangesDeterministicSectionForm();
     testPowerChordTogglePreservesRiffOnsetsAndPitches();
     testLargeOfflineBlockKeepsNoteEventsBalanced();
     testStopFlushesEveryActiveInstrumentBus();
