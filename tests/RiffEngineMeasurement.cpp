@@ -598,7 +598,9 @@ static NewRiffBenchResult benchmarkNewRiffPath(StyleId style,
         uint32_t stateSeed = 0x600D0000u + static_cast<uint32_t>(sample * 977 + static_cast<int>(style) * 131);
         const auto previous = RiffEngine::generate(settings, stateSeed);
 
-        const int requiredDifference = std::max(6, previous.usedSteps() / 3);
+        const auto acceptance =
+            newRiffAcceptance(style, previous.usedSteps());
+        const int requiredDifference = acceptance.minStructuralDifference;
         Phrase bestCandidate{};
         Phrase candidate{};
         double bestJaccard = 2.0;
@@ -623,7 +625,8 @@ static NewRiffBenchResult benchmarkNewRiffPath(StyleId style,
                 bestDifference = difference;
             }
 
-            if (difference >= requiredDifference && jaccard <= 0.48)
+            if (difference >= requiredDifference &&
+                jaccard <= acceptance.maxOnsetJaccard)
                 break;
         }
 

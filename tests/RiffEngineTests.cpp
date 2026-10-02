@@ -762,9 +762,44 @@ void testComplexityControlBehavior() {
             "Complexity must increase fast/busy riff activity");
 }
 
+void testNewRiffAcceptanceMatchesStyleDensity() {
+    using midiator::StyleId;
+    using midiator::newRiffAcceptance;
+
+    const auto ndh = newRiffAcceptance(StyleId::NDHIndustrial, 64);
+    const auto dark = newRiffAcceptance(StyleId::DarkRockGothic, 64);
+    const auto heavy = newRiffAcceptance(StyleId::HeavyIndustrial, 64);
+    require(ndh.minStructuralDifference == 21 &&
+            std::abs(ndh.maxOnsetJaccard - 0.48) < 1e-12 &&
+            dark.minStructuralDifference == 21 &&
+            std::abs(dark.maxOnsetJaccard - 0.48) < 1e-12 &&
+            heavy.minStructuralDifference == 21 &&
+            std::abs(heavy.maxOnsetJaccard - 0.48) < 1e-12,
+            "original three styles must keep the historical NEW RIFF acceptance contract");
+
+    const auto classic = newRiffAcceptance(StyleId::ClassicHeavy, 64);
+    const auto thrash = newRiffAcceptance(StyleId::Thrash, 64);
+    const auto death = newRiffAcceptance(StyleId::Death, 64);
+    const auto doom = newRiffAcceptance(StyleId::Doom, 64);
+    require(classic.minStructuralDifference == 16 &&
+            classic.maxOnsetJaccard > ndh.maxOnsetJaccard,
+            "Classic Heavy must use a realistic dense-riff acceptance window");
+    require(thrash.minStructuralDifference == 21 &&
+            thrash.maxOnsetJaccard >= 0.70,
+            "Thrash must tolerate natural dense-grid overlap");
+    require(death.minStructuralDifference == 21 &&
+            death.maxOnsetJaccard > thrash.maxOnsetJaccard,
+            "Death Metal must tolerate the highest natural dense-grid overlap");
+    require(doom.minStructuralDifference == 16 &&
+            doom.maxOnsetJaccard < classic.maxOnsetJaccard,
+            "Doom must retain a stricter sparse-riff overlap requirement");
+}
+
+
 } // namespace
 
 int main() {
+    testNewRiffAcceptanceMatchesStyleDensity();
     testBarsAndScaleSafety();
     testDeterminism();
     testVariationKeepsTonalFrame();

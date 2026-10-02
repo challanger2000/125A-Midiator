@@ -720,9 +720,10 @@ void MidiatorProcessor::generateNew() {
 
     midiator::Phrase candidate{};
     const bool havePrevious = previous.usedSteps() > 0;
-    const int requiredDifference = havePrevious
-        ? std::max(6, previous.usedSteps() / 3)
-        : 0;
+    const auto acceptance =
+        midiator::newRiffAcceptance(settings_.style, previous.usedSteps());
+    const int requiredDifference =
+        havePrevious ? acceptance.minStructuralDifference : 0;
 
     // NEW RIFF must sound like a genuinely new groove, not merely a pitch
     // variation. Keep the structurally valid candidate with the lowest onset
@@ -758,7 +759,8 @@ void MidiatorProcessor::generateNew() {
             bestSeed = seed_;
         }
 
-        if (difference >= requiredDifference && jaccard <= 0.48)
+        if (difference >= requiredDifference &&
+            jaccard <= acceptance.maxOnsetJaccard)
             break;
     }
 

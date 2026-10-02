@@ -57,6 +57,50 @@ struct ScaleDefinition {
     const char* characteristicInterval = "";
 };
 
+struct NewRiffAcceptance {
+    int minStructuralDifference = 6;
+    double maxOnsetJaccard = 0.48;
+};
+
+// Dense metal languages naturally share more 16th-note onset positions than
+// sparse/groove languages. NEW RIFF therefore uses a style-aware overlap
+// ceiling while still requiring substantial structural change. The original
+// three styles deliberately keep their historical acceptance contract.
+inline NewRiffAcceptance newRiffAcceptance(StyleId style,
+                                           int usedSteps) noexcept {
+    auto scaledDifference = [usedSteps](int divisor) noexcept {
+        const int scaled = usedSteps / divisor;
+        return scaled > 6 ? scaled : 6;
+    };
+
+    switch (style) {
+        case StyleId::ClassicHeavy:
+            return {scaledDifference(4), 0.62};
+        case StyleId::Thrash:
+            return {scaledDifference(3), 0.72};
+        case StyleId::Groove:
+            return {scaledDifference(3), 0.52};
+        case StyleId::Death:
+            return {scaledDifference(3), 0.78};
+        case StyleId::MelodicDeath:
+            return {scaledDifference(4), 0.62};
+        case StyleId::Metalcore:
+            return {scaledDifference(3), 0.52};
+        case StyleId::NuMetal:
+            return {scaledDifference(3), 0.52};
+        case StyleId::Doom:
+            return {scaledDifference(4), 0.55};
+        case StyleId::DjentProgressive:
+            return {scaledDifference(3), 0.52};
+        case StyleId::NDHIndustrial:
+        case StyleId::DarkRockGothic:
+        case StyleId::HeavyIndustrial:
+        case StyleId::Count:
+            return {scaledDifference(3), 0.48};
+    }
+    return {scaledDifference(3), 0.48};
+}
+
 struct GeneratorSettings {
     int rootPitchClass = 9;       // A
     ScaleId scale = ScaleId::Phrygian;
