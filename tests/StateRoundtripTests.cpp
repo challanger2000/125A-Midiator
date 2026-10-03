@@ -850,6 +850,11 @@ int main() {
         // compatible with V10 while style IDs 0..11 are now valid.
         MemoryStream deathV12;
         deathV12.bytes() = first.bytes();
+        // Freeze this fixture as real V12. The V13/V14 tail bytes may remain
+        // physically present because historical readers ignore trailing data;
+        // the versioned contract decides which fields are semantically read.
+        const uint32_t v12Version = 12u;
+        patchFixtureValue(deathV12, sizeof(uint32_t), v12Version);
         const int32 deathStyle =
             static_cast<int32>(midiator::StyleId::Death);
         patchFixtureValue(deathV12, 56, deathStyle);

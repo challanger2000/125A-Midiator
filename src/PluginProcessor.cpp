@@ -1079,7 +1079,6 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         float powerChordAmount = 0.0f;
         bool hasPowerChordsEnabled = false;
         bool powerChordsEnabled = true;
-    bool midiNoteTrigger = false;
         bool hasPalmMute = false;
         float palmMute = 0.0f;
         bool hasPalmMuteVelocity = false;
@@ -2247,6 +2246,7 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     int manualRoot = restored.rootPitchClass;
     bool midiRootSource = true;
     bool powerChordsEnabled = true;
+    bool midiNoteTrigger = false;
     midiator::DrumMapId drumMapId = midiator::DrumMapId::GeneralMidi;
     midiator::BassSettings bassSettings{};
     midiator::DrumSettings drumSettings{};
