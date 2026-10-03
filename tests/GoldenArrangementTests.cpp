@@ -44,6 +44,31 @@ int main(){
  constexpr uint32_t seed=0x125A5EEDu;
  GeneratorSettings gs{};gs.bars=4;gs.rootPitchClass=9;gs.scale=ScaleId::Phrygian;gs.style=StyleId::NDHIndustrial;
  const auto guitar=RiffEngine::generate(gs,seed);
+
+ // V13 intentionally changed only the default palm-mute velocity contract
+ // from the historical <=40 zone to PM < 30. Preserve the established golden
+ // composition fingerprint through the exact compatibility profile (<41),
+ // while separately proving that the new default changes articulation only.
+ GeneratorSettings legacyGs=gs;
+ legacyGs.palmMuteVelocityThreshold=41;
+ const auto legacyGuitar=RiffEngine::generate(legacyGs,seed);
+ require(guitar.bars==legacyGuitar.bars,
+         "PM velocity threshold must not change Guitar phrase length");
+ for(int i=0;i<guitar.usedSteps();++i){
+     const auto& a=guitar.steps[i];
+     const auto& b=legacyGuitar.steps[i];
+     require(a.noteCount==b.noteCount,
+             "PM velocity threshold must not change Guitar rhythm/chord topology");
+     for(int n=0;n<a.noteCount;++n){
+         require(a.notes[n].pitch==b.notes[n].pitch &&
+                 a.notes[n].lengthSteps==b.notes[n].lengthSteps,
+                 "PM velocity threshold must change articulation only, never pitch/gate structure");
+         if(a.notes[n].velocity<88)
+             require(a.notes[n].velocity<30,
+                     "new default Guitar palm mutes must remain below velocity 30");
+     }
+ }
+
  BassSettings bs{};bs.rootPitchClass=gs.rootPitchClass;bs.scale=gs.scale;bs.style=gs.style;
  const auto bass=BassBrain::generate(guitar,bs,seed^0xB4552026u);
  DrumSettings ds{};ds.style=gs.style;const auto drums=DrumBrain::generate(guitar,bass,ds,seed^0xD12A2026u);
@@ -51,7 +76,7 @@ int main(){
  const auto pads=PadBrain::generate(guitar,bass,ps,seed^0x50414426u);
  SynthSettings ss{};ss.rootPitchClass=gs.rootPitchClass;ss.scale=gs.scale;ss.style=gs.style;
  const auto synth=SynthBrain::generate(guitar,bass,pads,ss,seed^0x53594E26u);
- const auto gh=hashPhrase(guitar),bh=hashPhrase(bass),dh=hashDrums(drums),ph=hashPads(pads),sh=hashPhrase(synth);
+ const auto gh=hashPhrase(legacyGuitar),bh=hashPhrase(bass),dh=hashDrums(drums),ph=hashPads(pads),sh=hashPhrase(synth);
  const auto ah=arrangementHash(gh,bh,dh,ph,sh);
 
  require(gh==0x1a2d22e5e04cd244ull,"golden Guitar fingerprint changed");

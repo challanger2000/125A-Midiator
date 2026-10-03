@@ -266,34 +266,43 @@ void testVariationDistance() {
 }
 
 void testVelocityZonesRemainSeparated() {
-    midiator::GeneratorSettings s{};
-    s.bars = 8;
-    s.palmMuteChance = 0.75f;
+    for (int threshold : {30, 41}) {
+        midiator::GeneratorSettings s{};
+        s.bars = 8;
+        s.palmMuteChance = 0.75f;
+        s.palmMuteVelocityThreshold = threshold;
 
-    int muteZone = 0;
-    int highZone = 0;
+        int muteZone = 0;
+        int highZone = 0;
 
-    for (unsigned seed = 1; seed <= 128; ++seed) {
-        const auto phrase = midiator::RiffEngine::generate(s, 40000u + seed);
+        for (unsigned seed = 1; seed <= 128; ++seed) {
+            const auto phrase = midiator::RiffEngine::generate(s, 40000u + seed);
 
-        for (int i = 0; i < phrase.usedSteps(); ++i) {
-            const auto& step = phrase.steps[i];
-            for (int n = 0; n < step.noteCount; ++n) {
-                const int v = step.notes[n].velocity;
-                require(v >= 1 && v <= 126, "generated velocity must stay in safe MIDI range");
-                require(!(v >= 41 && v <= 87),
-                        "V1 should keep a visible gap between palm-mute and open-note velocity zones");
-                if (v < 88)
-                    require(v >= 30 && v <= 40,
-                            "normal palm mutes must stay between velocity 30 and 40");
-                if (v <= 40) ++muteZone;
-                if (v >= 88) ++highZone;
+            for (int i = 0; i < phrase.usedSteps(); ++i) {
+                const auto& step = phrase.steps[i];
+                for (int n = 0; n < step.noteCount; ++n) {
+                    const int v = step.notes[n].velocity;
+                    require(v >= 1 && v <= 126,
+                            "generated velocity must stay in safe MIDI range");
+                    if (v < 88) {
+                        require(v >= 2 && v < threshold,
+                                "palm mutes must stay strictly below PM < VEL");
+                        if (threshold == 41)
+                            require(v >= 30,
+                                    "legacy <41 profile must preserve the historical 30..40 zone");
+                        ++muteZone;
+                    } else {
+                        require(v >= 88,
+                                "open notes must stay in the high velocity zone");
+                        ++highZone;
+                    }
+                }
             }
         }
-    }
 
-    require(muteZone > 0, "generator must produce mute-like velocity notes");
-    require(highZone > 0, "generator must produce open/sustain-like velocity notes");
+        require(muteZone > 0, "generator must produce mute-like velocity notes");
+        require(highZone > 0, "generator must produce open/sustain-like velocity notes");
+    }
 }
 
 
