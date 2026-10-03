@@ -343,7 +343,7 @@ GuitarPlayabilityProfile guitarPlayabilityProfile(StyleId style) {
         case StyleId::Thrash:            return {5,  9, true,  true};
         case StyleId::Groove:            return {7, 11, true,  false};
         case StyleId::Death:             return {5,  9, true,  true};
-        case StyleId::MelodicDeath:      return {7, 12, true,  false};
+        case StyleId::MelodicDeath:      return {12,16, true,  false};
         case StyleId::Metalcore:         return {5, 10, true,  true};
         case StyleId::NuMetal:           return {7, 10, true,  false};
         case StyleId::Doom:              return {12,14, false, false};
