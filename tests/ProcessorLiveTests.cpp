@@ -232,6 +232,79 @@ Event makeNoteOff(int32 sampleOffset, int pitch) {
     return e;
 }
 
+
+void testPalmMuteVelocityAutomationChangesOnlyGuitarArticulation() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "PM automation fixture must start");
+
+    auto capture = [&](double startQn, IParameterChanges* changes) {
+        auto context = makeContext(startQn, true);
+        EventList output;
+        auto data = makeProcessData(context, output, 192000, changes);
+        require(processor.process(data) == kResultOk,
+                "PM automation capture must process");
+
+        std::vector<std::tuple<int,int,int>> guitar;
+        for (const auto& e : output.events) {
+            if (e.type != Event::kNoteOnEvent ||
+                e.busIndex != kGuitarOutBus)
+                continue;
+            const int step = static_cast<int>(
+                std::lround((e.ppqPosition - startQn) / 0.25));
+            const int velocity = static_cast<int>(
+                std::lround(e.noteOn.velocity * 127.0f));
+            guitar.emplace_back(step, e.noteOn.pitch, velocity);
+        }
+        return guitar;
+    };
+
+    const auto before = capture(0.0, nullptr);
+    require(!before.empty(),
+            "PM automation fixture needs Guitar notes");
+
+    ParameterChanges changes;
+    int32 qi = 0;
+    auto* q = changes.addParameterData(kPalmMuteVelocityId, qi);
+    int32 pi = 0;
+    const double threshold40 = (40.0 - 3.0) / 84.0;
+    require(q && q->addPoint(0, threshold40, pi) == kResultOk,
+            "PM < VEL 40 automation must be accepted");
+
+    auto stopped = makeContext(8.0, false);
+    EventList stoppedOut;
+    auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &changes);
+    require(processor.process(stoppedData) == kResultOk,
+            "PM < VEL automation stop block must process");
+
+    const auto after = capture(8.0, nullptr);
+    require(before.size() == after.size(),
+            "PM threshold automation must not change Guitar event count");
+
+    bool sawChangedPalmMute = false;
+    for (size_t i = 0; i < before.size(); ++i) {
+        require(std::get<0>(before[i]) == std::get<0>(after[i]) &&
+                std::get<1>(before[i]) == std::get<1>(after[i]),
+                "PM threshold automation must preserve Guitar onset/pitch topology");
+
+        const int oldVelocity = std::get<2>(before[i]);
+        const int newVelocity = std::get<2>(after[i]);
+        if (oldVelocity < 88) {
+            require(oldVelocity < 30,
+                    "default PM notes must stay below 30");
+            require(newVelocity < 40,
+                    "PM < VEL 40 must stay strictly below 40");
+            sawChangedPalmMute = sawChangedPalmMute ||
+                                 (oldVelocity != newVelocity);
+        } else {
+            require(newVelocity == oldVelocity,
+                    "PM threshold automation must not alter open-note velocities");
+        }
+    }
+    require(sawChangedPalmMute,
+            "PM threshold automation must audibly remap palm-mute velocities");
+}
+
 void testMidiNoteTriggerGatesAllGeneratedOutputs() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk,
@@ -2572,6 +2645,7 @@ void testLegacyAndExpandedStyleAutomationCoexistSafely() {
 } // namespace
 
 int main() {
+    testPalmMuteVelocityAutomationChangesOnlyGuitarArticulation();
     testMidiNoteTriggerGatesAllGeneratedOutputs();
     testMidiNoteTriggerStaysOpenUntilLastHeldNoteOff();
     testRejectedFlushIsRetriedWithoutLosingActiveState();

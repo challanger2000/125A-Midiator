@@ -470,7 +470,7 @@ bool readExtendedStateTail(IBStream* state,
     if (version >= 13u) {
         int32 storedThreshold = 30;
         if (!readValue(state, storedThreshold) ||
-            storedThreshold < 2 || storedThreshold > 87)
+            storedThreshold < 3 || storedThreshold > 87)
             return false;
         threshold = storedThreshold;
     }
@@ -632,7 +632,7 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
     }
 
     const int32 palmMuteVelocityThreshold =
-        std::clamp(settings_.palmMuteVelocityThreshold, 2, 87);
+        std::clamp(settings_.palmMuteVelocityThreshold, 3, 87);
     if (!writeValue(state, palmMuteVelocityThreshold))
         return kResultFalse;
     const int32 triggerMode = midiNoteTrigger_ ? 1 : 0;
@@ -993,7 +993,7 @@ void MidiatorProcessor::applyPowerChordMode(bool enabled, bool regenerateCompani
             step.notes[1] = step.notes[0];
             step.notes[1].pitch = step.notes[0].pitch + 7;
             const int threshold =
-                std::clamp(settings_.palmMuteVelocityThreshold, 2, 87);
+                std::clamp(settings_.palmMuteVelocityThreshold, 3, 87);
             const int pmMin =
                 threshold == 41 ? 30 : std::max(2, threshold - 8);
             step.notes[1].velocity = std::max(
@@ -1009,8 +1009,8 @@ void MidiatorProcessor::applyPowerChordMode(bool enabled, bool regenerateCompani
 }
 
 void MidiatorProcessor::applyPalmMuteVelocityThreshold(int threshold) {
-    const int oldThreshold = std::clamp(settings_.palmMuteVelocityThreshold, 2, 87);
-    const int newThreshold = std::clamp(threshold, 2, 87);
+    const int oldThreshold = std::clamp(settings_.palmMuteVelocityThreshold, 3, 87);
+    const int newThreshold = std::clamp(threshold, 3, 87);
     if (oldThreshold == newThreshold)
         return;
 
@@ -1201,7 +1201,7 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
             case kPalmMuteVelocityId:
                 pending.hasPalmMuteVelocity = true;
                 pending.palmMuteVelocity =
-                    2 + normalizedIndex(v, 86);
+                    3 + normalizedIndex(v, 85);
                 break;
             case kTriggerModeId:
                 pending.hasTriggerMode = true;
@@ -2183,7 +2183,7 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     addPercent(STR16("Palm Mute"), kPalmMuteId, 70.0);
     auto* pmVelocity = new RangeParameter(
         STR16("PM < Velocity"), kPalmMuteVelocityId, STR16(""),
-        2.0, 87.0, 30.0, 85, ParameterInfo::kCanAutomate);
+        3.0, 87.0, 30.0, 84, ParameterInfo::kCanAutomate);
     pmVelocity->setPrecision(0);
     parameters.addParameter(pmVelocity);
     addPercent(STR16("Variation Amount"), kVariationAmountId, 35.0);
@@ -2344,7 +2344,7 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     setParamNormalized(kPowerChordId, restored.powerChordChance);
     setParamNormalized(kPalmMuteId, restored.palmMuteChance);
     setParamNormalized(kPalmMuteVelocityId,
-                       static_cast<double>(restored.palmMuteVelocityThreshold - 2) / 85.0);
+                       static_cast<double>(restored.palmMuteVelocityThreshold - 3) / 84.0);
     setParamNormalized(kTriggerModeId, midiNoteTrigger ? 1.0 : 0.0);
     setParamNormalized(kVariationAmountId, variationAmount);
     setParamNormalized(kBassFollowId, bassSettings.follow);

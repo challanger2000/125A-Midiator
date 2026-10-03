@@ -291,7 +291,7 @@ int velocityFor(Rng& rng, bool palmMute, bool accent,
         // The threshold is exclusive: PM < VEL = 30 means every generated
         // palm mute is <=29. Keep velocity 0/1 free for dead/chuck/noise
         // articulations and leave a large safety gap below open notes (>=88).
-        const int threshold = std::clamp(palmMuteVelocityThreshold, 2, 87);
+        const int threshold = std::clamp(palmMuteVelocityThreshold, 3, 87);
         if (threshold == 41) {
             // Exact compatibility profile for pre-V13 projects, whose palm
             // mutes historically lived at 30..36 / 34..40.
@@ -329,7 +329,7 @@ void createStepNote(Step& step,
             secondVelocity = std::max(88, secondVelocity);
         else {
             const int threshold =
-                std::clamp(palmMuteVelocityThreshold, 2, 87);
+                std::clamp(palmMuteVelocityThreshold, 3, 87);
             if (threshold == 41) {
                 // Exact pre-V13 compatibility: old dyad voices were clamped
                 // to the fixed 30..40 palm-mute zone.
@@ -570,7 +570,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
     s.repetition = std::clamp(s.repetition, 0.0f, 1.0f);
     s.powerChordChance = std::clamp(s.powerChordChance, 0.0f, 1.0f);
     s.palmMuteChance = std::clamp(s.palmMuteChance, 0.0f, 1.0f);
-    s.palmMuteVelocityThreshold = std::clamp(s.palmMuteVelocityThreshold, 2, 87);
+    s.palmMuteVelocityThreshold = std::clamp(s.palmMuteVelocityThreshold, 3, 87);
 
     Phrase result{};
     result.bars = s.bars;
@@ -944,7 +944,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
                 step.notes[1] = step.notes[0];
                 step.notes[1].pitch = step.notes[0].pitch + 7;
                 const int pmMin = std::max(
-                    2, std::clamp(s.palmMuteVelocityThreshold, 2, 87) - 8);
+                    2, std::clamp(s.palmMuteVelocityThreshold, 3, 87) - 8);
                 step.notes[1].velocity = std::max(
                     step.notes[0].velocity >= 88 ? 88 : pmMin,
                     step.notes[0].velocity - 3);

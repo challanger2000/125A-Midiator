@@ -235,7 +235,7 @@ void verifyLegacyControllerMigration(uint32_t version,
             "legacy Power Chords Enabled migration must preserve/default correctly");
     require(std::abs(controller.getParamNormalized(kDrumMapId)) < 1e-9,
             "legacy Drum Map migration must default to General MIDI");
-    const double legacyPmVelocityNormalized = (41.0 - 2.0) / 85.0;
+    const double legacyPmVelocityNormalized = (41.0 - 3.0) / 84.0;
     require(std::abs(controller.getParamNormalized(kPalmMuteVelocityId) -
                      legacyPmVelocityNormalized) < 1e-9,
             "pre-V13 projects must preserve the historical <41 PM velocity zone");
@@ -968,7 +968,7 @@ int main() {
         require(controller.setComponentState(&state) == kResultOk,
                 "V14 controller state must restore");
         require(std::abs(controller.getParamNormalized(kPalmMuteVelocityId) -
-                         (28.0 / 85.0)) < 1e-9,
+                         (27.0 / 84.0)) < 1e-9,
                 "V14 PM < VEL default 30 must restore exactly");
         require(std::abs(controller.getParamNormalized(kTriggerModeId)) < 1e-9,
                 "V14 Trigger TRANSPORT must restore exactly");
