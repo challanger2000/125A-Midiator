@@ -37,10 +37,10 @@ int main() {
             xml.find("maxSize=\"1720, 1460\"") != std::string::npos,
             "resizable editor contract must expose non-identical min/max sizes");
 
-    for (int tag = 100; tag <= 127; ++tag) {
+    for (int tag = 100; tag <= 128; ++tag) {
         const std::string needle = "tag=\"" + std::to_string(tag) + "\"";
         require(xml.find(needle) != std::string::npos,
-                "all Midiator parameter tags 100..127 must be declared");
+                "all Midiator parameter tags 100..128 must be declared");
     }
 
     const char* theoryIds[] = {
@@ -75,6 +75,10 @@ int main() {
             "visible METAL STYLE selector must bind the new 12-style parameter");
     require(xml.find("control-tag=\"PalmMuteVelocity\"") != std::string::npos,
             "PM velocity threshold field must be bound");
+    require(xml.find("control-tag=\"Trigger\"") != std::string::npos,
+            "TRANSPORT / MIDI NOTE trigger selector must be bound");
+    require(xml.find("midiator-id=\"styleBpm\"") != std::string::npos,
+            "style BPM recommendation label must exist");
     require(xml.find("control-tag=\"PowerChordsEnabled\"") != std::string::npos,
             "POWER CHORDS ON/OFF selector must be bound");
     require(xml.find("control-tag=\"DrumMap\"") != std::string::npos,

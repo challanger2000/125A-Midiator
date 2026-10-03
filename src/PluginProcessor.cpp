@@ -20,8 +20,9 @@ namespace {
 
 constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 8192;
+constexpr int kMaxTriggerInputEvents = 2048;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 13u;
+constexpr uint32_t kStateVersion = 14u;
 constexpr int kLegacyStateSteps = 128; // V1-V7 fixed phrase payload width
 constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
 constexpr const char* kMsgVariation = "125A.Midiator.Variation";
@@ -457,19 +458,30 @@ bool readStateHeader(IBStream* state,
     return true;
 }
 
-bool readPalmMuteVelocityTail(IBStream* state,
-                              uint32_t version,
-                              int& threshold) {
+bool readExtendedStateTail(IBStream* state,
+                           uint32_t version,
+                           int& threshold,
+                           bool& midiNoteTrigger) {
     // V12 and older encoded the historical fixed PM zone ending at velocity
     // 40. Use an exclusive threshold of 41 to reproduce that behavior exactly.
     threshold = version >= 13u ? 30 : 41;
-    if (version < 13u)
-        return true;
+    midiNoteTrigger = false;
 
-    int32 stored = 30;
-    if (!readValue(state, stored) || stored < 2 || stored > 87)
-        return false;
-    threshold = stored;
+    if (version >= 13u) {
+        int32 storedThreshold = 30;
+        if (!readValue(state, storedThreshold) ||
+            storedThreshold < 2 || storedThreshold > 87)
+            return false;
+        threshold = storedThreshold;
+    }
+
+    if (version >= 14u) {
+        int32 storedTrigger = 0;
+        if (!readValue(state, storedTrigger) ||
+            (storedTrigger != 0 && storedTrigger != 1))
+            return false;
+        midiNoteTrigger = storedTrigger != 0;
+    }
     return true;
 }
 
@@ -539,6 +551,8 @@ tresult PLUGIN_API MidiatorProcessor::setActive(TBool state) {
     expectedProjectTimeQn_ = 0.0;
     haveTransportAnchor_ = false;
     transportAnchorQn_ = 0.0;
+    triggerHeldPitches_.fill(false);
+    triggerHeldCount_ = 0;
     return AudioEffect::setActive(state);
 }
 
@@ -559,6 +573,8 @@ tresult PLUGIN_API MidiatorProcessor::setProcessing(TBool state) {
     expectedProjectTimeQn_ = 0.0;
     haveTransportAnchor_ = false;
     transportAnchorQn_ = 0.0;
+    triggerHeldPitches_.fill(false);
+    triggerHeldCount_ = 0;
     return kResultOk;
 }
 
@@ -619,6 +635,9 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
         std::clamp(settings_.palmMuteVelocityThreshold, 2, 87);
     if (!writeValue(state, palmMuteVelocityThreshold))
         return kResultFalse;
+    const int32 triggerMode = midiNoteTrigger_ ? 1 : 0;
+    if (!writeValue(state, triggerMode))
+        return kResultFalse;
 
     return kResultOk;
 }
@@ -638,6 +657,7 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     midiator::DrumSettings restoredDrumSettings = drumSettings_;
     midiator::PadSettings restoredPadSettings = padSettings_;
     midiator::SynthSettings restoredSynthSettings = synthSettings_;
+    bool restoredMidiNoteTrigger = false;
 
     uint32_t restoredStateVersion = 0;
     if (!readStateHeader(state, restoredStateVersion, restored, restoredVariation, restoredSeed,
@@ -674,8 +694,9 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
         }
     }
 
-    if (!readPalmMuteVelocityTail(
-            state, restoredStateVersion, restored.palmMuteVelocityThreshold))
+    if (!readExtendedStateTail(
+            state, restoredStateVersion, restored.palmMuteVelocityThreshold,
+            restoredMidiNoteTrigger))
         return kResultFalse;
 
     settings_ = restored;
@@ -690,6 +711,9 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     drumSettings_ = restoredDrumSettings;
     padSettings_ = restoredPadSettings;
     synthSettings_ = restoredSynthSettings;
+    midiNoteTrigger_ = restoredMidiNoteTrigger;
+    triggerHeldPitches_.fill(false);
+    triggerHeldCount_ = 0;
     phrase_ = restoredPhrase;
 
     if (restoredStateVersion >= 5u) {
@@ -1055,10 +1079,13 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         float powerChordAmount = 0.0f;
         bool hasPowerChordsEnabled = false;
         bool powerChordsEnabled = true;
+    bool midiNoteTrigger = false;
         bool hasPalmMute = false;
         float palmMute = 0.0f;
         bool hasPalmMuteVelocity = false;
         int palmMuteVelocity = 30;
+        bool hasTriggerMode = false;
+        bool midiNoteTrigger = false;
         bool hasVariationAmount = false;
         float variationAmount = 0.0f;
         bool hasLegacyStyle = false;
@@ -1175,6 +1202,10 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
                 pending.palmMuteVelocity =
                     2 + normalizedIndex(v, 86);
                 break;
+            case kTriggerModeId:
+                pending.hasTriggerMode = true;
+                pending.midiNoteTrigger = v > 0.5;
+                break;
             case kVariationAmountId:
                 pending.hasVariationAmount = true;
                 pending.variationAmount = static_cast<float>(v);
@@ -1261,6 +1292,11 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         settings_.palmMuteChance = pending.palmMute;
     if (pending.hasPalmMuteVelocity)
         applyPalmMuteVelocityThreshold(pending.palmMuteVelocity);
+    if (pending.hasTriggerMode &&
+        pending.midiNoteTrigger != midiNoteTrigger_) {
+        midiNoteTrigger_ = pending.midiNoteTrigger;
+        phraseChangedNeedsFlush_ = true;
+    }
     if (pending.hasVariationAmount)
         variationAmount_ = pending.variationAmount;
     if (pending.hasDrumMap && pending.drumMap != drumMapId_) {
@@ -1448,7 +1484,8 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
 }
 
 bool MidiatorProcessor::flushActiveNotes(
-    IEventList* output, double ppqPosition, bool forceAllNotes) {
+    IEventList* output, double ppqPosition, bool forceAllNotes,
+    int32 sampleOffset) {
     if (!output)
         return false;
 
@@ -1462,7 +1499,7 @@ bool MidiatorProcessor::flushActiveNotes(
 
             Event e{};
             e.busIndex = bus;
-            e.sampleOffset = 0;
+            e.sampleOffset = std::max<int32>(0, sampleOffset);
             e.ppqPosition = ppqPosition;
             e.type = Event::kNoteOffEvent;
             e.noteOff.channel = 0;
@@ -1513,6 +1550,98 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         pendingVariationCommands_.exchange(0, std::memory_order_acq_rel);
 
     applyParameterChanges(data, newCount > 0, variationCount > 0);
+
+    struct TriggerInputEvent {
+        int32 sampleOffset = 0;
+        int pitch = 0;
+        bool noteOn = false;
+    };
+    struct TriggerTransition {
+        int32 sampleOffset = 0;
+        bool openAfter = false;
+    };
+
+    std::array<TriggerInputEvent, kMaxTriggerInputEvents> triggerInput{};
+    std::array<TriggerTransition, kMaxTriggerInputEvents> triggerTransitions{};
+    int triggerInputCount = 0;
+    int triggerTransitionCount = 0;
+    bool triggerInputOverflow = false;
+    const bool triggerOpenAtBlockStart = triggerHeldCount_ > 0;
+
+    if (data.inputEvents) {
+        for (int32 i = 0; i < data.inputEvents->getEventCount(); ++i) {
+            Event event{};
+            if (data.inputEvents->getEvent(i, event) != kResultOk)
+                continue;
+
+            bool relevant = false;
+            bool noteOn = false;
+            int pitch = -1;
+            if (event.type == Event::kNoteOnEvent) {
+                pitch = static_cast<int>(event.noteOn.pitch);
+                noteOn = event.noteOn.velocity > 0.0f;
+                relevant = true;
+            } else if (event.type == Event::kNoteOffEvent) {
+                pitch = static_cast<int>(event.noteOff.pitch);
+                noteOn = false;
+                relevant = true;
+            }
+            if (!relevant || pitch < 0 || pitch > 127)
+                continue;
+
+            if (triggerInputCount >= kMaxTriggerInputEvents) {
+                triggerInputOverflow = true;
+                continue;
+            }
+
+            triggerInput[triggerInputCount++] = {
+                std::clamp<int32>(
+                    event.sampleOffset, 0,
+                    std::max<int32>(0, data.numSamples - 1)),
+                pitch,
+                noteOn
+            };
+        }
+    }
+
+    std::sort(triggerInput.begin(), triggerInput.begin() + triggerInputCount,
+              [](const TriggerInputEvent& a, const TriggerInputEvent& b) {
+                  if (a.sampleOffset != b.sampleOffset)
+                      return a.sampleOffset < b.sampleOffset;
+                  if (a.noteOn != b.noteOn)
+                      return !a.noteOn; // NoteOff before NoteOn at one sample.
+                  return a.pitch < b.pitch;
+              });
+
+    for (int i = 0; i < triggerInputCount; ++i) {
+        const auto& input = triggerInput[i];
+        const bool wasOpen = triggerHeldCount_ > 0;
+
+        if (input.noteOn) {
+            if (!triggerHeldPitches_[static_cast<size_t>(input.pitch)]) {
+                triggerHeldPitches_[static_cast<size_t>(input.pitch)] = true;
+                ++triggerHeldCount_;
+            }
+        } else if (triggerHeldPitches_[static_cast<size_t>(input.pitch)]) {
+            triggerHeldPitches_[static_cast<size_t>(input.pitch)] = false;
+            triggerHeldCount_ = std::max(0, triggerHeldCount_ - 1);
+        }
+
+        const bool isOpen = triggerHeldCount_ > 0;
+        if (wasOpen != isOpen &&
+            triggerTransitionCount < kMaxTriggerInputEvents) {
+            triggerTransitions[triggerTransitionCount++] = {
+                input.sampleOffset, isOpen
+            };
+        }
+    }
+
+    if (triggerInputOverflow) {
+        triggerHeldPitches_.fill(false);
+        triggerHeldCount_ = 0;
+        if (midiNoteTrigger_)
+            return kResultFalse;
+    }
 
     if (!data.outputEvents)
         return kResultOk;
@@ -1568,6 +1697,10 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         haveExpectedProjectTime_ = false;
         haveTransportAnchor_ = false;
         transportAnchorQn_ = 0.0;
+        if (!playing) {
+            triggerHeldPitches_.fill(false);
+            triggerHeldCount_ = 0;
+        }
         return flushed ? kResultOk : kResultFalse;
     }
 
@@ -1786,6 +1919,32 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         }
     };
 
+    int triggerTransitionIndex = 0;
+    bool triggerGateOpen =
+        !midiNoteTrigger_ || triggerOpenAtBlockStart;
+
+    auto applyTriggerTransitionsThrough = [&](int32 sampleOffset) {
+        if (!midiNoteTrigger_)
+            return true;
+
+        while (triggerTransitionIndex < triggerTransitionCount &&
+               triggerTransitions[triggerTransitionIndex].sampleOffset <= sampleOffset) {
+            const auto transition =
+                triggerTransitions[triggerTransitionIndex++];
+            if (!transition.openAfter) {
+                const double transitionQn =
+                    blockStartQn +
+                    static_cast<double>(transition.sampleOffset) * qnPerSample;
+                if (!flushActiveNotes(
+                        data.outputEvents, transitionQn, false,
+                        transition.sampleOffset))
+                    return false;
+            }
+            triggerGateOpen = transition.openAfter;
+        }
+        return true;
+    };
+
     auto emitScheduled = [&]() {
         std::sort(scheduled.begin(), scheduled.begin() + scheduledCount,
                   [](const ScheduledEvent& a, const ScheduledEvent& b) {
@@ -1801,6 +1960,20 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         bool allDelivered = true;
         for (int i = 0; i < scheduledCount; ++i) {
             const auto& s = scheduled[i];
+
+            if (!applyTriggerTransitionsThrough(s.sampleOffset))
+                return false;
+
+            if (midiNoteTrigger_) {
+                const bool active =
+                    activePitchesByBus_[static_cast<size_t>(s.busIndex)]
+                                       [static_cast<size_t>(s.pitch)];
+                if (s.noteOn && !triggerGateOpen)
+                    continue;
+                if (!s.noteOn && !triggerGateOpen && !active)
+                    continue;
+            }
+
             Event e{};
             e.busIndex = s.busIndex;
             e.sampleOffset = s.sampleOffset;
@@ -1868,6 +2041,11 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
             phraseChangedNeedsFlush_ = true;
             return kResultFalse;
         }
+    }
+
+    if (!applyTriggerTransitionsThrough(std::max<int32>(0, data.numSamples - 1))) {
+        phraseChangedNeedsFlush_ = true;
+        return kResultFalse;
     }
 
     return kResultOk;
@@ -2010,6 +2188,13 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     addPercent(STR16("Synth Activity"), kSynthActivityId, 46.0);
     addPercent(STR16("Synth Movement"), kSynthMovementId, 42.0);
 
+    auto* triggerMode = new StringListParameter(STR16("Trigger"), kTriggerModeId);
+    triggerMode->appendString(STR16("TRANSPORT"));
+    triggerMode->appendString(STR16("MIDI NOTE"));
+    triggerMode->getInfo().defaultNormalizedValue = 0.0;
+    triggerMode->setNormalized(0.0);
+    parameters.addParameter(triggerMode);
+
     auto* newRiff = new RangeParameter(STR16("NEW Riff"), kNewRiffId, STR16(""),
                                        0.0, 1.0, 0.0, 1, ParameterInfo::kCanAutomate);
     parameters.addParameter(newRiff);
@@ -2090,11 +2275,13 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
                                 serializedSteps, allow16Bars, true) ||
             !readPhraseState(state, tempSynth, restored.bars,
                              serializedSteps, allow16Bars, true) ||
-            !readPalmMuteVelocityTail(
-                state, restoredStateVersion, restored.palmMuteVelocityThreshold))
+            !readExtendedStateTail(
+                state, restoredStateVersion, restored.palmMuteVelocityThreshold,
+                midiNoteTrigger))
             return kResultFalse;
     } else {
         restored.palmMuteVelocityThreshold = 41;
+        midiNoteTrigger = false;
     }
 
     auto legacyBarsIndex = [](int bars) -> double {
@@ -2148,6 +2335,7 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     setParamNormalized(kPalmMuteId, restored.palmMuteChance);
     setParamNormalized(kPalmMuteVelocityId,
                        static_cast<double>(restored.palmMuteVelocityThreshold - 2) / 85.0);
+    setParamNormalized(kTriggerModeId, midiNoteTrigger ? 1.0 : 0.0);
     setParamNormalized(kVariationAmountId, variationAmount);
     setParamNormalized(kBassFollowId, bassSettings.follow);
     setParamNormalized(kBassMovementId, bassSettings.movement);
@@ -2167,6 +2355,8 @@ tresult PLUGIN_API MidiatorController::setParamNormalized(ParamID tag, ParamValu
     const auto r = EditControllerEx1::setParamNormalized(tag, value);
     if (tag == kRootId || tag == kScaleId)
         refreshTheory();
+    if (tag == kStyleId || tag == kMetalStyleId)
+        refreshStyleHint();
     return r;
 }
 
@@ -2206,10 +2396,12 @@ VSTGUI::CView* MidiatorController::verifyView(VSTGUI::CView* view,
             else if (*id == "theoryNotes") theoryNotes_ = label;
             else if (*id == "theoryCharacter") theoryCharacter_ = label;
             else if (*id == "theoryInterval") theoryInterval_ = label;
+            else if (*id == "styleBpm") styleBpm_ = label;
         }
     }
 
     refreshTheory();
+    refreshStyleHint();
     return view;
 }
 
@@ -2221,6 +2413,7 @@ void MidiatorController::willClose(VSTGUI::VST3Editor*) {
     theoryNotes_ = nullptr;
     theoryCharacter_ = nullptr;
     theoryInterval_ = nullptr;
+    styleBpm_ = nullptr;
     newRiffButton_ = nullptr;
     variationButton_ = nullptr;
 }
@@ -2251,6 +2444,38 @@ void MidiatorController::refreshTheory() noexcept {
     set(theoryNotes_, notes);
     set(theoryCharacter_, std::string("Character: ") + def.character);
     set(theoryInterval_, std::string("Signature: ") + def.characteristicInterval);
+}
+
+void MidiatorController::refreshStyleHint() noexcept {
+    if (!styleBpm_)
+        return;
+
+    int style = normalizedIndex(
+        getParamNormalized(kMetalStyleId),
+        static_cast<int>(midiator::StyleId::Count));
+    const int legacy = normalizedIndex(getParamNormalized(kStyleId), 3);
+    if (style == 0 && legacy != 0)
+        style = legacy;
+
+    static constexpr const char* kBpmHints[] = {
+        "REC. BPM 100-135",
+        "REC. BPM 80-120",
+        "REC. BPM 105-145",
+        "REC. BPM 110-160",
+        "REC. BPM 160-220",
+        "REC. BPM 85-130",
+        "REC. BPM 160-240",
+        "REC. BPM 140-200",
+        "REC. BPM 120-180",
+        "REC. BPM 80-120",
+        "REC. BPM 50-90",
+        "REC. BPM 90-160"
+    };
+
+    style = std::clamp(style, 0,
+        static_cast<int>(std::size(kBpmHints)) - 1);
+    styleBpm_->setText(kBpmHints[style]);
+    styleBpm_->invalid();
 }
 
 } // namespace Steinberg::Vst

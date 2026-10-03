@@ -209,6 +209,133 @@ ProcessData makeProcessData(ProcessContext& context,
     return data;
 }
 
+
+Event makeNoteOn(int32 sampleOffset, int pitch, float velocity = 1.0f) {
+    Event e{};
+    e.type = Event::kNoteOnEvent;
+    e.sampleOffset = sampleOffset;
+    e.noteOn.channel = 0;
+    e.noteOn.pitch = static_cast<int16>(pitch);
+    e.noteOn.velocity = velocity;
+    e.noteOn.noteId = -1;
+    return e;
+}
+
+Event makeNoteOff(int32 sampleOffset, int pitch) {
+    Event e{};
+    e.type = Event::kNoteOffEvent;
+    e.sampleOffset = sampleOffset;
+    e.noteOff.channel = 0;
+    e.noteOff.pitch = static_cast<int16>(pitch);
+    e.noteOff.velocity = 0.0f;
+    e.noteOff.noteId = -1;
+    return e;
+}
+
+void testMidiNoteTriggerGatesAllGeneratedOutputs() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "MIDI trigger fixture must start");
+
+    ParameterChanges triggerChanges;
+    int32 qi = 0;
+    auto* q = triggerChanges.addParameterData(kTriggerModeId, qi);
+    int32 pi = 0;
+    require(q && q->addPoint(0, 1.0, pi) == kResultOk,
+            "MIDI NOTE trigger mode must be accepted");
+
+    auto context = makeContext(0.0, true);
+    EventList noTriggerOutput;
+    auto silentData = makeProcessData(context, noTriggerOutput, 48000, &triggerChanges);
+    require(processor.process(silentData) == kResultOk,
+            "MIDI NOTE mode silent block must process");
+    require(!containsType(noTriggerOutput, Event::kNoteOnEvent),
+            "MIDI NOTE mode must stay silent without a held trigger note");
+
+    EventList input;
+    input.events.push_back(makeNoteOn(12000, 48));
+    input.events.push_back(makeNoteOff(84000, 48));
+
+    auto gatedContext = makeContext(2.0, true);
+    EventList gatedOutput;
+    auto gatedData = makeProcessData(gatedContext, gatedOutput, 96000, nullptr, &input);
+    require(processor.process(gatedData) == kResultOk,
+            "MIDI NOTE trigger gate block must process");
+
+    int generatedOns = 0;
+    bool sawExactGateCloseOff = false;
+    for (const auto& e : gatedOutput.events) {
+        if (e.type == Event::kNoteOnEvent) {
+            ++generatedOns;
+            require(e.sampleOffset >= 12000,
+                    "generated notes must not start before trigger NoteOn");
+            require(e.sampleOffset < 84000,
+                    "generated notes must stop at trigger NoteOff");
+        } else if (e.type == Event::kNoteOffEvent &&
+                   e.sampleOffset == 84000) {
+            sawExactGateCloseOff = true;
+        }
+    }
+    require(generatedOns > 0,
+            "held MIDI trigger note must enable generated output");
+    require(sawExactGateCloseOff,
+            "final trigger NoteOff must flush active generated notes at its sample offset");
+
+    auto closedContext = makeContext(6.0, true);
+    EventList closedOutput;
+    auto closedData = makeProcessData(closedContext, closedOutput, 48000);
+    require(processor.process(closedData) == kResultOk,
+            "closed MIDI trigger follow-up block must process");
+    require(!containsType(closedOutput, Event::kNoteOnEvent),
+            "no held trigger note must remain silent after gate close");
+}
+
+void testMidiNoteTriggerStaysOpenUntilLastHeldNoteOff() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "poly trigger fixture must start");
+
+    ParameterChanges changes;
+    int32 qi = 0;
+    auto* q = changes.addParameterData(kTriggerModeId, qi);
+    int32 pi = 0;
+    require(q && q->addPoint(0, 1.0, pi) == kResultOk,
+            "poly trigger mode must be accepted");
+
+    auto setupContext = makeContext(0.0, true);
+    EventList setupOut;
+    auto setupData = makeProcessData(setupContext, setupOut, 64, &changes);
+    require(processor.process(setupData) == kResultOk,
+            "poly trigger setup must process");
+
+    EventList input;
+    input.events.push_back(makeNoteOn(0, 48));
+    input.events.push_back(makeNoteOn(12000, 52));
+    input.events.push_back(makeNoteOff(36000, 48));
+    input.events.push_back(makeNoteOff(84000, 52));
+
+    auto context = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 96000, nullptr, &input);
+    require(processor.process(data) == kResultOk,
+            "poly trigger gate block must process");
+
+    bool sawOnAfterFirstRelease = false;
+    bool sawOnAfterFinalRelease = false;
+    for (const auto& e : output.events) {
+        if (e.type != Event::kNoteOnEvent)
+            continue;
+        if (e.sampleOffset >= 36000 && e.sampleOffset < 84000)
+            sawOnAfterFirstRelease = true;
+        if (e.sampleOffset >= 84000)
+            sawOnAfterFinalRelease = true;
+    }
+    require(sawOnAfterFirstRelease,
+            "releasing one of two held trigger notes must keep the gate open");
+    require(!sawOnAfterFinalRelease,
+            "releasing the last held trigger note must close the gate");
+}
+
 void testRejectedFlushIsRetriedWithoutLosingActiveState() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk,
@@ -2445,6 +2572,8 @@ void testLegacyAndExpandedStyleAutomationCoexistSafely() {
 } // namespace
 
 int main() {
+    testMidiNoteTriggerGatesAllGeneratedOutputs();
+    testMidiNoteTriggerStaysOpenUntilLastHeldNoteOff();
     testRejectedFlushIsRetriedWithoutLosingActiveState();
     testRejectedScheduledEventForcesCleanupBeforeContinuing();
     testNonFourFourTimeSignatureStaysSilentAndFlushes();

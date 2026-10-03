@@ -904,7 +904,7 @@ int main() {
 
         MemoryStream migratedV12;
         require(migratedSong.getState(&migratedV12) == kResultOk,
-                "retired V11 state must resave as V13");
+                "retired V11 state must resave as V14");
         uint32_t storedVersion = 0;
         int32 storedSection = -1;
         std::memcpy(&storedVersion,
@@ -913,8 +913,8 @@ int main() {
         std::memcpy(&storedSection,
                     migratedV12.bytes().data() + 104,
                     sizeof(storedSection));
-        require(storedVersion == 13u,
-                "retired V11 state must upgrade to V13");
+        require(storedVersion == 14u,
+                "retired V11 state must upgrade to V14");
         require(storedSection ==
                     static_cast<int32>(midiator::SectionType::Chorus),
                 "retired V11 AUTO flag must be discarded while preserving the manual Section");
@@ -935,30 +935,60 @@ int main() {
 
 
     {
-        MidiatorProcessor currentV13;
+        MidiatorProcessor currentV14;
         MemoryStream state;
-        require(currentV13.getState(&state) == kResultOk,
-                "V13 PM velocity state must serialize");
+        require(currentV14.getState(&state) == kResultOk,
+                "V14 extended state must serialize");
         uint32_t version = 0;
         int32 pmVelocity = -1;
+        int32 triggerMode = -1;
         std::memcpy(&version, state.bytes().data() + sizeof(uint32_t), sizeof(version));
         std::memcpy(&pmVelocity,
-                    state.bytes().data() + state.bytes().size() - sizeof(int32_t),
+                    state.bytes().data() + state.bytes().size() - 2 * sizeof(int32_t),
                     sizeof(pmVelocity));
-        require(version == 13u,
-                "current state must be V13");
+        std::memcpy(&triggerMode,
+                    state.bytes().data() + state.bytes().size() - sizeof(int32_t),
+                    sizeof(triggerMode));
+        require(version == 14u,
+                "current state must be V14");
         require(pmVelocity == 30,
-                "new V13 projects must persist PM < VEL default 30");
+                "new projects must persist PM < VEL default 30");
+        require(triggerMode == 0,
+                "new projects must default Trigger to TRANSPORT");
 
         state.rewind();
         MidiatorController controller;
         require(controller.initialize(nullptr) == kResultOk,
-                "V13 PM velocity controller must initialize");
+                "V14 controller must initialize");
         require(controller.setComponentState(&state) == kResultOk,
-                "V13 PM velocity controller state must restore");
+                "V14 controller state must restore");
         require(std::abs(controller.getParamNormalized(kPalmMuteVelocityId) -
                          (28.0 / 85.0)) < 1e-9,
-                "V13 PM < VEL default 30 must restore exactly");
+                "V14 PM < VEL default 30 must restore exactly");
+        require(std::abs(controller.getParamNormalized(kTriggerModeId)) < 1e-9,
+                "V14 Trigger TRANSPORT must restore exactly");
+
+        // V13 existed briefly with the PM threshold tail only. Keep it readable
+        // and default the later Trigger parameter to TRANSPORT.
+        MemoryStream frozenV13;
+        frozenV13.bytes() = state.bytes();
+        frozenV13.bytes().resize(frozenV13.bytes().size() - sizeof(int32_t));
+        const uint32_t v13 = 13u;
+        patchFixtureValue(frozenV13, sizeof(uint32_t), v13);
+        frozenV13.rewind();
+
+        MidiatorProcessor migratedV13;
+        require(migratedV13.setState(&frozenV13) == kResultOk,
+                "frozen V13 PM-only state must migrate to V14");
+        MemoryStream upgradedV14;
+        require(migratedV13.getState(&upgradedV14) == kResultOk,
+                "migrated V13 state must serialize as V14");
+        int32 migratedTrigger = -1;
+        std::memcpy(&migratedTrigger,
+                    upgradedV14.bytes().data() + upgradedV14.bytes().size() - sizeof(int32_t),
+                    sizeof(migratedTrigger));
+        require(migratedTrigger == 0,
+                "V13 migration must default Trigger to TRANSPORT");
     }
 
     std::cout << "Midiator processor-state roundtrip test: PASS\n";

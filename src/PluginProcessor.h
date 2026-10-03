@@ -60,7 +60,8 @@ enum : ParamID {
     // kStyleId=112 stays frozen with the original 3-choice normalization.
     // The expanded 12-style selector uses a new ID for automation safety.
     kMetalStyleId = 126,
-    kPalmMuteVelocityId = 127
+    kPalmMuteVelocityId = 127,
+    kTriggerModeId = 128
 };
 
 static const FUID ProcessorUID(0x125A4001, 0x6D494449, 0x41544F52, 0x00000100);
@@ -124,6 +125,9 @@ private:
     bool haveTransportAnchor_ = false;
     double transportAnchorQn_ = 0.0;
     std::array<std::array<bool, 128>, kEventOutputBusCount> activePitchesByBus_{};
+    std::array<bool, 128> triggerHeldPitches_{};
+    int triggerHeldCount_ = 0;
+    bool midiNoteTrigger_ = false;
 
     float variationAmount_ = 0.35f;
     bool phraseChangedNeedsFlush_ = false;
@@ -148,7 +152,7 @@ private:
                                bool guiNewRiff = false,
                                bool guiVariation = false);
     bool flushActiveNotes(IEventList* output, double ppqPosition = 0.0,
-                          bool forceAllNotes = false);
+                          bool forceAllNotes = false, int32 sampleOffset = 0);
 };
 
 class MidiatorController final : public EditControllerEx1,
@@ -174,11 +178,13 @@ public:
 
 private:
     void refreshTheory() noexcept;
+    void refreshStyleHint() noexcept;
 
     VSTGUI::CTextLabel* theoryKey_ = nullptr;
     VSTGUI::CTextLabel* theoryNotes_ = nullptr;
     VSTGUI::CTextLabel* theoryCharacter_ = nullptr;
     VSTGUI::CTextLabel* theoryInterval_ = nullptr;
+    VSTGUI::CTextLabel* styleBpm_ = nullptr;
     VSTGUI::CControl* newRiffButton_ = nullptr;
     VSTGUI::CControl* variationButton_ = nullptr;
     double fallbackNewRiffState_ = 0.0;
