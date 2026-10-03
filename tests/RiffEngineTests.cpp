@@ -875,9 +875,43 @@ void testExpandedMetalStylesKeepDistinctSignatures() {
 }
 
 
+void testPalmMuteVelocityThresholdIsExclusiveAndLibraryNeutral() {
+    using midiator::GeneratorSettings;
+    using midiator::RiffEngine;
+
+    for (int threshold : {30, 40}) {
+        GeneratorSettings s{};
+        s.bars = 4;
+        s.palmMuteChance = 1.0f;
+        s.palmMuteVelocityThreshold = threshold;
+        s.powerChordsEnabled = true;
+        s.powerChordChance = 1.0f;
+
+        bool sawPalmMute = false;
+        for (unsigned seed = 1; seed <= 128; ++seed) {
+            const auto p = RiffEngine::generate(s, 0x504D5600u + seed);
+            for (int i = 0; i < p.usedSteps(); ++i) {
+                const auto& step = p.steps[i];
+                for (int n = 0; n < step.noteCount; ++n) {
+                    const int velocity = step.notes[n].velocity;
+                    if (velocity < 88) {
+                        sawPalmMute = true;
+                        require(velocity >= 2 && velocity < threshold,
+                                "palm-muted notes must stay strictly below PM < VEL");
+                    }
+                }
+            }
+        }
+        require(sawPalmMute,
+                "PM velocity threshold fixture must generate palm-muted notes");
+    }
+}
+
+
 } // namespace
 
 int main() {
+    testPalmMuteVelocityThresholdIsExclusiveAndLibraryNeutral();
     testNewRiffAcceptanceMatchesStyleDensity();
     testBarsAndScaleSafety();
     testDeterminism();

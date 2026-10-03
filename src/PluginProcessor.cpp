@@ -21,7 +21,7 @@ namespace {
 constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 8192;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 12u;
+constexpr uint32_t kStateVersion = 13u;
 constexpr int kLegacyStateSteps = 128; // V1-V7 fixed phrase payload width
 constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
 constexpr const char* kMsgVariation = "125A.Midiator.Variation";
@@ -457,6 +457,22 @@ bool readStateHeader(IBStream* state,
     return true;
 }
 
+bool readPalmMuteVelocityTail(IBStream* state,
+                              uint32_t version,
+                              int& threshold) {
+    // V12 and older encoded the historical fixed PM zone ending at velocity
+    // 40. Use an exclusive threshold of 41 to reproduce that behavior exactly.
+    threshold = version >= 13u ? 30 : 41;
+    if (version < 13u)
+        return true;
+
+    int32 stored = 30;
+    if (!readValue(state, stored) || stored < 2 || stored > 87)
+        return false;
+    threshold = stored;
+    return true;
+}
+
 uint32_t nextSeed(uint32_t x) {
     x ^= x << 13;
     x ^= x >> 17;
@@ -599,6 +615,11 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
         return kResultFalse;
     }
 
+    const int32 palmMuteVelocityThreshold =
+        std::clamp(settings_.palmMuteVelocityThreshold, 2, 87);
+    if (!writeValue(state, palmMuteVelocityThreshold))
+        return kResultFalse;
+
     return kResultOk;
 }
 
@@ -652,6 +673,10 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
             return kResultFalse;
         }
     }
+
+    if (!readPalmMuteVelocityTail(
+            state, restoredStateVersion, restored.palmMuteVelocityThreshold))
+        return kResultFalse;
 
     settings_ = restored;
     variationAmount_ = restoredVariation;
@@ -955,6 +980,30 @@ void MidiatorProcessor::applyPowerChordMode(bool enabled, bool regenerateCompani
     phraseChangedNeedsFlush_ = true;
 }
 
+void MidiatorProcessor::applyPalmMuteVelocityThreshold(int threshold) {
+    const int oldThreshold = std::clamp(settings_.palmMuteVelocityThreshold, 2, 87);
+    const int newThreshold = std::clamp(threshold, 2, 87);
+    if (oldThreshold == newThreshold)
+        return;
+
+    const int oldMax = std::max(2, oldThreshold - 1);
+    const int newMax = std::max(2, newThreshold - 1);
+    for (int i = 0; i < phrase_.usedSteps(); ++i) {
+        auto& step = phrase_.steps[i];
+        for (int n = 0; n < step.noteCount; ++n) {
+            auto& note = step.notes[n];
+            if (note.velocity >= 88)
+                continue;
+            const double ratio = static_cast<double>(note.velocity) /
+                                 static_cast<double>(oldMax);
+            note.velocity = std::clamp(
+                static_cast<int>(std::lround(ratio * newMax)), 2, newMax);
+        }
+    }
+    settings_.palmMuteVelocityThreshold = newThreshold;
+    phraseChangedNeedsFlush_ = true;
+}
+
 void MidiatorProcessor::transposePhraseToRoot(int newRootPitchClass, bool regenerateCompanions) {
     newRootPitchClass = std::clamp(newRootPitchClass, 0, 11);
     const int oldRoot = settings_.rootPitchClass;
@@ -1006,6 +1055,8 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         bool powerChordsEnabled = true;
         bool hasPalmMute = false;
         float palmMute = 0.0f;
+        bool hasPalmMuteVelocity = false;
+        int palmMuteVelocity = 30;
         bool hasVariationAmount = false;
         float variationAmount = 0.0f;
         bool hasLegacyStyle = false;
@@ -1117,6 +1168,11 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
                 pending.hasPalmMute = true;
                 pending.palmMute = static_cast<float>(v);
                 break;
+            case kPalmMuteVelocityId:
+                pending.hasPalmMuteVelocity = true;
+                pending.palmMuteVelocity =
+                    2 + normalizedIndex(v, 86);
+                break;
             case kVariationAmountId:
                 pending.hasVariationAmount = true;
                 pending.variationAmount = static_cast<float>(v);
@@ -1201,6 +1257,8 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         settings_.powerChordChance = pending.powerChordAmount;
     if (pending.hasPalmMute)
         settings_.palmMuteChance = pending.palmMute;
+    if (pending.hasPalmMuteVelocity)
+        applyPalmMuteVelocityThreshold(pending.palmMuteVelocity);
     if (pending.hasVariationAmount)
         variationAmount_ = pending.variationAmount;
     if (pending.hasDrumMap && pending.drumMap != drumMapId_) {
@@ -1934,6 +1992,11 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
 
     addPercent(STR16("Power Chords Amount"), kPowerChordId, 25.0);
     addPercent(STR16("Palm Mute"), kPalmMuteId, 70.0);
+    auto* pmVelocity = new RangeParameter(
+        STR16("PM < Velocity"), kPalmMuteVelocityId, STR16(""),
+        2.0, 87.0, 30.0, 85, ParameterInfo::kCanAutomate);
+    pmVelocity->setPrecision(0);
+    parameters.addParameter(pmVelocity);
     addPercent(STR16("Variation Amount"), kVariationAmountId, 35.0);
     addPercent(STR16("Bass Follow"), kBassFollowId, 72.0);
     addPercent(STR16("Bass Movement"), kBassMovementId, 34.0);
@@ -2008,6 +2071,30 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
                          bassSettings, drumSettings, padSettings, synthSettings))
         return kResultFalse;
 
+    if (restoredStateVersion >= 13u) {
+        midiator::Phrase tempGuitar{}, tempBass{}, tempSynth{};
+        midiator::DrumPhrase tempDrums{};
+        midiator::PadPhrase tempPads{};
+        const int serializedSteps =
+            restoredStateVersion >= 8u ? midiator::kMaxSteps : kLegacyStateSteps;
+        const bool allow16Bars = restoredStateVersion >= 8u;
+        if (!readPhraseState(state, tempGuitar, restored.bars,
+                             serializedSteps, allow16Bars, true) ||
+            !readPhraseState(state, tempBass, restored.bars,
+                             serializedSteps, allow16Bars, true) ||
+            !readDrumPhraseState(state, tempDrums, restored.bars,
+                                 serializedSteps, allow16Bars, true) ||
+            !readPadPhraseState(state, tempPads, restored.bars,
+                                serializedSteps, allow16Bars, true) ||
+            !readPhraseState(state, tempSynth, restored.bars,
+                             serializedSteps, allow16Bars, true) ||
+            !readPalmMuteVelocityTail(
+                state, restoredStateVersion, restored.palmMuteVelocityThreshold))
+            return kResultFalse;
+    } else {
+        restored.palmMuteVelocityThreshold = 41;
+    }
+
     auto legacyBarsIndex = [](int bars) -> double {
         switch (bars) {
             case 1: return 0.0;
@@ -2057,6 +2144,8 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     setParamNormalized(kRepetitionId, restored.repetition);
     setParamNormalized(kPowerChordId, restored.powerChordChance);
     setParamNormalized(kPalmMuteId, restored.palmMuteChance);
+    setParamNormalized(kPalmMuteVelocityId,
+                       static_cast<double>(restored.palmMuteVelocityThreshold - 2) / 85.0);
     setParamNormalized(kVariationAmountId, variationAmount);
     setParamNormalized(kBassFollowId, bassSettings.follow);
     setParamNormalized(kBassMovementId, bassSettings.movement);

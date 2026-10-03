@@ -113,6 +113,10 @@ struct GeneratorSettings {
     float powerChordChance = 0.25f;
     bool powerChordsEnabled = true;
     float palmMuteChance = 0.70f;
+    // Guitar-library articulation contract: palm-muted NoteOns are always
+    // strictly below this MIDI velocity. New projects default to 30 so a
+    // single Guitar Out can drive libraries with <30 as well as <40 zones.
+    int palmMuteVelocityThreshold = 30;
     int lowRootMidi = 33;         // A1
 };
 

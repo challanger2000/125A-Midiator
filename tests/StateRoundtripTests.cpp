@@ -235,6 +235,10 @@ void verifyLegacyControllerMigration(uint32_t version,
             "legacy Power Chords Enabled migration must preserve/default correctly");
     require(std::abs(controller.getParamNormalized(kDrumMapId)) < 1e-9,
             "legacy Drum Map migration must default to General MIDI");
+    const double legacyPmVelocityNormalized = (41.0 - 2.0) / 85.0;
+    require(std::abs(controller.getParamNormalized(kPalmMuteVelocityId) -
+                     legacyPmVelocityNormalized) < 1e-9,
+            "pre-V13 projects must preserve the historical <41 PM velocity zone");
     constexpr double kRoleEpsilon = 1e-6;
     require(std::abs(controller.getParamNormalized(kBassFollowId) - 0.72) < kRoleEpsilon &&
             std::abs(controller.getParamNormalized(kBassMovementId) - 0.34) < kRoleEpsilon &&
@@ -842,7 +846,7 @@ int main() {
     }
 
     {
-        // V12 is the authoritative expanded-style state. The byte layout stays
+        // V12 is the frozen expanded-style state. V13 appends PM velocity
         // compatible with V10 while style IDs 0..11 are now valid.
         MemoryStream deathV12;
         deathV12.bytes() = first.bytes();
@@ -900,7 +904,7 @@ int main() {
 
         MemoryStream migratedV12;
         require(migratedSong.getState(&migratedV12) == kResultOk,
-                "retired V11 state must resave as V12");
+                "retired V11 state must resave as V13");
         uint32_t storedVersion = 0;
         int32 storedSection = -1;
         std::memcpy(&storedVersion,
@@ -909,8 +913,8 @@ int main() {
         std::memcpy(&storedSection,
                     migratedV12.bytes().data() + 104,
                     sizeof(storedSection));
-        require(storedVersion == 12u,
-                "retired V11 state must upgrade to V12");
+        require(storedVersion == 13u,
+                "retired V11 state must upgrade to V13");
         require(storedSection ==
                     static_cast<int32>(midiator::SectionType::Chorus),
                 "retired V11 AUTO flag must be discarded while preserving the manual Section");
@@ -927,6 +931,34 @@ int main() {
         MidiatorProcessor migratedExpanded;
         require(migratedExpanded.setState(&expandedV11) == kResultOk,
                 "expanded-style development V11 state must remain readable");
+    }
+
+
+    {
+        MidiatorProcessor currentV13;
+        MemoryStream state;
+        require(currentV13.getState(&state) == kResultOk,
+                "V13 PM velocity state must serialize");
+        uint32_t version = 0;
+        int32 pmVelocity = -1;
+        std::memcpy(&version, state.bytes().data() + sizeof(uint32_t), sizeof(version));
+        std::memcpy(&pmVelocity,
+                    state.bytes().data() + state.bytes().size() - sizeof(int32_t),
+                    sizeof(pmVelocity));
+        require(version == 13u,
+                "current state must be V13");
+        require(pmVelocity == 30,
+                "new V13 projects must persist PM < VEL default 30");
+
+        state.rewind();
+        MidiatorController controller;
+        require(controller.initialize(nullptr) == kResultOk,
+                "V13 PM velocity controller must initialize");
+        require(controller.setComponentState(&state) == kResultOk,
+                "V13 PM velocity controller state must restore");
+        require(std::abs(controller.getParamNormalized(kPalmMuteVelocityId) -
+                         (28.0 / 85.0)) < 1e-9,
+                "V13 PM < VEL default 30 must restore exactly");
     }
 
     std::cout << "Midiator processor-state roundtrip test: PASS\n";

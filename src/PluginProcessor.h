@@ -59,7 +59,8 @@ enum : ParamID {
     kSectionTypeId = 125,
     // kStyleId=112 stays frozen with the original 3-choice normalization.
     // The expanded 12-style selector uses a new ID for automation safety.
-    kMetalStyleId = 126
+    kMetalStyleId = 126,
+    kPalmMuteVelocityId = 127
 };
 
 static const FUID ProcessorUID(0x125A4001, 0x6D494449, 0x41544F52, 0x00000100);
@@ -141,6 +142,7 @@ private:
     void regenerateSectionFromCurrentSeed();
     void resizePhraseBars(int newBars, bool regenerateCompanions = true);
     void applyPowerChordMode(bool enabled, bool regenerateCompanions = true);
+    void applyPalmMuteVelocityThreshold(int threshold);
     void transposePhraseToRoot(int newRootPitchClass, bool regenerateCompanions = true);
     void applyParameterChanges(ProcessData& data,
                                bool guiNewRiff = false,

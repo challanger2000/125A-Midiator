@@ -285,11 +285,24 @@ bool shouldHit(Rng& rng, const GeneratorSettings& s, int globalStep, int archety
     return rng.chance(probability);
 }
 
-int velocityFor(Rng& rng, bool palmMute, bool accent) {
+int velocityFor(Rng& rng, bool palmMute, bool accent,
+                int palmMuteVelocityThreshold) {
     if (palmMute) {
-        // Keep normal palm mutes in a conservative low-velocity guitar zone.
-        // Velocity 0/1 stays free for dead/chuck/noise articulations.
-        return rng.range(accent ? 34 : 30, accent ? 40 : 36);
+        // The threshold is exclusive: PM < VEL = 30 means every generated
+        // palm mute is <=29. Keep velocity 0/1 free for dead/chuck/noise
+        // articulations and leave a large safety gap below open notes (>=88).
+        const int threshold = std::clamp(palmMuteVelocityThreshold, 2, 87);
+        if (threshold == 41) {
+            // Exact compatibility profile for pre-V13 projects, whose palm
+            // mutes historically lived at 30..36 / 34..40.
+            return rng.range(accent ? 34 : 30, accent ? 40 : 36);
+        }
+        const int maximum = threshold - 1;
+        const int minimum = std::max(2, threshold - 8);
+        const int normalHigh = std::max(minimum, threshold - 4);
+        const int accentLow = std::max(minimum, threshold - 5);
+        return rng.range(accent ? accentLow : minimum,
+                         accent ? maximum : normalHigh);
     }
 
     return rng.range(accent ? 104 : 88, accent ? 120 : 106);
@@ -301,9 +314,11 @@ void createStepNote(Step& step,
                     bool palmMute,
                     bool accent,
                     int lengthSteps,
-                    Rng& rng) {
+                    Rng& rng,
+                    int palmMuteVelocityThreshold) {
     step.noteCount = 1;
-    step.notes[0] = {pitch, velocityFor(rng, palmMute, accent), lengthSteps};
+    step.notes[0] = {pitch, velocityFor(rng, palmMute, accent,
+                                        palmMuteVelocityThreshold), lengthSteps};
 
     if (powerChord && pitch <= 120) {
         step.noteCount = 2;
@@ -312,8 +327,11 @@ void createStepNote(Step& step,
         // Keep both notes of a dyad inside the same visible articulation zone.
         if (step.notes[0].velocity >= 88)
             secondVelocity = std::max(88, secondVelocity);
-        else
-            secondVelocity = std::clamp(secondVelocity, 30, 40);
+        else {
+            const int pmMax = std::clamp(palmMuteVelocityThreshold - 1, 2, 86);
+            const int pmMin = std::max(2, pmMax - 7);
+            secondVelocity = std::clamp(secondVelocity, pmMin, pmMax);
+        }
 
         step.notes[1] = {pitch + 7, secondVelocity, lengthSteps};
     }
@@ -378,17 +396,20 @@ int nearestPlayableOctave(int pitch,
     return best;
 }
 
-void forceArticulationZone(Step& step, bool palmMute, bool accent) {
+void forceArticulationZone(Step& step, bool palmMute, bool accent,
+                           int palmMuteVelocityThreshold) {
     if (step.noteCount <= 0)
         return;
 
+    const int pmMax = std::clamp(palmMuteVelocityThreshold - 1, 2, 86);
+    const int pmNormal = std::max(2, pmMax - (accent ? 1 : 3));
     const int primaryVelocity =
-        palmMute ? (accent ? 38 : 34) : (accent ? 108 : 98);
+        palmMute ? pmNormal : (accent ? 108 : 98);
     step.notes[0].velocity = primaryVelocity;
 
     for (int noteIndex = 1; noteIndex < step.noteCount; ++noteIndex) {
         step.notes[noteIndex].velocity = palmMute
-            ? std::max(30, primaryVelocity - 3)
+            ? std::max(2, primaryVelocity - 3)
             : std::max(88, primaryVelocity - 3);
     }
 }
@@ -399,7 +420,8 @@ void forceArticulationZone(Step& step, bool palmMute, bool accent) {
 // shaped. The original three styles intentionally keep their historical path.
 void applyGuitarPlayability(Phrase& phrase,
                             StyleId style,
-                            int base) {
+                            int base,
+                            int palmMuteVelocityThreshold) {
     if (static_cast<int>(style) < static_cast<int>(StyleId::ClassicHeavy))
         return;
 
@@ -435,14 +457,15 @@ void applyGuitarPlayability(Phrase& phrase,
             // A repeated pedal tone normally stays under the same picking /
             // muting gesture through a fast run. Random mute/open flips on
             // adjacent repeated 16ths sound more like MIDI than guitar.
-            const bool currentPalmMute = step.notes[0].velocity <= 40;
+            const bool currentPalmMute = step.notes[0].velocity < 88;
             const bool repeatedPitch =
                 step.notes[0].pitch == previousPitch;
             const bool accent = (i % 4) == 0;
             if (profile.holdRepeatedArticulation &&
                 gap == 1 && repeatedPitch && !accent &&
                 currentPalmMute != previousPalmMute) {
-                forceArticulationZone(step, previousPalmMute, false);
+                forceArticulationZone(step, previousPalmMute, false,
+                                      palmMuteVelocityThreshold);
             }
 
             // High-speed chug/tremolo styles should not leave a previous note
@@ -457,7 +480,7 @@ void applyGuitarPlayability(Phrase& phrase,
 
         previousStep = i;
         previousPitch = step.notes[0].pitch;
-        previousPalmMute = step.notes[0].velocity <= 40;
+        previousPalmMute = step.notes[0].velocity < 88;
     }
 }
 
@@ -539,6 +562,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
     s.repetition = std::clamp(s.repetition, 0.0f, 1.0f);
     s.powerChordChance = std::clamp(s.powerChordChance, 0.0f, 1.0f);
     s.palmMuteChance = std::clamp(s.palmMuteChance, 0.0f, 1.0f);
+    s.palmMuteVelocityThreshold = std::clamp(s.palmMuteVelocityThreshold, 2, 87);
 
     Phrase result{};
     result.bars = s.bars;
@@ -585,7 +609,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
         else if (s.style==StyleId::MelodicDeath) longChance+=0.08f;
         const int length=palmMute?1:(rng.chance(longChance)?openLength:1);
 
-        createStepNote(out, pitch, powerChord, palmMute, accent, length, rng);
+        createStepNote(out, pitch, powerChord, palmMute, accent, length, rng, s.palmMuteVelocityThreshold);
         return out;
     };
 
@@ -626,7 +650,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
                     const int degree = (scale.count > 2) ? 2 : 1;
                     const int pitch = clampMusicalPitch(base + scale.intervals[degree], base);
                     const bool palmMute = rng.chance(s.palmMuteChance);
-                    createStepNote(movement, pitch, false, palmMute, false, palmMute ? 1 : 2, rng);
+                    createStepNote(movement, pitch, false, palmMute, false, palmMute ? 1 : 2, rng, s.palmMuteVelocityThreshold);
                 }
 
                 baseBar[pos] = movement;
@@ -684,7 +708,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
                     int pitch = clampMusicalPitch(base + scale.intervals[degree], base);
 
                     createStepNote(current, pitch, oldPowerChord, oldPalmMute,
-                                   (i % 4) == 0, oldLength, rng);
+                                   (i % 4) == 0, oldLength, rng, s.palmMuteVelocityThreshold);
                 } else {
                     current = makeMusicalStep(i, false);
                 }
@@ -812,7 +836,7 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
                         }
 
                         createStepNote(target, pitch, oldPowerChord, oldPalmMute,
-                                       (candidate % 4) == 0, oldLength, rng);
+                                       (candidate % 4) == 0, oldLength, rng, s.palmMuteVelocityThreshold);
                         if (target == seedStep)
                             target = {};
                     }
@@ -854,7 +878,8 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
         }
     }
 
-    applyGuitarPlayability(result, s.style, base);
+    applyGuitarPlayability(result, s.style, base,
+                               s.palmMuteVelocityThreshold);
 
     // POWER CHORDS is a user-facing musical amount, not merely a tiny
     // per-event lottery. After phrase development, make sure the final phrase
@@ -955,7 +980,7 @@ Phrase RiffEngine::vary(const Phrase& source,
                 const int degree = chooseDegree(rng, s, step % 16);
                 int pitch = clampMusicalPitch(base + scale.intervals[degree], base);
                 const bool palmMute = rng.chance(s.palmMuteChance);
-                createStepNote(dst, pitch, false, palmMute, accent, palmMute ? 1 : 2, rng);
+                createStepNote(dst, pitch, false, palmMute, accent, palmMute ? 1 : 2, rng, s.palmMuteVelocityThreshold);
             }
             continue;
         }
@@ -985,7 +1010,7 @@ Phrase RiffEngine::vary(const Phrase& source,
             const bool palmMute = dst.notes[0].velocity < 84;
             const bool powerChord = s.powerChordsEnabled && dst.noteCount == 2;
             const int length = dst.notes[0].lengthSteps;
-            createStepNote(dst, pitch, powerChord, palmMute, accent, length, rng);
+            createStepNote(dst, pitch, powerChord, palmMute, accent, length, rng, s.palmMuteVelocityThreshold);
         } else {
             // Articulation/rhythm variation without changing tonal center.
             const bool palmMute = rng.chance(s.palmMuteChance);
@@ -993,13 +1018,13 @@ Phrase RiffEngine::vary(const Phrase& source,
                 rng.chance(std::clamp(s.powerChordChance * (accent ? 1.0f : 0.62f), 0.0f, 1.0f));
             const int length = palmMute ? 1 : rng.range(1, 2);
             const int pitch = dst.notes[0].pitch;
-            createStepNote(dst, pitch, powerChord, palmMute, accent, length, rng);
+            createStepNote(dst, pitch, powerChord, palmMute, accent, length, rng, s.palmMuteVelocityThreshold);
         }
     }
 
     // Preserve a reliable downbeat anchor.
     if (result.steps[0].noteCount == 0)
-        createStepNote(result.steps[0], base, false, true, true, 1, rng);
+        createStepNote(result.steps[0], base, false, true, true, 1, rng, s.palmMuteVelocityThreshold);
 
     auto structurallyDifferent = [](const Step& x, const Step& y) {
         if (x.noteCount != y.noteCount)
@@ -1036,7 +1061,7 @@ Phrase RiffEngine::vary(const Phrase& source,
             degree = std::clamp(degree, 1, std::max(1, scale.count - 1));
             int pitch = clampMusicalPitch(base + scale.intervals[degree], base);
             const bool palmMute = rng.chance(s.palmMuteChance);
-            createStepNote(dst, pitch, false, palmMute, accent, palmMute ? 1 : 2, rng);
+            createStepNote(dst, pitch, false, palmMute, accent, palmMute ? 1 : 2, rng, s.palmMuteVelocityThreshold);
         } else {
             const int oldPitch = src.notes[0].pitch;
             int pitch = oldPitch;
@@ -1049,7 +1074,7 @@ Phrase RiffEngine::vary(const Phrase& source,
                 const bool palmMute = src.notes[0].velocity < 84;
                 const bool powerChord = s.powerChordsEnabled && src.noteCount == 2;
                 createStepNote(dst, pitch, powerChord, palmMute, accent,
-                               src.notes[0].lengthSteps, rng);
+                               src.notes[0].lengthSteps, rng, s.palmMuteVelocityThreshold);
             } else {
                 // Extremely defensive fallback: changing onset is still an
                 // audible structural change and cannot accidentally equal src.
@@ -1061,7 +1086,8 @@ Phrase RiffEngine::vary(const Phrase& source,
             ++structuralChanges;
     }
 
-    applyGuitarPlayability(result, s.style, base);
+    applyGuitarPlayability(result, s.style, base,
+                               s.palmMuteVelocityThreshold);
     sanitizeOverlaps(result);
     return result;
 }

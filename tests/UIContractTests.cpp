@@ -37,10 +37,10 @@ int main() {
             xml.find("maxSize=\"1720, 1460\"") != std::string::npos,
             "resizable editor contract must expose non-identical min/max sizes");
 
-    for (int tag = 100; tag <= 126; ++tag) {
+    for (int tag = 100; tag <= 127; ++tag) {
         const std::string needle = "tag=\"" + std::to_string(tag) + "\"";
         require(xml.find(needle) != std::string::npos,
-                "all Midiator parameter tags 100..125 must be declared");
+                "all Midiator parameter tags 100..127 must be declared");
     }
 
     const char* theoryIds[] = {
@@ -73,6 +73,8 @@ int main() {
     require(xml.find("<control-tag name=\"Style\" tag=\"126\"") != std::string::npos &&
             xml.find("control-tag=\"Style\"") != std::string::npos,
             "visible METAL STYLE selector must bind the new 12-style parameter");
+    require(xml.find("control-tag=\"PalmMuteVelocity\"") != std::string::npos,
+            "PM velocity threshold field must be bound");
     require(xml.find("control-tag=\"PowerChordsEnabled\"") != std::string::npos,
             "POWER CHORDS ON/OFF selector must be bound");
     require(xml.find("control-tag=\"DrumMap\"") != std::string::npos,
@@ -111,8 +113,8 @@ int main() {
         ++textEditCount;
         pos += 10;
     }
-    require(textEditCount == 15,
-            "fifteen editable percentage value fields must accompany the fifteen sliders");
+    require(textEditCount == 16,
+            "fifteen percentage fields plus PM velocity must be editable");
 
     std::cout << "Midiator UI contract test: PASS\n";
     return 0;

@@ -59,6 +59,7 @@
     <control-tag name="FillIntensity" tag="124"/>
     <control-tag name="SectionType" tag="125"/>
     <control-tag name="Style" tag="126"/>
+    <control-tag name="PalmMuteVelocity" tag="127"/>
   </control-tags>
 
   <template name="MidiatorView" class="CViewContainer" origin="0, 0" size="860, 730" minSize="645, 548" maxSize="1720, 1460" transparent="false" background-color="Bg">
@@ -120,7 +121,9 @@
       <view class="CSlider" control-tag="PowerChords" origin="474, 78" size="92, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
       <view class="CTextEdit" control-tag="PowerChords" origin="570, 77" size="38, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
 
-      <view class="CTextLabel" origin="644, 54" size="134, 18" title="PALM MUTE" font="Small" font-color="Muted" transparent="true"/>
+      <view class="CTextLabel" origin="644, 54" size="70, 18" title="PALM MUTE" font="Small" font-color="Muted" transparent="true"/>
+      <view class="CTextLabel" origin="714, 54" size="46, 18" title="PM&lt;VEL" font="Small" font-color="Dim" text-alignment="right" transparent="true"/>
+      <view class="CTextEdit" control-tag="PalmMuteVelocity" origin="764, 52" size="30, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
       <view class="CSlider" control-tag="PalmMute" origin="644, 78" size="92, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
       <view class="CTextEdit" control-tag="PalmMute" origin="740, 77" size="38, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
 
