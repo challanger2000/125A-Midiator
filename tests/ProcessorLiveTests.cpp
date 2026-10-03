@@ -596,6 +596,12 @@ void testDedicatedInstrumentOutputBuses() {
     require(processor.getBusCount(kEvent, kOutput) == kEventOutputBusCount,
             "Midiator must expose one dedicated event output bus per instrument role");
 
+    BusInfo inputInfo{};
+    require(processor.getBusInfo(kEvent, kInput, 0, inputInfo) == kResultOk,
+            "MIDI input bus must be queryable");
+    require(inputInfo.channelCount == 16,
+            "MIDI input must remain 16-channel for flexible controller/trigger input");
+
     struct ExpectedBus { int32 index; const char16_t* name; };
     const ExpectedBus expected[] = {
         {kGuitarOutBus, STR16("Guitar Out")},
@@ -612,6 +618,8 @@ void testDedicatedInstrumentOutputBuses() {
         require(std::char_traits<char16_t>::compare(info.name, item.name,
                     std::char_traits<char16_t>::length(item.name)) == 0,
                 "dedicated output bus must keep its role-specific name");
+        require(info.channelCount == 1,
+                "each dedicated instrument output must expose exactly one MIDI channel");
     }
 
     processor.terminate();

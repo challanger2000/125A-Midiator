@@ -526,11 +526,11 @@ tresult PLUGIN_API MidiatorProcessor::initialize(FUnknown* context) {
     // Each musical role owns a real VST3 event output bus. This is deliberate:
     // hosts can route every generated part to a separate instrument without
     // relying on MIDI-channel multiplexing inside one shared output.
-    addEventOutput(STR16("Guitar Out"), 16, kMain, BusInfo::kDefaultActive);
-    addEventOutput(STR16("Bass Out"),   16, kAux,  BusInfo::kDefaultActive);
-    addEventOutput(STR16("Drums Out"),  16, kAux,  BusInfo::kDefaultActive);
-    addEventOutput(STR16("Pad Out"),    16, kAux,  BusInfo::kDefaultActive);
-    addEventOutput(STR16("Synth Out"),  16, kAux,  BusInfo::kDefaultActive);
+    addEventOutput(STR16("Guitar Out"), 1, kMain, BusInfo::kDefaultActive);
+    addEventOutput(STR16("Bass Out"),   1, kAux,  BusInfo::kDefaultActive);
+    addEventOutput(STR16("Drums Out"),  1, kAux,  BusInfo::kDefaultActive);
+    addEventOutput(STR16("Pad Out"),    1, kAux,  BusInfo::kDefaultActive);
+    addEventOutput(STR16("Synth Out"),  1, kAux,  BusInfo::kDefaultActive);
     return kResultOk;
 }
 
