@@ -992,8 +992,10 @@ void MidiatorProcessor::applyPowerChordMode(bool enabled, bool regenerateCompani
             step.noteCount = 2;
             step.notes[1] = step.notes[0];
             step.notes[1].pitch = step.notes[0].pitch + 7;
-            const int pmMin = std::max(
-                2, std::clamp(settings_.palmMuteVelocityThreshold, 2, 87) - 8);
+            const int threshold =
+                std::clamp(settings_.palmMuteVelocityThreshold, 2, 87);
+            const int pmMin =
+                threshold == 41 ? 30 : std::max(2, threshold - 8);
             step.notes[1].velocity = std::max(
                 step.notes[0].velocity >= 88 ? 88 : pmMin,
                 step.notes[0].velocity - 3);
@@ -1565,9 +1567,17 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     int triggerInputCount = 0;
     int triggerTransitionCount = 0;
     bool triggerInputOverflow = false;
-    const bool triggerOpenAtBlockStart = triggerHeldCount_ > 0;
+    if (!midiNoteTrigger_) {
+        // Root Source=MIDI may still receive notes in TRANSPORT mode, but those
+        // notes must never become latent trigger state if the user later
+        // switches to MIDI NOTE.
+        triggerHeldPitches_.fill(false);
+        triggerHeldCount_ = 0;
+    }
+    const bool triggerOpenAtBlockStart =
+        midiNoteTrigger_ && triggerHeldCount_ > 0;
 
-    if (data.inputEvents) {
+    if (midiNoteTrigger_ && data.inputEvents) {
         for (int32 i = 0; i < data.inputEvents->getEventCount(); ++i) {
             Event event{};
             if (data.inputEvents->getEvent(i, event) != kResultOk)

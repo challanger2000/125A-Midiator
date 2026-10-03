@@ -328,9 +328,17 @@ void createStepNote(Step& step,
         if (step.notes[0].velocity >= 88)
             secondVelocity = std::max(88, secondVelocity);
         else {
-            const int pmMax = std::clamp(palmMuteVelocityThreshold - 1, 2, 86);
-            const int pmMin = std::max(2, pmMax - 7);
-            secondVelocity = std::clamp(secondVelocity, pmMin, pmMax);
+            const int threshold =
+                std::clamp(palmMuteVelocityThreshold, 2, 87);
+            if (threshold == 41) {
+                // Exact pre-V13 compatibility: old dyad voices were clamped
+                // to the fixed 30..40 palm-mute zone.
+                secondVelocity = std::clamp(secondVelocity, 30, 40);
+            } else {
+                const int pmMax = threshold - 1;
+                const int pmMin = std::max(2, pmMax - 7);
+                secondVelocity = std::clamp(secondVelocity, pmMin, pmMax);
+            }
         }
 
         step.notes[1] = {pitch + 7, secondVelocity, lengthSteps};
