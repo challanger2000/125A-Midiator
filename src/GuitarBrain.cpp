@@ -329,6 +329,138 @@ int clampMusicalPitch(int pitch, int base) {
     return std::clamp(pitch, 0, 120);
 }
 
+
+struct GuitarPlayabilityProfile {
+    int adjacentMaxJump = 7;
+    int eighthMaxJump = 12;
+    bool holdRepeatedArticulation = true;
+    bool clipAdjacentTails = false;
+};
+
+GuitarPlayabilityProfile guitarPlayabilityProfile(StyleId style) {
+    switch (style) {
+        case StyleId::ClassicHeavy:      return {7, 12, true,  false};
+        case StyleId::Thrash:            return {5,  9, true,  true};
+        case StyleId::Groove:            return {7, 11, true,  false};
+        case StyleId::Death:             return {5,  9, true,  true};
+        case StyleId::MelodicDeath:      return {7, 12, true,  false};
+        case StyleId::Metalcore:         return {5, 10, true,  true};
+        case StyleId::NuMetal:           return {7, 10, true,  false};
+        case StyleId::Doom:              return {12,14, false, false};
+        case StyleId::DjentProgressive:  return {5,  9, true,  true};
+        case StyleId::NDHIndustrial:
+        case StyleId::DarkRockGothic:
+        case StyleId::HeavyIndustrial:
+        case StyleId::Count:
+            return {24, 24, false, false};
+    }
+    return {24, 24, false, false};
+}
+
+int nearestPlayableOctave(int pitch,
+                          int previousPitch,
+                          int base,
+                          int maxPitch) {
+    int best = pitch;
+    int bestDistance = std::abs(pitch - previousPitch);
+
+    for (int octaveShift : {-12, 12}) {
+        const int candidate = pitch + octaveShift;
+        if (candidate < base || candidate > std::min(maxPitch, base + 24))
+            continue;
+
+        const int distance = std::abs(candidate - previousPitch);
+        if (distance < bestDistance) {
+            best = candidate;
+            bestDistance = distance;
+        }
+    }
+    return best;
+}
+
+void forceArticulationZone(Step& step, bool palmMute, bool accent) {
+    if (step.noteCount <= 0)
+        return;
+
+    const int primaryVelocity =
+        palmMute ? (accent ? 38 : 34) : (accent ? 108 : 98);
+    step.notes[0].velocity = primaryVelocity;
+
+    for (int noteIndex = 1; noteIndex < step.noteCount; ++noteIndex) {
+        step.notes[noteIndex].velocity = palmMute
+            ? std::max(30, primaryVelocity - 3)
+            : std::max(88, primaryVelocity - 3);
+    }
+}
+
+// Convert generated pitch classes into motions a guitarist can execute more
+// naturally. Rhythm and harmonic pitch classes stay untouched; only octave
+// placement, repeated-note articulation continuity and fast note tails are
+// shaped. The original three styles intentionally keep their historical path.
+void applyGuitarPlayability(Phrase& phrase,
+                            StyleId style,
+                            int base) {
+    if (static_cast<int>(style) < static_cast<int>(StyleId::ClassicHeavy))
+        return;
+
+    const auto profile = guitarPlayabilityProfile(style);
+    int previousStep = -1;
+    int previousPitch = -1;
+    bool previousPalmMute = false;
+
+    for (int i = 0; i < phrase.usedSteps(); ++i) {
+        auto& step = phrase.steps[i];
+        if (step.noteCount <= 0)
+            continue;
+
+        if (previousStep >= 0) {
+            const int gap = i - previousStep;
+            const int jump = std::abs(step.notes[0].pitch - previousPitch);
+            const int allowedJump =
+                gap == 1 ? profile.adjacentMaxJump :
+                gap == 2 ? profile.eighthMaxJump : 24;
+
+            if (jump > allowedJump) {
+                const int maxPrimaryPitch = step.noteCount > 1 ? 120 : 127;
+                const int shapedPitch = nearestPlayableOctave(
+                    step.notes[0].pitch, previousPitch, base, maxPrimaryPitch);
+                const int delta = shapedPitch - step.notes[0].pitch;
+
+                if (delta != 0) {
+                    for (int noteIndex = 0; noteIndex < step.noteCount; ++noteIndex)
+                        step.notes[noteIndex].pitch += delta;
+                }
+            }
+
+            // A repeated pedal tone normally stays under the same picking /
+            // muting gesture through a fast run. Random mute/open flips on
+            // adjacent repeated 16ths sound more like MIDI than guitar.
+            const bool currentPalmMute = step.notes[0].velocity <= 40;
+            const bool repeatedPitch =
+                step.notes[0].pitch == previousPitch;
+            const bool accent = (i % 4) == 0;
+            if (profile.holdRepeatedArticulation &&
+                gap == 1 && repeatedPitch && !accent &&
+                currentPalmMute != previousPalmMute) {
+                forceArticulationZone(step, previousPalmMute, false);
+            }
+
+            // High-speed chug/tremolo styles should not leave a previous note
+            // ringing through the immediately following 16th onset.
+            if (profile.clipAdjacentTails && gap == 1) {
+                auto& previous = phrase.steps[previousStep];
+                for (int noteIndex = 0; noteIndex < previous.noteCount; ++noteIndex)
+                    previous.notes[noteIndex].lengthSteps =
+                        std::min(previous.notes[noteIndex].lengthSteps, 1);
+            }
+        }
+
+        previousStep = i;
+        previousPitch = step.notes[0].pitch;
+        previousPalmMute = step.notes[0].velocity <= 40;
+    }
+}
+
 void sanitizeOverlaps(Phrase& phrase) {
     const int used = phrase.usedSteps();
 
@@ -722,6 +854,8 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
         }
     }
 
+    applyGuitarPlayability(result, s.style, base);
+
     // POWER CHORDS is a user-facing musical amount, not merely a tiny
     // per-event lottery. After phrase development, make sure the final phrase
     // contains a representative number of dyads. This also prevents sparse
@@ -927,6 +1061,7 @@ Phrase RiffEngine::vary(const Phrase& source,
             ++structuralChanges;
     }
 
+    applyGuitarPlayability(result, s.style, base);
     sanitizeOverlaps(result);
     return result;
 }
