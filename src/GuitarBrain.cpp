@@ -935,8 +935,10 @@ Phrase RiffEngine::generate(const GeneratorSettings& in, uint32_t seed) {
                 step.noteCount = 2;
                 step.notes[1] = step.notes[0];
                 step.notes[1].pitch = step.notes[0].pitch + 7;
+                const int pmMin = std::max(
+                    2, std::clamp(s.palmMuteVelocityThreshold, 2, 87) - 8);
                 step.notes[1].velocity = std::max(
-                    step.notes[0].velocity >= 88 ? 88 : 30,
+                    step.notes[0].velocity >= 88 ? 88 : pmMin,
                     step.notes[0].velocity - 3);
                 ++existingChords;
             }
