@@ -73,7 +73,7 @@
       <view class="CTextLabel" origin="18, 12" size="210, 18" title="TONAL FRAME" font="Heading" font-color="Accent" transparent="true"/>
       <view class="CView" origin="18, 34" size="776, 1" transparent="false" background-color="PanelEdge"/>
 
-      <view class="CTextLabel" origin="18, 47" size="48, 16" title="ROOT" font="Small" font-color="Dim" transparent="true"/>
+      <view class="CTextLabel" origin="18, 47" size="48, 16" title="ROOT" font="Small" font-color="Dim" text-alignment="center" transparent="true"/>
       <view class="COptionMenu" control-tag="Root" origin="68, 41" size="104, 30" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
 
       <view class="CTextLabel" origin="194, 47" size="48, 16" title="SCALE" font="Small" font-color="Dim" transparent="true"/>
