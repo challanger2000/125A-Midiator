@@ -213,6 +213,140 @@ static void printSweepLine(const char* label, double value, const SweepMetrics& 
 }
 
 
+
+struct GuitarPlayabilityMetrics {
+    double hits = 0.0;
+    double avgAbsJump = 0.0;
+    double avgPhraseMaxJump = 0.0;
+    double leapGt7Share = 0.0;
+    double leapGt12Share = 0.0;
+    double rapidShiftGt5Share = 0.0;
+    double consecutive16thShare = 0.0;
+    double repeatedPitchShare = 0.0;
+    double muteOpenSwitchShare = 0.0;
+    double tailOverlapShare = 0.0;
+    double longNoteShare = 0.0;
+    double chordShare = 0.0;
+    double invalidFifthShare = 0.0;
+};
+
+static GuitarPlayabilityMetrics measureGuitarPlayability(
+        const GeneratorSettings& settings,
+        unsigned seedBase,
+        int samples = 512) {
+    GuitarPlayabilityMetrics m{};
+    long long hits = 0;
+    long long transitions = 0;
+    long long jumpSum = 0;
+    long long leapsGt7 = 0;
+    long long leapsGt12 = 0;
+    long long rapidShiftsGt5 = 0;
+    long long consecutive16ths = 0;
+    long long repeatedPitch = 0;
+    long long articulationSwitches = 0;
+    long long tailOverlaps = 0;
+    long long longNotes = 0;
+    long long chords = 0;
+    long long invalidFifths = 0;
+    long long phraseMaxJumpSum = 0;
+
+    for (int sample = 0; sample < samples; ++sample) {
+        const auto p = RiffEngine::generate(
+            settings, seedBase + static_cast<unsigned>(sample));
+
+        int previousPitch = -1;
+        int previousStep = -1;
+        int previousLength = 0;
+        bool previousMute = false;
+        int phraseMaxJump = 0;
+
+        for (int i = 0; i < p.usedSteps(); ++i) {
+            const auto& st = p.steps[i];
+            if (st.noteCount <= 0)
+                continue;
+
+            ++hits;
+            const auto& note = st.notes[0];
+            const bool muted = note.velocity <= 40;
+            if (note.lengthSteps > 1)
+                ++longNotes;
+            if (st.noteCount > 1) {
+                ++chords;
+                if (st.notes[1].pitch - st.notes[0].pitch != 7)
+                    ++invalidFifths;
+            }
+
+            if (previousPitch >= 0) {
+                ++transitions;
+                const int jump = std::abs(note.pitch - previousPitch);
+                jumpSum += jump;
+                phraseMaxJump = std::max(phraseMaxJump, jump);
+                if (jump > 7) ++leapsGt7;
+                if (jump > 12) ++leapsGt12;
+                if (i == previousStep + 1) {
+                    ++consecutive16ths;
+                    if (jump > 5)
+                        ++rapidShiftsGt5;
+                }
+                if (jump == 0)
+                    ++repeatedPitch;
+                if (muted != previousMute)
+                    ++articulationSwitches;
+                if (previousStep + previousLength > i)
+                    ++tailOverlaps;
+            }
+
+            previousPitch = note.pitch;
+            previousStep = i;
+            previousLength = std::max(1, note.lengthSteps);
+            previousMute = muted;
+        }
+
+        phraseMaxJumpSum += phraseMaxJump;
+    }
+
+    const double phraseCount = static_cast<double>(samples);
+    const double hitCount = std::max(1.0, static_cast<double>(hits));
+    const double transitionCount =
+        std::max(1.0, static_cast<double>(transitions));
+
+    m.hits = hits / phraseCount;
+    m.avgAbsJump = jumpSum / transitionCount;
+    m.avgPhraseMaxJump = phraseMaxJumpSum / phraseCount;
+    m.leapGt7Share = leapsGt7 / transitionCount;
+    m.leapGt12Share = leapsGt12 / transitionCount;
+    m.rapidShiftGt5Share = rapidShiftsGt5 / transitionCount;
+    m.consecutive16thShare = consecutive16ths / transitionCount;
+    m.repeatedPitchShare = repeatedPitch / transitionCount;
+    m.muteOpenSwitchShare = articulationSwitches / transitionCount;
+    m.tailOverlapShare = tailOverlaps / transitionCount;
+    m.longNoteShare = longNotes / hitCount;
+    m.chordShare = chords / hitCount;
+    m.invalidFifthShare =
+        chords > 0 ? static_cast<double>(invalidFifths) / chords : 0.0;
+    return m;
+}
+
+static void printGuitarPlayabilityLine(
+        const char* label,
+        const GuitarPlayabilityMetrics& m) {
+    std::cout << label
+              << ": hits=" << m.hits
+              << " avgJump=" << m.avgAbsJump
+              << " phraseMaxJump=" << m.avgPhraseMaxJump
+              << " >7st=" << m.leapGt7Share * 100.0 << "%"
+              << " >12st=" << m.leapGt12Share * 100.0 << "%"
+              << " rapid>5st=" << m.rapidShiftGt5Share * 100.0 << "%"
+              << " consecutive16th=" << m.consecutive16thShare * 100.0 << "%"
+              << " samePitch=" << m.repeatedPitchShare * 100.0 << "%"
+              << " mute/openSwitch=" << m.muteOpenSwitchShare * 100.0 << "%"
+              << " tailOverlap=" << m.tailOverlapShare * 100.0 << "%"
+              << " longNotes=" << m.longNoteShare * 100.0 << "%"
+              << " chords=" << m.chordShare * 100.0 << "%"
+              << " bad5ths=" << m.invalidFifthShare * 100.0 << "%"
+              << "\n";
+}
+
 struct BassSweepMetrics {
     double hits = 0.0;
     double rootShare = 0.0;
@@ -1204,6 +1338,20 @@ int main() {
         printSweepLine(styleNames[style], 0.0, m);
     }
 
+
+
+    std::cout << "\nGuitar playability diagnostics (512 default phrases per style)\n";
+    std::cout << "------------------------------------------------------------\n";
+    std::cout << "rapid>5st = >5 semitone pitch move on adjacent 16th onsets; "
+                 "tailOverlap = prior note still sounding at next onset\n";
+    for (int style = 0; style < static_cast<int>(StyleId::Count); ++style) {
+        GeneratorSettings x = s;
+        x.style = static_cast<StyleId>(style);
+        const auto gm = measureGuitarPlayability(
+            x, 565000u + static_cast<unsigned>(style) * 10000u, 512);
+        printGuitarPlayabilityLine(styleNames[style], gm);
+    }
+    std::cout << "\n";
 
     std::cout << "\nSection-role energy diagnostics (same seed, 8 bars)\n";
     std::cout << "---------------------------------------------------\n";
