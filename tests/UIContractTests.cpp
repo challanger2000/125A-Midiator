@@ -15,6 +15,9 @@ int main() {
  std::ostringstream ss;ss<<in.rdbuf();const auto xml=ss.str();
  require(xml.find("size=\"1120, 1000\"")!=std::string::npos,"spacious base size");
  require(xml.find("minSize=\"896, 800\"")!=std::string::npos,"80% size support");
+ require(xml.find("control-tag=\"UiZoom\"")!=std::string::npos &&
+         xml.find("title=\"UI ZOOM\"")!=std::string::npos,
+         "explicit and visible zoom button required");
  for(int i=100;i<=135;++i) {
    auto needle="tag=\""+std::to_string(i)+"\"";
    require(xml.find(needle)!=std::string::npos,"all parameter IDs remain bound");

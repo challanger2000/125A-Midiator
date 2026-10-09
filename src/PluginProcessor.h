@@ -206,6 +206,9 @@ private:
     VSTGUI::CControl* variationButton_ = nullptr;
     std::array<VSTGUI::CTextButton*, 5> lockButtons_{};
     VSTGUI::CTextButton* powerChordToggle_ = nullptr;
+    VSTGUI::CTextButton* zoomButton_ = nullptr;
+    VSTGUI::VST3Editor* activeEditor_ = nullptr;
+    int zoomIndex_ = 0;
     double fallbackNewRiffState_ = 0.0;
     double fallbackVariationState_ = 0.0;
 };

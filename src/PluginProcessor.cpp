@@ -2529,6 +2529,18 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
 void MidiatorController::valueChanged(VSTGUI::CControl* control) {
     if (!control || control->getValueNormalized() <= 0.5f)
         return;
+    if (control->getTag() == 900) {
+        static constexpr double zooms[] = {0.8, 1.0, 1.2, 1.5};
+        static constexpr const char* labels[] = {"80 %", "100 %", "120 %", "150 %"};
+        zoomIndex_ = (zoomIndex_ + 1) % 4;
+        if (zoomButton_) {
+            zoomButton_->setTitle(labels[zoomIndex_]);
+            zoomButton_->invalid();
+        }
+        if (activeEditor_)
+            activeEditor_->setZoomFactor(zooms[zoomIndex_]);
+        return;
+    }
 
     const auto tag = static_cast<ParamID>(control->getTag());
     const char* messageId = nullptr;
@@ -2709,6 +2721,7 @@ IPlugView* PLUGIN_API MidiatorController::createView(FIDString name) {
         editor->setDelegate(this);
         editor->setMinZoomFactor(0.8);
         editor->setAllowedZoomFactors({0.8, 1.0, 1.2, 1.5});
+        editor->setZoomFactor(0.8);
         return editor;
     }
     return nullptr;
@@ -2720,8 +2733,13 @@ VSTGUI::CView* MidiatorController::verifyView(VSTGUI::CView* view,
                                               VSTGUI::VST3Editor*) {
     if (!view)
         return nullptr;
+    activeEditor_ = editor;
 
     if (auto* control = dynamic_cast<VSTGUI::CControl*>(view)) {
+        if (control->getTag() == 900) {
+            control->setListener(this);
+            zoomButton_ = dynamic_cast<VSTGUI::CTextButton*>(control);
+        }
         if (control->getTag() == static_cast<int32_t>(kNewRiffId)) {
             control->setListener(this);
             newRiffButton_ = control;
@@ -2768,6 +2786,9 @@ void MidiatorController::willClose(VSTGUI::VST3Editor*) {
     variationButton_ = nullptr;
     lockButtons_.fill(nullptr);
     powerChordToggle_ = nullptr;
+    zoomButton_ = nullptr;
+    activeEditor_ = nullptr;
+    zoomIndex_ = 0;
 }
 
 void MidiatorController::refreshToggleLabels() noexcept {

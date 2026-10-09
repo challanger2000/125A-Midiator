@@ -72,13 +72,16 @@
     <control-tag name="SynthLock" tag="133"/>
     <control-tag name="Humanize" tag="134"/>
     <control-tag name="DrumMap" tag="135"/>
+    <control-tag name="UiZoom" tag="900"/>
   </control-tags>
 
   <template name="MidiatorView" class="CViewContainer" origin="0, 0" size="1120, 1000" minSize="896, 800" maxSize="1680, 1500" transparent="false" background-color="Bg">
 <view class="CView" origin="28, 15" size="118, 59" bitmap="BrandLogo" transparent="true"/>
 <view class="CTextLabel" origin="168, 14" size="300, 30" title="MIDIATOR" font="Title" font-color="Text" text-alignment="left" transparent="true"/>
 <view class="CTextLabel" origin="169, 47" size="360, 20" title="METAL MIDI COMPANION" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
-<view class="CTextLabel" origin="640, 25" size="450, 20" title="CHOOSE  ·  GENERATE  ·  LOCK  ·  SHAPE" font="Normal" font-color="Text" text-alignment="right" transparent="true"/>
+<view class="CTextLabel" origin="614, 25" size="290, 20" title="CHOOSE  ·  GENERATE  ·  LOCK  ·  SHAPE" font="Normal" font-color="Text" text-alignment="right" transparent="true"/>
+<view class="CTextLabel" origin="928, 13" size="145, 16" title="UI ZOOM" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
+<view class="CTextButton" control-tag="UiZoom" origin="928, 32" size="145, 32" title="80 %" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
 <view class="CViewContainer" origin="24, 82" size="1072, 176" transparent="false" background-color="PanelTonal">
   <view class="CTextLabel" origin="22, 12" size="540, 20" title="01  SET THE MUSIC" font="Heading" font-color="Accent" text-alignment="left" transparent="true"/>
   <view class="CTextLabel" origin="22, 34" size="900, 20" title="ROOT SOURCE = pitch input   ·   TRIGGER = start and stop" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
