@@ -136,8 +136,8 @@
       <view class="CTextEdit" control-tag="Repetition" origin="418, 117" size="38, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
 
       <view class="CTextLabel" origin="474, 98" size="82, 16" title="POWER CHORDS" font="Small" font-color="Muted" transparent="true"/>
-      <view class="COptionMenu" control-tag="PowerChordsEnabled" origin="560, 94" size="66, 22" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
-      <view class="CTextLabel" origin="560, 118" size="66, 14" title="LIVE ON/OFF" font="Small" font-color="Accent" text-alignment="center" transparent="true"/>
+      <view class="CTextButton" control-tag="PowerChordsEnabled" origin="560, 94" size="66, 22" title="ON" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive"/>
+      <view class="CTextLabel" origin="560, 118" size="66, 14" title="LIVE TOGGLE" font="Small" font-color="Accent" text-alignment="center" transparent="true"/>
       <view class="CSlider" control-tag="PowerChords" origin="474, 138" size="92, 18" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
       <view class="CTextEdit" control-tag="PowerChords" origin="570, 137" size="38, 20" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
 

@@ -81,8 +81,16 @@ int main() {
             "TRANSPORT / MIDI NOTE trigger selector must be bound");
     require(xml.find("midiator-id=\"styleBpm\"") != std::string::npos,
             "style BPM recommendation label must exist");
-    require(xml.find("control-tag=\"PowerChordsEnabled\"") != std::string::npos,
-            "POWER CHORDS ON/OFF selector must be bound");
+    {
+        const auto p = xml.find("control-tag=\"PowerChordsEnabled\"");
+        require(p != std::string::npos,
+                "POWER CHORDS ON/OFF control must be bound");
+        const auto start = xml.rfind("<view", p);
+        const auto end = xml.find("/>", p);
+        require(start != std::string::npos && end != std::string::npos &&
+                xml.substr(start, end - start).find("class=\"CTextButton\"") != std::string::npos,
+                "POWER CHORDS ON/OFF must be a direct toggle button, never a dropdown");
+    }
     require(xml.find("<control-tag name=\"LegacyDrumMap\" tag=\"114\"") != std::string::npos,
             "legacy three-map parameter tag must remain declared");
     require(xml.find("<control-tag name=\"DrumMap\" tag=\"135\"") != std::string::npos &&
