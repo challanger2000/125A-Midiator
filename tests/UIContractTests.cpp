@@ -44,7 +44,8 @@ int main() {
  }
  // Placement contract: instruments and global controls have distinct groups.
  require(xml.find("origin=\"282, 216\" size=\"237, 20\" title=\"DRUM FILL\"")!=std::string::npos,"Drum Fill grouped with drums");
- require(xml.find("title=\"GLOBAL PERFORMANCE\"")!=std::string::npos,"Humanize global grouping");
+ require(xml.find("title=\"GLOBAL HUMANIZE\"")!=std::string::npos,"Humanize global grouping");
+ require(xml.find("title=\"SUGGESTED BPM 100-135\"")!=std::string::npos,"default tempo hint wording");
  for(const char* tag:{"GuitarLock","BassLock","DrumsLock","PadLock","SynthLock","PowerChordsEnabled"}) {
    auto p=xml.find(std::string("control-tag=\"")+tag+"\"");
    require(p!=std::string::npos,"toggle control exists");

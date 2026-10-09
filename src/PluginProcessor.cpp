@@ -2852,10 +2852,30 @@ void MidiatorController::refreshTheory() noexcept {
 
     set(theoryKey_, std::string(kNoteNames[root]) + "  " + def.name);
 
+    // Spell the seven-note modes diatonically: e.g. A Phrygian has Bb, not A#.
+    // Pentatonic and blues patterns keep conventional chromatic note names.
+    static constexpr int kNaturalSemitones[] = {0, 2, 4, 5, 7, 9, 11};
+    static constexpr const char* kLetters[] = {"C", "D", "E", "F", "G", "A", "B"};
+    static constexpr int kRootLetter[] = {0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6};
     std::string notes = "Notes: ";
     for (int i = 0; i < def.count; ++i) {
         if (i) notes += "  ";
-        notes += kNoteNames[(root + def.intervals[i]) % 12];
+        const int chromatic = (root + def.intervals[i]) % 12;
+        if (def.count == 7) {
+            const int letter = (kRootLetter[root] + i) % 7;
+            int accidental = (chromatic - kNaturalSemitones[letter] + 12) % 12;
+            if (accidental > 6) accidental -= 12;
+            // Unusual theoretical spellings outside double accidentals fall back.
+            if (accidental >= -2 && accidental <= 2) {
+                notes += kLetters[letter];
+                if (accidental == -2) notes += "bb";
+                else if (accidental == -1) notes += "b";
+                else if (accidental == 1) notes += "#";
+                else if (accidental == 2) notes += "##";
+                continue;
+            }
+        }
+        notes += kNoteNames[chromatic];
     }
     set(theoryNotes_, notes);
     set(theoryCharacter_, std::string("Character: ") + def.character);
@@ -2874,18 +2894,18 @@ void MidiatorController::refreshStyleHint() noexcept {
         style = legacy;
 
     static constexpr const char* kBpmHints[] = {
-        "REC. BPM 100-135",
-        "REC. BPM 80-120",
-        "REC. BPM 105-145",
-        "REC. BPM 110-160",
-        "REC. BPM 160-220",
-        "REC. BPM 85-130",
-        "REC. BPM 160-240",
-        "REC. BPM 140-200",
-        "REC. BPM 120-180",
-        "REC. BPM 80-120",
-        "REC. BPM 50-90",
-        "REC. BPM 90-160"
+        "SUGGESTED BPM 100-135",
+        "SUGGESTED BPM 80-120",
+        "SUGGESTED BPM 105-145",
+        "SUGGESTED BPM 110-160",
+        "SUGGESTED BPM 160-220",
+        "SUGGESTED BPM 85-130",
+        "SUGGESTED BPM 160-240",
+        "SUGGESTED BPM 140-200",
+        "SUGGESTED BPM 120-180",
+        "SUGGESTED BPM 80-120",
+        "SUGGESTED BPM 50-90",
+        "SUGGESTED BPM 90-160"
     };
 
     style = std::clamp(style, 0,
