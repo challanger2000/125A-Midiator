@@ -196,6 +196,7 @@ private:
     void refreshTheory() noexcept;
     void refreshStyleHint() noexcept;
     void refreshToggleLabels() noexcept;
+    void refreshDetailsPage() noexcept;
 
     VSTGUI::CTextLabel* theoryKey_ = nullptr;
     VSTGUI::CTextLabel* theoryNotes_ = nullptr;
@@ -207,6 +208,11 @@ private:
     std::array<VSTGUI::CTextButton*, 5> lockButtons_{};
     VSTGUI::CTextButton* powerChordToggle_ = nullptr;
     VSTGUI::CTextButton* zoomButton_ = nullptr;
+    VSTGUI::CTextButton* detailsButton_ = nullptr;
+    VSTGUI::CView* mainGeneratePanel_ = nullptr;
+    VSTGUI::CView* mainLocksPanel_ = nullptr;
+    VSTGUI::CView* detailsPanel_ = nullptr;
+    bool detailsShown_ = false;
     VSTGUI::VST3Editor* activeEditor_ = nullptr;
     int zoomIndex_ = 0;
     double fallbackNewRiffState_ = 0.0;

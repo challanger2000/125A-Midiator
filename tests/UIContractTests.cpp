@@ -13,8 +13,8 @@ int main() {
  std::ifstream in(MIDIATOR_UIDESC_PATH,std::ios::binary);
  require(static_cast<bool>(in),"UIDesc readable");
  std::ostringstream ss;ss<<in.rdbuf();const auto xml=ss.str();
- require(xml.find("size=\"1120, 1000\"")!=std::string::npos,"spacious base size");
- require(xml.find("minSize=\"896, 800\"")!=std::string::npos,"80% size support");
+ require(xml.find("size=\"1120, 744\"")!=std::string::npos,"spacious base size");
+ require(xml.find("minSize=\"896, 595\"")!=std::string::npos,"80% size support");
  require(xml.find("control-tag=\"UiZoom\"")!=std::string::npos &&
          xml.find("title=\"UI ZOOM\"")!=std::string::npos,
          "explicit and visible zoom button required");
@@ -55,6 +55,11 @@ int main() {
            xml.substr(a,b-a).find("kick-style=\"false\"")!=std::string::npos,
            "OPEN/LOCK and ON/OFF must be persistent, not kick switches");
  }
+ require(xml.find("control-tag=\"UiDetails\"")!=std::string::npos &&
+         xml.find("midiator-id=\"detailsPanel\"")!=std::string::npos &&
+         xml.find("midiator-id=\"mainGenerate\"")!=std::string::npos &&
+         xml.find("midiator-id=\"mainLocks\"")!=std::string::npos,
+         "main and details views must be switchable");
  for(const char* panel:{"PanelTonal","PanelGenerate","PanelLocks","PanelLive"}) {
    const auto declaration=std::string("<color name=\"")+panel+"\"";
    const auto usage=std::string("background-color=\"")+panel+"\"";
@@ -68,7 +73,7 @@ int main() {
            "key controls must keep legible labels");
  }
  for(const char* heading:{"01  SET THE MUSIC","02  GENERATE A RIFF",
-                            "03  KEEP WHAT WORKS","04  SHAPE THE BAND"}) {
+                            "03  KEEP WHAT WORKS","DETAIL CONTROLS"}) {
    require(xml.find(heading)!=std::string::npos,"workflow hierarchy present");
  }
  for(const char* id:{"theoryKey","theoryNotes","styleBpm"}) {

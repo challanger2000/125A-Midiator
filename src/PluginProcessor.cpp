@@ -2529,6 +2529,11 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
 void MidiatorController::valueChanged(VSTGUI::CControl* control) {
     if (!control || control->getValueNormalized() <= 0.5f)
         return;
+    if (control->getTag() == 901) {
+        detailsShown_ = !detailsShown_;
+        refreshDetailsPage();
+        return;
+    }
     if (control->getTag() == 900) {
         static constexpr double zooms[] = {0.8, 1.0, 1.2, 1.5};
         static constexpr const char* labels[] = {"80 %", "100 %", "120 %", "150 %"};
@@ -2740,6 +2745,10 @@ VSTGUI::CView* MidiatorController::verifyView(VSTGUI::CView* view,
             control->setListener(this);
             zoomButton_ = dynamic_cast<VSTGUI::CTextButton*>(control);
         }
+        if (control->getTag() == 901) {
+            control->setListener(this);
+            detailsButton_ = dynamic_cast<VSTGUI::CTextButton*>(control);
+        }
         if (control->getTag() == static_cast<int32_t>(kNewRiffId)) {
             control->setListener(this);
             newRiffButton_ = control;
@@ -2758,6 +2767,9 @@ VSTGUI::CView* MidiatorController::verifyView(VSTGUI::CView* view,
 
     const auto* id = attributes.getAttributeValue("midiator-id");
     if (id) {
+        if (*id == "mainGenerate") mainGeneratePanel_ = view;
+        else if (*id == "mainLocks") mainLocksPanel_ = view;
+        else if (*id == "detailsPanel") detailsPanel_ = view;
         if (auto* label = dynamic_cast<VSTGUI::CTextLabel*>(view)) {
             if (*id == "theoryKey") theoryKey_ = label;
             else if (*id == "theoryNotes") theoryNotes_ = label;
@@ -2770,6 +2782,7 @@ VSTGUI::CView* MidiatorController::verifyView(VSTGUI::CView* view,
     refreshTheory();
     refreshStyleHint();
     refreshToggleLabels();
+    refreshDetailsPage();
     return view;
 }
 
@@ -2787,8 +2800,23 @@ void MidiatorController::willClose(VSTGUI::VST3Editor*) {
     lockButtons_.fill(nullptr);
     powerChordToggle_ = nullptr;
     zoomButton_ = nullptr;
+    detailsButton_ = nullptr;
+    mainGeneratePanel_ = nullptr;
+    mainLocksPanel_ = nullptr;
+    detailsPanel_ = nullptr;
+    detailsShown_ = false;
     activeEditor_ = nullptr;
     zoomIndex_ = 0;
+}
+
+void MidiatorController::refreshDetailsPage() noexcept {
+    if (mainGeneratePanel_) mainGeneratePanel_->setVisible(!detailsShown_);
+    if (mainLocksPanel_) mainLocksPanel_->setVisible(!detailsShown_);
+    if (detailsPanel_) detailsPanel_->setVisible(detailsShown_);
+    if (detailsButton_) {
+        detailsButton_->setTitle(detailsShown_ ? "BACK TO RIFF" : "DETAIL CONTROLS");
+        detailsButton_->invalid();
+    }
 }
 
 void MidiatorController::refreshToggleLabels() noexcept {

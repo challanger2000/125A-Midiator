@@ -73,13 +73,14 @@
     <control-tag name="Humanize" tag="134"/>
     <control-tag name="DrumMap" tag="135"/>
     <control-tag name="UiZoom" tag="900"/>
+    <control-tag name="UiDetails" tag="901"/>
   </control-tags>
 
-  <template name="MidiatorView" class="CViewContainer" origin="0, 0" size="1120, 1000" minSize="896, 800" maxSize="1680, 1500" transparent="false" background-color="Bg">
+  <template name="MidiatorView" class="CViewContainer" origin="0, 0" size="1120, 744" minSize="896, 595" maxSize="1680, 1116" transparent="false" background-color="Bg">
 <view class="CView" origin="28, 15" size="118, 59" bitmap="BrandLogo" transparent="true"/>
 <view class="CTextLabel" origin="168, 14" size="300, 30" title="MIDIATOR" font="Title" font-color="Text" text-alignment="left" transparent="true"/>
 <view class="CTextLabel" origin="169, 47" size="360, 20" title="METAL MIDI COMPANION" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
-<view class="CTextLabel" origin="614, 25" size="290, 20" title="CHOOSE  ·  GENERATE  ·  LOCK  ·  SHAPE" font="Normal" font-color="Text" text-alignment="right" transparent="true"/>
+<view class="CTextButton" control-tag="UiDetails" origin="615, 32" size="284, 32" title="DETAIL CONTROLS" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
 <view class="CTextLabel" origin="928, 13" size="145, 16" title="UI ZOOM" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
 <view class="CTextButton" control-tag="UiZoom" origin="928, 32" size="145, 32" title="80 %" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
 <view class="CViewContainer" origin="24, 82" size="1072, 176" transparent="false" background-color="PanelTonal">
@@ -102,7 +103,7 @@
   <view class="CTextLabel" midiator-id="theoryKey" origin="22, 145" size="340, 20" title="A  Phrygian" font="Heading" font-color="Text" transparent="true"/>
   <view class="CTextLabel" midiator-id="theoryNotes" origin="378, 145" size="660, 20" title="Notes: A A# C D E F G" font="Normal" font-color="Text" text-alignment="right" transparent="true"/>
  </view>
-<view class="CViewContainer" origin="24, 270" size="1072, 300" transparent="false" background-color="PanelGenerate">
+<view class="CViewContainer" midiator-id="mainGenerate" origin="24, 270" size="1072, 300" transparent="false" background-color="PanelGenerate">
  <view class="CTextLabel" origin="22, 14" size="1028, 20" title="02  GENERATE A RIFF" font="Heading" font-color="Accent" text-alignment="left" transparent="true"/>
  <view class="CTextLabel" origin="22, 36" size="1028, 18" title="Generation settings define the NEXT riff; only marked live controls change the existing one." font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
  <view class="CView" origin="22, 62" size="1028, 1" transparent="false" background-color="PanelEdge"/>
@@ -137,7 +138,7 @@
 <view class="CTextButton" control-tag="NewRiff" origin="756, 230" size="140, 46" title="NEW RIFF" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-color="AccentDark" frame-color-highlighted="Accent" frame-width="1" round-radius="5" gradient="ButtonPrimary" gradient-highlighted="ButtonPrimaryActive" kick-style="true"/>
 <view class="CTextButton" control-tag="Variation" origin="908, 230" size="140, 46" title="VARIATION" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-color="ButtonEdge" frame-color-highlighted="AccentDark" frame-width="1" round-radius="5" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
  </view>
-<view class="CViewContainer" origin="24, 582" size="1072, 122" transparent="false" background-color="PanelLocks">
+<view class="CViewContainer" midiator-id="mainLocks" origin="24, 582" size="1072, 122" transparent="false" background-color="PanelLocks">
  <view class="CTextLabel" origin="22, 14" size="1028, 20" title="03  KEEP WHAT WORKS" font="Heading" font-color="Accent" text-alignment="left" transparent="true"/>
  <view class="CTextLabel" origin="22, 36" size="1028, 18" title="OPEN = can change   ·   LOCK = protected during NEW RIFF and VARIATION" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
  <view class="CView" origin="22, 62" size="1028, 1" transparent="false" background-color="PanelEdge"/>
@@ -152,9 +153,9 @@
 <view class="CTextLabel" origin="852, 66" size="183, 16" title="SYNTH" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
 <view class="CTextButton" control-tag="SynthLock" origin="852, 83" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive" kick-style="false"/>
  </view>
-<view class="CViewContainer" origin="24, 714" size="1072, 260" transparent="false" background-color="PanelLive">
- <view class="CTextLabel" origin="22, 14" size="1028, 20" title="04  SHAPE THE BAND  ·  LIVE" font="Heading" font-color="Accent" text-alignment="left" transparent="true"/>
- <view class="CTextLabel" origin="22, 36" size="1028, 18" title="Changes apply immediately. Humanize defaults to 0% and preserves note safety." font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
+<view class="CViewContainer" midiator-id="detailsPanel" origin="24, 270" size="1072, 434" transparent="false" background-color="PanelLive">
+ <view class="CTextLabel" origin="22, 14" size="1028, 20" title="DETAIL CONTROLS  ·  LIVE" font="Heading" font-color="Accent" text-alignment="left" transparent="true"/>
+ <view class="CTextLabel" origin="22, 36" size="1028, 18" title="Bass, Drums, Pads and Synth update live. Humanize defaults to 0%." font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
  <view class="CView" origin="22, 62" size="1028, 1" transparent="false" background-color="PanelEdge"/>
  <view class="CTextLabel" origin="22, 78" size="237, 20" title="BASS" font="Heading" font-color="Text" text-alignment="left" transparent="true"/>
 <view class="CTextLabel" origin="22, 100" size="237, 20" title="FOLLOW" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
@@ -191,6 +192,6 @@
 <view class="CSlider" control-tag="Humanize" origin="770, 219" size="155, 20" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
 <view class="CTextEdit" control-tag="Humanize" origin="932, 217" size="48, 26" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
  </view>
-<view class="CTextLabel" origin="24, 980" size="1072, 20" title="125A SYSTEMS   ·   5 MIDI OUTPUTS   ·   1 CHANNEL EACH" font="Small" font-color="Dim" text-alignment="center" transparent="true"/>
+<view class="CTextLabel" origin="24, 720" size="1072, 20" title="125A SYSTEMS   ·   5 MIDI OUTPUTS   ·   1 CHANNEL EACH" font="Small" font-color="Dim" text-alignment="center" transparent="true"/>
 </template>
 </vstgui-ui-description>
