@@ -100,8 +100,8 @@
 <view class="CTextLabel" origin="816, 77" size="140, 20" title="SONG SECTION" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
 <view class="COptionMenu" control-tag="SectionType" origin="816, 101" size="140, 32" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
 
-  <view class="CTextLabel" midiator-id="theoryKey" origin="22, 145" size="340, 20" title="A  Phrygian" font="Heading" font-color="Text" transparent="true"/>
-  <view class="CTextLabel" midiator-id="theoryNotes" origin="378, 145" size="660, 20" title="Notes: A Bb C D E F G" font="Normal" font-color="Text" text-alignment="right" transparent="true"/>
+  <view class="CTextLabel" midiator-id="theoryKey" origin="22, 145" size="220, 20" title="A  Phrygian" font="Heading" font-color="Text" transparent="true"/>
+  <view class="CTextLabel" midiator-id="theoryNotes" origin="250, 145" size="790, 20" title="Notes: A Bb C D E F G" font="Normal" font-color="Text" text-alignment="left" transparent="true"/>
  </view>
 <view class="CViewContainer" midiator-id="mainGenerate" origin="24, 270" size="1072, 300" transparent="false" background-color="PanelGenerate">
  <view class="CTextLabel" origin="22, 14" size="1028, 20" title="02  RIFF GENERATOR" font="Heading" font-color="Accent" text-alignment="left" transparent="true"/>
