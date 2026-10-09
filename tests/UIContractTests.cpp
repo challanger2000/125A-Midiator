@@ -47,6 +47,8 @@ int main() {
  // Placement contract: instruments and global controls have distinct groups.
  require(xml.find("origin=\"282, 216\" size=\"237, 20\" title=\"DRUM FILL\"")!=std::string::npos,"Drum Fill grouped with drums");
  require(xml.find("title=\"GLOBAL HUMANIZE\"")!=std::string::npos,"Humanize global grouping");
+ require(xml.find("title=\"DETAIL CONTROLS\"")!=std::string::npos,"details header must not promise all parameters are live");
+ require(xml.find("title=\"PALM MUTE BELOW VELOCITY\"")!=std::string::npos,"palm mute control uses an understandable full label");
  require(xml.find("title=\"SUGGESTED BPM 100-135\"")!=std::string::npos,"default tempo hint wording");
  require(xml.find("midiator-id=\"theoryNotes\" origin=\"250, 145\"")!=std::string::npos,"mode and associated notes must be adjacent");
  for(const char* tag:{"GuitarLock","BassLock","DrumsLock","PadLock","SynthLock","PowerChordsEnabled"}) {
@@ -144,7 +146,7 @@ int main() {
  require(xml.find("midiator-id=\"theoryKey\" origin=\"22, 145\" size=\"220, 20\"")!=std::string::npos &&
          xml.find("midiator-id=\"theoryNotes\" origin=\"250, 145\" size=\"790, 20\"")!=std::string::npos,
          "theory labels must remain adjacent at all displayed key lengths");
- require(xml.find("control-tag=\"PalmMuteVelocity\" origin=\"190, 388\"")!=std::string::npos,
+ require(xml.find("control-tag=\"PalmMuteVelocity\" origin=\"240, 388\"")!=std::string::npos,
          "palm-mute velocity field must sit next to its label");
  std::cout<<"Midiator UI contract test: PASS\n";
  return 0;

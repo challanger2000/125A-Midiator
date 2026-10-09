@@ -142,8 +142,8 @@
 <view class="CTextButton" control-tag="SynthLock" origin="866, 83" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive" kick-style="false"/>
  </view>
 <view class="CViewContainer" midiator-id="detailsPanel" origin="24, 270" size="1072, 434" transparent="false" background-color="PanelLive">
- <view class="CTextLabel" origin="22, 14" size="1028, 20" title="DETAIL CONTROLS  ·  LIVE" font="Heading" font-color="Accent" text-alignment="left" transparent="true"/>
- <view class="CTextLabel" origin="22, 36" size="1028, 18" title="Instrument shaping and global performance settings." font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
+ <view class="CTextLabel" origin="22, 14" size="1028, 20" title="DETAIL CONTROLS" font="Heading" font-color="Accent" text-alignment="left" transparent="true"/>
+ <view class="CTextLabel" origin="22, 36" size="1028, 18" title="Fine-tune instruments, guitar articulations, drum maps and timing." font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
  <view class="CView" origin="22, 62" size="1028, 1" transparent="false" background-color="PanelEdge"/>
  <view class="CTextLabel" origin="22, 78" size="237, 20" title="BASS" font="Heading" font-color="Text" text-alignment="left" transparent="true"/>
 <view class="CTextLabel" origin="22, 100" size="237, 20" title="FOLLOW" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
@@ -183,16 +183,16 @@
 <view class="CTextLabel" origin="22, 292" size="280, 18" title="GUITAR ARTICULATION" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
 <view class="CView" origin="625, 290" size="1, 131" transparent="false" background-color="PanelEdge"/>
 <view class="CTextLabel" origin="650, 292" size="382, 18" title="DRUM MAP" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
-<view class="CTextLabel" origin="22, 323" size="190, 20" title="POWER CHORD AMOUNT" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
+<view class="CTextLabel" origin="22, 323" size="190, 20" title="POWER CHORD CHANCE" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
 <view class="CSlider" control-tag="PowerChords" origin="22, 352" size="134, 20" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
 <view class="CTextEdit" control-tag="PowerChords" origin="164, 349" size="52, 26" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
-<view class="CTextLabel" origin="230, 323" size="190, 20" title="PALM MUTE AMOUNT" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
+<view class="CTextLabel" origin="230, 323" size="190, 20" title="PALM MUTE CHANCE" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
 <view class="CSlider" control-tag="PalmMute" origin="230, 352" size="134, 20" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
 <view class="CTextEdit" control-tag="PalmMute" origin="372, 349" size="52, 26" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
 <view class="CTextLabel" origin="438, 323" size="166, 20" title="POWER CHORDS" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
 <view class="CTextButton" control-tag="PowerChordsEnabled" origin="438, 352" size="158, 30" title="OFF" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive" kick-style="false"/>
-<view class="CTextLabel" origin="22, 391" size="160, 20" title="PM BELOW VELOCITY" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
-<view class="CTextEdit" control-tag="PalmMuteVelocity" origin="190, 388" size="72, 30" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
+<view class="CTextLabel" origin="22, 391" size="210, 20" title="PALM MUTE BELOW VELOCITY" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
+<view class="CTextEdit" control-tag="PalmMuteVelocity" origin="240, 388" size="72, 30" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
 <view class="CTextLabel" origin="650, 365" size="382, 18" title="GLOBAL HUMANIZE" font="Small" font-color="Accent" text-alignment="left" transparent="true"/>
 <view class="COptionMenu" control-tag="DrumMap" origin="650, 326" size="382, 32" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
  </view>
