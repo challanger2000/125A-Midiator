@@ -2703,8 +2703,8 @@ IPlugView* PLUGIN_API MidiatorController::createView(FIDString name) {
         auto* editor = new VSTGUI::AspectRatioVST3Editor(
             this, "MidiatorView", "midiator.uidesc");
         editor->setDelegate(this);
-        editor->setMinZoomFactor(0.75);
-        editor->setAllowedZoomFactors({0.75, 1.0, 1.25, 1.5, 2.0});
+        editor->setMinZoomFactor(0.8);
+        editor->setAllowedZoomFactors({0.8, 1.0, 1.2, 1.5});
         return editor;
     }
     return nullptr;
