@@ -2730,7 +2730,7 @@ IPlugView* PLUGIN_API MidiatorController::createView(FIDString name) {
 VSTGUI::CView* MidiatorController::verifyView(VSTGUI::CView* view,
                                               const VSTGUI::UIAttributes& attributes,
                                               const VSTGUI::IUIDescription*,
-                                              VSTGUI::VST3Editor*) {
+                                              VSTGUI::VST3Editor* editor) {
     if (!view)
         return nullptr;
     activeEditor_ = editor;
