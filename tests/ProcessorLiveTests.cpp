@@ -2585,6 +2585,198 @@ void testVerifiedDrumMapParameterChangesOutput() {
 }
 
 
+void testRoleLocksProtectOnlyLockedPartsDuringNewAndVariation() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "role-lock fixture must start");
+
+    auto captureByBus = [&](double startQn) {
+        auto context = makeContext(startQn, true);
+        EventList output;
+        auto data = makeProcessData(context, output, 192000);
+        require(processor.process(data) == kResultOk,
+                "role-lock capture must process");
+        std::array<std::vector<std::tuple<int,int,int>>, kEventOutputBusCount> result;
+        for (const auto& e : output.events) {
+            if (e.type != Event::kNoteOnEvent ||
+                e.busIndex < 0 || e.busIndex >= kEventOutputBusCount)
+                continue;
+            const int step = static_cast<int>(
+                std::lround((e.ppqPosition - startQn) / 0.25));
+            result[static_cast<size_t>(e.busIndex)].emplace_back(
+                step, e.noteOn.pitch,
+                static_cast<int>(std::lround(e.noteOn.velocity * 127.0f)));
+        }
+        return result;
+    };
+
+    const auto before = captureByBus(0.0);
+
+    ParameterChanges lockAndNew;
+    int32 qi = 0, pi = 0;
+    auto* lock = lockAndNew.addParameterData(kGuitarLockId, qi);
+    require(lock && lock->addPoint(0, 1.0, pi) == kResultOk,
+            "Guitar LOCK must be accepted");
+    auto* newRiff = lockAndNew.addParameterData(kNewRiffId, qi);
+    require(newRiff && newRiff->addPoint(0, 1.0, pi) == kResultOk,
+            "NEW RIFF with Guitar LOCK must be accepted");
+
+    auto stopped = makeContext(8.0, false);
+    EventList stoppedOut;
+    auto stoppedData =
+        makeProcessData(stopped, stoppedOut, 64, &lockAndNew);
+    require(processor.process(stoppedData) == kResultOk,
+            "Guitar LOCK + NEW RIFF block must process");
+
+    const auto afterNew = captureByBus(8.0);
+    require(before[kGuitarOutBus] == afterNew[kGuitarOutBus],
+            "Guitar LOCK must preserve Guitar exactly through NEW RIFF");
+
+    bool companionChanged = false;
+    for (int bus = kBassOutBus; bus < kEventOutputBusCount; ++bus)
+        companionChanged |=
+            before[static_cast<size_t>(bus)] !=
+            afterNew[static_cast<size_t>(bus)];
+    require(companionChanged,
+            "NEW RIFF must still regenerate at least one unlocked companion role");
+
+    ParameterChanges variation;
+    qi = 0; pi = 0;
+    auto* vary = variation.addParameterData(kVariationId, qi);
+    require(vary && vary->addPoint(0, 1.0, pi) == kResultOk,
+            "VARIATION with Guitar LOCK must be accepted");
+
+    auto stopped2 = makeContext(16.0, false);
+    EventList stoppedOut2;
+    auto stoppedData2 =
+        makeProcessData(stopped2, stoppedOut2, 64, &variation);
+    require(processor.process(stoppedData2) == kResultOk,
+            "Guitar LOCK + VARIATION block must process");
+
+    const auto afterVariation = captureByBus(16.0);
+    require(afterNew[kGuitarOutBus] == afterVariation[kGuitarOutBus],
+            "Guitar LOCK must preserve Guitar exactly through VARIATION");
+}
+
+void testAllRoleLocksMakeNewAndVariationNoOps() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "all-lock fixture must start");
+
+    ParameterChanges locks;
+    int32 qi = 0, pi = 0;
+    const ParamID lockIds[] = {
+        kGuitarLockId, kBassLockId, kDrumsLockId,
+        kPadLockId, kSynthLockId
+    };
+    for (ParamID id : lockIds) {
+        auto* q = locks.addParameterData(id, qi);
+        require(q && q->addPoint(0, 1.0, pi) == kResultOk,
+                "every role LOCK must be accepted");
+    }
+
+    auto stopped = makeContext(0.0, false);
+    EventList stoppedOut;
+    auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &locks);
+    require(processor.process(stoppedData) == kResultOk,
+            "all-lock setup must process");
+
+    MemoryStream before;
+    require(processor.getState(&before) == kResultOk,
+            "all-lock state must serialize before actions");
+
+    ParameterChanges actions;
+    qi = 0; pi = 0;
+    auto* n = actions.addParameterData(kNewRiffId, qi);
+    require(n && n->addPoint(0, 1.0, pi) == kResultOk,
+            "all-lock NEW must be accepted");
+    auto* v = actions.addParameterData(kVariationId, qi);
+    require(v && v->addPoint(0, 1.0, pi) == kResultOk,
+            "all-lock VARIATION must be accepted");
+
+    EventList actionOut;
+    auto actionData = makeProcessData(stopped, actionOut, 64, &actions);
+    require(processor.process(actionData) == kResultOk,
+            "all-lock actions must process");
+
+    MemoryStream after;
+    require(processor.getState(&after) == kResultOk,
+            "all-lock state must serialize after actions");
+    require(before.bytes() == after.bytes(),
+            "all five LOCKs must make NEW RIFF and VARIATION complete no-ops");
+}
+
+void testHumanizeIsOverlapSafeAndPreservesGuitarArticulationZones() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "humanize fixture must start");
+
+    ParameterChanges changes;
+    int32 qi = 0, pi = 0;
+    auto* humanize = changes.addParameterData(kHumanizeId, qi);
+    require(humanize && humanize->addPoint(0, 1.0, pi) == kResultOk,
+            "Humanize 100% must be accepted");
+    auto* pm = changes.addParameterData(kPalmMuteVelocityId, qi);
+    require(pm && pm->addPoint(0, (30.0 - 3.0) / 84.0, pi) == kResultOk,
+            "PM < VEL 30 must be accepted for Humanize test");
+
+    auto setup = makeContext(0.0, false);
+    EventList setupOut;
+    auto setupData = makeProcessData(setup, setupOut, 64, &changes);
+    require(processor.process(setupData) == kResultOk,
+            "Humanize setup block must process");
+
+    auto context = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 768000); // 8 bars at 120 BPM
+    require(processor.process(data) == kResultOk,
+            "Humanize long capture must process");
+
+    std::array<std::array<bool,128>, kEventOutputBusCount> active{};
+    bool sawHumanizedOffset = false;
+    bool sawPalmMute = false;
+    for (const auto& e : output.events) {
+        if (e.busIndex < 0 || e.busIndex >= kEventOutputBusCount)
+            continue;
+        const int pitch = e.type == Event::kNoteOnEvent
+            ? static_cast<int>(e.noteOn.pitch)
+            : static_cast<int>(e.noteOff.pitch);
+        if (pitch < 0 || pitch > 127)
+            continue;
+
+        if (e.type == Event::kNoteOnEvent) {
+            require(!active[static_cast<size_t>(e.busIndex)]
+                           [static_cast<size_t>(pitch)],
+                    "Humanize must never emit an overlapping NoteOn for an active pitch");
+            active[static_cast<size_t>(e.busIndex)]
+                  [static_cast<size_t>(pitch)] = true;
+
+            const double gridSteps = e.ppqPosition / 0.25;
+            if (std::abs(gridSteps - std::round(gridSteps)) > 1e-7)
+                sawHumanizedOffset = true;
+
+            if (e.busIndex == kGuitarOutBus) {
+                const int velocity =
+                    static_cast<int>(std::lround(e.noteOn.velocity * 127.0f));
+                if (velocity < 88) {
+                    sawPalmMute = true;
+                    require(velocity < 30,
+                            "Humanize must keep palm mutes below PM < VEL");
+                }
+            }
+        } else if (e.type == Event::kNoteOffEvent) {
+            active[static_cast<size_t>(e.busIndex)]
+                  [static_cast<size_t>(pitch)] = false;
+        }
+    }
+    require(sawHumanizedOffset,
+            "Humanize 100% must move at least one non-downbeat event off the exact grid");
+    require(sawPalmMute,
+            "Humanize fixture must exercise at least one palm-muted Guitar note");
+}
+
+
+
 void testLegacyAndExpandedStyleAutomationCoexistSafely() {
     auto captureAfterStyleQueues = [](bool includeLegacy,
                                       double legacyValue,
@@ -2653,6 +2845,9 @@ void testLegacyAndExpandedStyleAutomationCoexistSafely() {
 } // namespace
 
 int main() {
+    testRoleLocksProtectOnlyLockedPartsDuringNewAndVariation();
+    testAllRoleLocksMakeNewAndVariationNoOps();
+    testHumanizeIsOverlapSafeAndPreservesGuitarArticulationZones();
     testPalmMuteVelocityAutomationChangesOnlyGuitarArticulation();
     testMidiNoteTriggerGatesAllGeneratedOutputs();
     testMidiNoteTriggerStaysOpenUntilLastHeldNoteOff();

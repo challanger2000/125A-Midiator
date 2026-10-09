@@ -61,7 +61,13 @@ enum : ParamID {
     // The expanded 12-style selector uses a new ID for automation safety.
     kMetalStyleId = 126,
     kPalmMuteVelocityId = 127,
-    kTriggerModeId = 128
+    kTriggerModeId = 128,
+    kGuitarLockId = 129,
+    kBassLockId = 130,
+    kDrumsLockId = 131,
+    kPadLockId = 132,
+    kSynthLockId = 133,
+    kHumanizeId = 134
 };
 
 static const FUID ProcessorUID(0x125A4001, 0x6D494449, 0x41544F52, 0x00000100);
@@ -128,6 +134,8 @@ private:
     std::array<bool, 128> triggerHeldPitches_{};
     int triggerHeldCount_ = 0;
     bool midiNoteTrigger_ = false;
+    std::array<bool, kEventOutputBusCount> roleLocks_{};
+    float humanizeAmount_ = 0.0f;
 
     float variationAmount_ = 0.35f;
     bool phraseChangedNeedsFlush_ = false;
@@ -143,6 +151,11 @@ private:
     void regenerateDrums();
     void regeneratePads();
     void regenerateSynth();
+    void regenerateBassOnly();
+    void regenerateDrumsOnly();
+    void regeneratePadsOnly();
+    void regenerateSynthOnly();
+    void regenerateUnlockedCompanions();
     void regenerateSectionFromCurrentSeed();
     void resizePhraseBars(int newBars, bool regenerateCompanions = true);
     void applyPowerChordMode(bool enabled, bool regenerateCompanions = true);

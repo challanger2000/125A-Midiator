@@ -22,7 +22,7 @@ constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 8192;
 constexpr int kMaxTriggerInputEvents = 2048;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 14u;
+constexpr uint32_t kStateVersion = 15u;
 constexpr int kLegacyStateSteps = 128; // V1-V7 fixed phrase payload width
 constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
 constexpr const char* kMsgVariation = "125A.Midiator.Variation";
@@ -461,11 +461,15 @@ bool readStateHeader(IBStream* state,
 bool readExtendedStateTail(IBStream* state,
                            uint32_t version,
                            int& threshold,
-                           bool& midiNoteTrigger) {
+                           bool& midiNoteTrigger,
+                           std::array<bool, kEventOutputBusCount>& roleLocks,
+                           float& humanizeAmount) {
     // V12 and older encoded the historical fixed PM zone ending at velocity
     // 40. Use an exclusive threshold of 41 to reproduce that behavior exactly.
     threshold = version >= 13u ? 30 : 41;
     midiNoteTrigger = false;
+    roleLocks.fill(false);
+    humanizeAmount = 0.0f;
 
     if (version >= 13u) {
         int32 storedThreshold = 30;
@@ -481,6 +485,19 @@ bool readExtendedStateTail(IBStream* state,
             (storedTrigger != 0 && storedTrigger != 1))
             return false;
         midiNoteTrigger = storedTrigger != 0;
+    }
+
+    if (version >= 15u) {
+        int32 lockMask = 0;
+        if (!readValue(state, lockMask) ||
+            lockMask < 0 || (lockMask & ~0x1F) != 0 ||
+            !readValue(state, humanizeAmount) ||
+            !std::isfinite(humanizeAmount) ||
+            humanizeAmount < 0.0f || humanizeAmount > 1.0f)
+            return false;
+        for (int bus = 0; bus < kEventOutputBusCount; ++bus)
+            roleLocks[static_cast<size_t>(bus)] =
+                (lockMask & (1 << bus)) != 0;
     }
     return true;
 }
@@ -639,6 +656,14 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
     if (!writeValue(state, triggerMode))
         return kResultFalse;
 
+    int32 lockMask = 0;
+    for (int bus = 0; bus < kEventOutputBusCount; ++bus)
+        if (roleLocks_[static_cast<size_t>(bus)])
+            lockMask |= (1 << bus);
+    const float humanize = std::clamp(humanizeAmount_, 0.0f, 1.0f);
+    if (!writeValue(state, lockMask) || !writeValue(state, humanize))
+        return kResultFalse;
+
     return kResultOk;
 }
 
@@ -658,6 +683,8 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     midiator::PadSettings restoredPadSettings = padSettings_;
     midiator::SynthSettings restoredSynthSettings = synthSettings_;
     bool restoredMidiNoteTrigger = false;
+    std::array<bool, kEventOutputBusCount> restoredRoleLocks{};
+    float restoredHumanize = 0.0f;
 
     uint32_t restoredStateVersion = 0;
     if (!readStateHeader(state, restoredStateVersion, restored, restoredVariation, restoredSeed,
@@ -696,7 +723,7 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
 
     if (!readExtendedStateTail(
             state, restoredStateVersion, restored.palmMuteVelocityThreshold,
-            restoredMidiNoteTrigger))
+            restoredMidiNoteTrigger, restoredRoleLocks, restoredHumanize))
         return kResultFalse;
 
     settings_ = restored;
@@ -712,6 +739,8 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     padSettings_ = restoredPadSettings;
     synthSettings_ = restoredSynthSettings;
     midiNoteTrigger_ = restoredMidiNoteTrigger;
+    roleLocks_ = restoredRoleLocks;
+    humanizeAmount_ = restoredHumanize;
     triggerHeldPitches_.fill(false);
     triggerHeldCount_ = 0;
     phrase_ = restoredPhrase;
@@ -739,6 +768,14 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
 }
 
 void MidiatorProcessor::generateNew() {
+    const bool allLocked =
+        std::all_of(roleLocks_.begin(), roleLocks_.end(),
+                    [](bool locked) { return locked; });
+    if (allLocked)
+        return;
+
+    const bool guitarLocked =
+        roleLocks_[static_cast<size_t>(kGuitarOutBus)];
     const auto previous = phrase_;
 
     auto structuralDifference = [](const midiator::Phrase& a, const midiator::Phrase& b) {
@@ -784,6 +821,11 @@ void MidiatorProcessor::generateNew() {
         return static_cast<double>(intersection) / static_cast<double>(unionCount);
     };
 
+    if (guitarLocked) {
+        // NEW still advances the composition seed so unlocked companion roles
+        // can produce a genuinely new answer while Guitar stays bit-identical.
+        seed_ = nextSeed(seed_);
+    } else {
     midiator::Phrase candidate{};
     const bool havePrevious = previous.usedSteps() > 0;
     const auto acceptance =
@@ -832,7 +874,9 @@ void MidiatorProcessor::generateNew() {
 
     seed_ = bestSeed;
     phrase_ = bestCandidate;
-    regenerateBass();
+    }
+
+    regenerateUnlockedCompanions();
     phraseChangedNeedsFlush_ = true;
 
     // Replacing the musical content must never move the sequencer phase.
@@ -840,16 +884,24 @@ void MidiatorProcessor::generateNew() {
     // regenerations remain locked to the host's running 16th-note grid.
 }
 void MidiatorProcessor::generateVariation() {
+    const bool allLocked =
+        std::all_of(roleLocks_.begin(), roleLocks_.end(),
+                    [](bool locked) { return locked; });
+    if (allLocked)
+        return;
+
     seed_ = nextSeed(seed_);
-    const auto effectiveSettings = sectionGeneratorSettings(settings_);
-    phrase_ = midiator::RiffEngine::vary(
-        phrase_, effectiveSettings, variationAmount_, seed_);
-    midiator::applySectionPhraseShape(phrase_, settings_.section, seed_);
-    regenerateBass();
+    if (!roleLocks_[static_cast<size_t>(kGuitarOutBus)]) {
+        const auto effectiveSettings = sectionGeneratorSettings(settings_);
+        phrase_ = midiator::RiffEngine::vary(
+            phrase_, effectiveSettings, variationAmount_, seed_);
+        midiator::applySectionPhraseShape(phrase_, settings_.section, seed_);
+    }
+    regenerateUnlockedCompanions();
     phraseChangedNeedsFlush_ = true;
 }
 
-void MidiatorProcessor::regenerateBass() {
+void MidiatorProcessor::regenerateBassOnly() {
     bassSettings_.rootPitchClass = settings_.rootPitchClass;
     bassSettings_.scale = settings_.scale;
     bassSettings_.style = settings_.style;
@@ -857,19 +909,17 @@ void MidiatorProcessor::regenerateBass() {
         sectionBassSettings(bassSettings_, settings_.section);
     bassPhrase_ = midiator::BassBrain::generate(
         phrase_, effectiveBass, seed_ ^ 0xB4552026u);
-    regenerateDrums();
 }
 
-void MidiatorProcessor::regenerateDrums() {
+void MidiatorProcessor::regenerateDrumsOnly() {
     drumSettings_.style = settings_.style;
     const auto effectiveDrums =
         sectionDrumSettings(drumSettings_, settings_.section);
     drumPhrase_ = midiator::DrumBrain::generate(
         phrase_, bassPhrase_, effectiveDrums, seed_ ^ 0xD12A2026u);
-    regeneratePads();
 }
 
-void MidiatorProcessor::regeneratePads() {
+void MidiatorProcessor::regeneratePadsOnly() {
     padSettings_.rootPitchClass = settings_.rootPitchClass;
     padSettings_.scale = settings_.scale;
     padSettings_.style = settings_.style;
@@ -877,10 +927,9 @@ void MidiatorProcessor::regeneratePads() {
         sectionPadSettings(padSettings_, settings_.section);
     padPhrase_ = midiator::PadBrain::generate(
         phrase_, bassPhrase_, effectivePads, seed_ ^ 0x50414426u);
-    regenerateSynth();
 }
 
-void MidiatorProcessor::regenerateSynth() {
+void MidiatorProcessor::regenerateSynthOnly() {
     synthSettings_.rootPitchClass = settings_.rootPitchClass;
     synthSettings_.scale = settings_.scale;
     synthSettings_.style = settings_.style;
@@ -888,6 +937,36 @@ void MidiatorProcessor::regenerateSynth() {
         sectionSynthSettings(synthSettings_, settings_.section);
     synthPhrase_ = midiator::SynthBrain::generate(
         phrase_, bassPhrase_, padPhrase_, effectiveSynth, seed_ ^ 0x53594E26u);
+}
+
+void MidiatorProcessor::regenerateBass() {
+    regenerateBassOnly();
+    regenerateDrums();
+}
+
+void MidiatorProcessor::regenerateDrums() {
+    regenerateDrumsOnly();
+    regeneratePads();
+}
+
+void MidiatorProcessor::regeneratePads() {
+    regeneratePadsOnly();
+    regenerateSynth();
+}
+
+void MidiatorProcessor::regenerateSynth() {
+    regenerateSynthOnly();
+}
+
+void MidiatorProcessor::regenerateUnlockedCompanions() {
+    if (!roleLocks_[static_cast<size_t>(kBassOutBus)])
+        regenerateBassOnly();
+    if (!roleLocks_[static_cast<size_t>(kDrumsOutBus)])
+        regenerateDrumsOnly();
+    if (!roleLocks_[static_cast<size_t>(kPadOutBus)])
+        regeneratePadsOnly();
+    if (!roleLocks_[static_cast<size_t>(kSynthOutBus)])
+        regenerateSynthOnly();
 }
 
 void MidiatorProcessor::regenerateSectionFromCurrentSeed() {
@@ -1115,6 +1194,10 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         float synthActivity = 0.0f;
         bool hasSynthMovement = false;
         float synthMovement = 0.0f;
+        std::array<bool, kEventOutputBusCount> hasRoleLock{};
+        std::array<bool, kEventOutputBusCount> roleLock{};
+        bool hasHumanize = false;
+        float humanize = 0.0f;
         bool newRiff = false;
         bool variation = false;
     } pending;
@@ -1271,6 +1354,20 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
                 pending.hasSynthMovement = true;
                 pending.synthMovement = static_cast<float>(v);
                 break;
+            case kGuitarLockId:
+            case kBassLockId:
+            case kDrumsLockId:
+            case kPadLockId:
+            case kSynthLockId: {
+                const int role = static_cast<int>(id - kGuitarLockId);
+                pending.hasRoleLock[static_cast<size_t>(role)] = true;
+                pending.roleLock[static_cast<size_t>(role)] = v > 0.5;
+                break;
+            }
+            case kHumanizeId:
+                pending.hasHumanize = true;
+                pending.humanize = static_cast<float>(v);
+                break;
             default:
                 break;
         }
@@ -1300,6 +1397,12 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     }
     if (pending.hasVariationAmount)
         variationAmount_ = pending.variationAmount;
+    for (int role = 0; role < kEventOutputBusCount; ++role)
+        if (pending.hasRoleLock[static_cast<size_t>(role)])
+            roleLocks_[static_cast<size_t>(role)] =
+                pending.roleLock[static_cast<size_t>(role)];
+    if (pending.hasHumanize)
+        humanizeAmount_ = std::clamp(pending.humanize, 0.0f, 1.0f);
     if (pending.hasDrumMap && pending.drumMap != drumMapId_) {
         drumMapId_ = pending.drumMap;
         drumMap_ = midiator::DrumMidiMap::preset(drumMapId_);
@@ -1794,9 +1897,81 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     const long long lastCycle =
         static_cast<long long>(std::floor(localBlockEndQn / patternLengthQn)) + 1;
 
+    auto humanizeHash = [](uint64_t x) noexcept {
+        x ^= x >> 33;
+        x *= 0xff51afd7ed558ccdULL;
+        x ^= x >> 33;
+        x *= 0xc4ceb9fe1a85ec53ULL;
+        x ^= x >> 33;
+        return static_cast<uint32_t>(x ^ (x >> 32));
+    };
+    auto signedUnit = [&](uint64_t key) noexcept {
+        const uint32_t h = humanizeHash(key);
+        return (static_cast<double>(h) / 4294967295.0) * 2.0 - 1.0;
+    };
+    auto timingHumanizeQn = [&](int32 busIndex, int stepIndex,
+                                long long cycle) noexcept {
+        if (humanizeAmount_ <= 0.0f || stepIndex == 0)
+            return 0.0;
+
+        double maxMs = 5.0;
+        switch (settings_.style) {
+            case midiator::StyleId::Thrash:
+            case midiator::StyleId::Death:
+            case midiator::StyleId::Metalcore:
+            case midiator::StyleId::DjentProgressive:
+                maxMs = 3.0; break;
+            case midiator::StyleId::DarkRockGothic:
+            case midiator::StyleId::Groove:
+            case midiator::StyleId::NuMetal:
+                maxMs = 7.0; break;
+            case midiator::StyleId::Doom:
+                maxMs = 9.0; break;
+            default:
+                maxMs = 5.0; break;
+        }
+
+        const uint64_t cycleBits = static_cast<uint64_t>(cycle);
+        const uint64_t sharedKey =
+            (cycleBits * 0x9E3779B97F4A7C15ULL) ^
+            (static_cast<uint64_t>(stepIndex + 1) * 0xD1B54A32D192ED03ULL) ^
+            static_cast<uint64_t>(seed_);
+        const uint64_t localKey =
+            sharedKey ^ (static_cast<uint64_t>(busIndex + 1) *
+                         0x94D049BB133111EBULL);
+        const double unit =
+            0.65 * signedUnit(sharedKey) + 0.35 * signedUnit(localKey);
+        const double ms =
+            unit * maxMs * static_cast<double>(humanizeAmount_);
+        return (ms * 0.001) * tempo / 60.0;
+    };
+    auto humanizedVelocity = [&](int32 busIndex, int stepIndex,
+                                 long long cycle, int velocity) noexcept {
+        if (humanizeAmount_ <= 0.0f)
+            return std::clamp(velocity, 1, 126);
+        const uint64_t key =
+            (static_cast<uint64_t>(cycle) * 0xA24BAED4963EE407ULL) ^
+            (static_cast<uint64_t>(stepIndex + 1) * 0x9FB21C651E98DF25ULL) ^
+            (static_cast<uint64_t>(busIndex + 1) * 0xC13FA9A902A6328FULL) ^
+            static_cast<uint64_t>(seed_ ^ 0x48554D4Eu);
+        const int delta = static_cast<int>(std::lround(
+            signedUnit(key) * 5.0 * static_cast<double>(humanizeAmount_)));
+        const int varied = velocity + delta;
+
+        if (busIndex == kGuitarOutBus) {
+            if (velocity < 88)
+                return std::clamp(
+                    varied, 2,
+                    std::max(2, settings_.palmMuteVelocityThreshold - 1));
+            return std::clamp(varied, 88, 126);
+        }
+        return std::clamp(varied, 1, 126);
+    };
+
     auto schedulePhraseCycle = [&](const midiator::Phrase& phrase,
                                    int32 busIndex,
-                                   double cycleStartQn) {
+                                   double cycleStartQn,
+                                   long long cycle) {
         const int usedSteps = phrase.usedSteps();
         constexpr double kSustainGapQn = 1.0 / 16.0;
 
@@ -1814,12 +1989,19 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                 }
             }
 
+            const int nextStepIndex =
+                (stepIndex + stepsToNextHit) % usedSteps;
+            const long long nextCycle =
+                cycle + ((stepIndex + stepsToNextHit) >= usedSteps ? 1 : 0);
             const double onQn =
-                cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
+                cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes +
+                timingHumanizeQn(busIndex, stepIndex, cycle);
             const double nextOnQn =
-                onQn + static_cast<double>(stepsToNextHit) * kStepQuarterNotes;
+                cycleStartQn +
+                static_cast<double>(stepIndex + stepsToNextHit) * kStepQuarterNotes +
+                timingHumanizeQn(busIndex, nextStepIndex, nextCycle);
             const double latestOffQn =
-                std::max(onQn, nextOnQn - kSustainGapQn);
+                std::max(onQn + qnPerSample, nextOnQn - kSustainGapQn);
 
             for (int n = 0; n < step.noteCount; ++n) {
                 const auto& note = step.notes[n];
@@ -1829,31 +2011,71 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                 // audible holes. Articulation is encoded by the generated
                 // velocity/chord content, not by prematurely shortening gates.
                 const double offQn = latestOffQn;
-                addScheduled(onQn, true, note.pitch, note.velocity, busIndex, offQn);
+                addScheduled(
+                    onQn, true, note.pitch,
+                    humanizedVelocity(busIndex, stepIndex, cycle, note.velocity),
+                    busIndex, offQn);
                 addScheduled(offQn, false, note.pitch, 0, busIndex);
             }
         }
     };
 
-    auto scheduleDrumCycle = [&](double cycleStartQn) {
+    auto scheduleDrumCycle = [&](double cycleStartQn, long long cycle) {
         constexpr double kDrumGateQn = kStepQuarterNotes; // exact 1/16-note gate
         for (int stepIndex = 0; stepIndex < drumPhrase_.usedSteps(); ++stepIndex) {
             const auto& step = drumPhrase_.steps[stepIndex];
             if (step.hitCount <= 0)
                 continue;
             const double onQn =
-                cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
-            const double offQn = onQn + kDrumGateQn;
+                cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes +
+                timingHumanizeQn(kDrumsOutBus, stepIndex, cycle);
             for (int n = 0; n < step.hitCount; ++n) {
                 const auto& hit = step.hits[n];
                 const int pitch = drumMap_.midiNote(hit.voice);
-                addScheduled(onQn, true, pitch, hit.velocity, kDrumsOutBus, offQn);
+                double offQn = onQn + kDrumGateQn;
+
+                if (humanizeAmount_ > 0.0f) {
+                    for (int delta = 1; delta <= drumPhrase_.usedSteps(); ++delta) {
+                        const int nextIndex =
+                            (stepIndex + delta) % drumPhrase_.usedSteps();
+                        bool samePitch = false;
+                        for (int h = 0;
+                             h < drumPhrase_.steps[nextIndex].hitCount; ++h) {
+                            if (drumMap_.midiNote(
+                                    drumPhrase_.steps[nextIndex].hits[h].voice) ==
+                                pitch) {
+                                samePitch = true;
+                                break;
+                            }
+                        }
+                        if (!samePitch)
+                            continue;
+                        const long long nextCycle =
+                            cycle + ((stepIndex + delta) >=
+                                     drumPhrase_.usedSteps() ? 1 : 0);
+                        const double nextOnQn =
+                            cycleStartQn +
+                            static_cast<double>(stepIndex + delta) *
+                                kStepQuarterNotes +
+                            timingHumanizeQn(
+                                kDrumsOutBus, nextIndex, nextCycle);
+                        offQn = std::min(offQn, nextOnQn - qnPerSample);
+                        break;
+                    }
+                    offQn = std::max(onQn + qnPerSample, offQn);
+                }
+
+                addScheduled(
+                    onQn, true, pitch,
+                    humanizedVelocity(
+                        kDrumsOutBus, stepIndex, cycle, hit.velocity),
+                    kDrumsOutBus, offQn);
                 addScheduled(offQn, false, pitch, 0, kDrumsOutBus);
             }
         }
     };
 
-    auto schedulePadCycle = [&](double cycleStartQn) {
+    auto schedulePadCycle = [&](double cycleStartQn, long long cycle) {
         constexpr double kPadReleaseGapQn = 1.0 / 16.0; // 1/64-note gap
         const int usedSteps = padPhrase_.usedSteps();
 
@@ -1871,12 +2093,21 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                 }
             }
 
+            const int nextStepIndex =
+                (stepIndex + stepsToNextChord) % usedSteps;
+            const long long nextCycle =
+                cycle + ((stepIndex + stepsToNextChord) >= usedSteps ? 1 : 0);
             const double onQn =
-                cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
+                cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes +
+                timingHumanizeQn(kPadOutBus, stepIndex, cycle);
             const double nextChordQn =
-                onQn + static_cast<double>(stepsToNextChord) * kStepQuarterNotes;
+                cycleStartQn +
+                static_cast<double>(stepIndex + stepsToNextChord) *
+                    kStepQuarterNotes +
+                timingHumanizeQn(kPadOutBus, nextStepIndex, nextCycle);
             const double latestOffQn =
-                std::max(onQn, nextChordQn - kPadReleaseGapQn);
+                std::max(onQn + qnPerSample,
+                         nextChordQn - kPadReleaseGapQn);
 
             for (int n = 0; n < step.noteCount; ++n) {
                 const auto& note = step.notes[n];
@@ -1885,13 +2116,17 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                                kStepQuarterNotes - kPadReleaseGapQn;
                 const double offQn =
                     std::max(onQn, std::min(latestOffQn, requestedOffQn));
-                addScheduled(onQn, true, note.pitch, note.velocity, kPadOutBus, offQn);
+                addScheduled(
+                    onQn, true, note.pitch,
+                    humanizedVelocity(
+                        kPadOutBus, stepIndex, cycle, note.velocity),
+                    kPadOutBus, offQn);
                 addScheduled(offQn, false, note.pitch, 0, kPadOutBus);
             }
         }
     };
 
-    auto scheduleSynthCycle = [&](double cycleStartQn) {
+    auto scheduleSynthCycle = [&](double cycleStartQn, long long cycle) {
         const int usedSteps = synthPhrase_.usedSteps();
 
         for (int stepIndex = 0; stepIndex < usedSteps; ++stepIndex) {
@@ -1908,10 +2143,18 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                 }
             }
 
+            const int nextStepIndex =
+                (stepIndex + stepsToNextHit) % usedSteps;
+            const long long nextCycle =
+                cycle + ((stepIndex + stepsToNextHit) >= usedSteps ? 1 : 0);
             const double onQn =
-                cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes;
+                cycleStartQn + static_cast<double>(stepIndex) * kStepQuarterNotes +
+                timingHumanizeQn(kSynthOutBus, stepIndex, cycle);
             const double nextOnQn =
-                onQn + static_cast<double>(stepsToNextHit) * kStepQuarterNotes;
+                cycleStartQn +
+                static_cast<double>(stepIndex + stepsToNextHit) *
+                    kStepQuarterNotes +
+                timingHumanizeQn(kSynthOutBus, nextStepIndex, nextCycle);
 
             // Synth articulation is independent of Guitar/Bass/Pad gating.
             // Honor the generated note length and allow a legato boundary at
@@ -1921,8 +2164,16 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                 const double requestedOffQn =
                     onQn + static_cast<double>(std::max(1, note.lengthSteps)) *
                                kStepQuarterNotes;
-                const double offQn = std::max(onQn, std::min(nextOnQn, requestedOffQn));
-                addScheduled(onQn, true, note.pitch, note.velocity, kSynthOutBus, offQn);
+                const double safeNextQn =
+                    humanizeAmount_ > 0.0f ? nextOnQn - qnPerSample : nextOnQn;
+                const double offQn =
+                    std::max(onQn + qnPerSample,
+                             std::min(safeNextQn, requestedOffQn));
+                addScheduled(
+                    onQn, true, note.pitch,
+                    humanizedVelocity(
+                        kSynthOutBus, stepIndex, cycle, note.velocity),
+                    kSynthOutBus, offQn);
                 addScheduled(offQn, false, note.pitch, 0, kSynthOutBus);
             }
         }
@@ -2030,11 +2281,11 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         const double cycleStartQn =
             transportAnchorQn_ + static_cast<double>(cycle) * patternLengthQn;
 
-        schedulePhraseCycle(phrase_, kGuitarOutBus, cycleStartQn);
-        schedulePhraseCycle(bassPhrase_, kBassOutBus, cycleStartQn);
-        scheduleDrumCycle(cycleStartQn);
-        schedulePadCycle(cycleStartQn);
-        scheduleSynthCycle(cycleStartQn);
+        schedulePhraseCycle(phrase_, kGuitarOutBus, cycleStartQn, cycle);
+        schedulePhraseCycle(bassPhrase_, kBassOutBus, cycleStartQn, cycle);
+        scheduleDrumCycle(cycleStartQn, cycle);
+        schedulePadCycle(cycleStartQn, cycle);
+        scheduleSynthCycle(cycleStartQn, cycle);
 
         if (schedulerOverflow) {
             // This now represents excessive complexity inside one single
@@ -2204,6 +2455,21 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     triggerMode->setNormalized(0.0);
     parameters.addParameter(triggerMode);
 
+    auto addRoleLock = [&](const char16_t* name, ParamID id) {
+        auto* p = new StringListParameter(name, id);
+        p->appendString(STR16("OPEN"));
+        p->appendString(STR16("LOCK"));
+        p->getInfo().defaultNormalizedValue = 0.0;
+        p->setNormalized(0.0);
+        parameters.addParameter(p);
+    };
+    addRoleLock(STR16("Guitar Lock"), kGuitarLockId);
+    addRoleLock(STR16("Bass Lock"), kBassLockId);
+    addRoleLock(STR16("Drums Lock"), kDrumsLockId);
+    addRoleLock(STR16("Pad Lock"), kPadLockId);
+    addRoleLock(STR16("Synth Lock"), kSynthLockId);
+    addPercent(STR16("Humanize"), kHumanizeId, 0.0);
+
     auto* newRiff = new RangeParameter(STR16("NEW Riff"), kNewRiffId, STR16(""),
                                        0.0, 1.0, 0.0, 1, ParameterInfo::kCanAutomate);
     parameters.addParameter(newRiff);
@@ -2257,6 +2523,8 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     bool midiRootSource = true;
     bool powerChordsEnabled = true;
     bool midiNoteTrigger = false;
+    std::array<bool, kEventOutputBusCount> roleLocks{};
+    float humanizeAmount = 0.0f;
     midiator::DrumMapId drumMapId = midiator::DrumMapId::GeneralMidi;
     midiator::BassSettings bassSettings{};
     midiator::DrumSettings drumSettings{};
@@ -2287,11 +2555,13 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
                              serializedSteps, allow16Bars, true) ||
             !readExtendedStateTail(
                 state, restoredStateVersion, restored.palmMuteVelocityThreshold,
-                midiNoteTrigger))
+                midiNoteTrigger, roleLocks, humanizeAmount))
             return kResultFalse;
     } else {
         restored.palmMuteVelocityThreshold = 41;
         midiNoteTrigger = false;
+        roleLocks.fill(false);
+        humanizeAmount = 0.0f;
     }
 
     auto legacyBarsIndex = [](int bars) -> double {
@@ -2346,6 +2616,12 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     setParamNormalized(kPalmMuteVelocityId,
                        static_cast<double>(restored.palmMuteVelocityThreshold - 3) / 84.0);
     setParamNormalized(kTriggerModeId, midiNoteTrigger ? 1.0 : 0.0);
+    setParamNormalized(kGuitarLockId, roleLocks[kGuitarOutBus] ? 1.0 : 0.0);
+    setParamNormalized(kBassLockId, roleLocks[kBassOutBus] ? 1.0 : 0.0);
+    setParamNormalized(kDrumsLockId, roleLocks[kDrumsOutBus] ? 1.0 : 0.0);
+    setParamNormalized(kPadLockId, roleLocks[kPadOutBus] ? 1.0 : 0.0);
+    setParamNormalized(kSynthLockId, roleLocks[kSynthOutBus] ? 1.0 : 0.0);
+    setParamNormalized(kHumanizeId, humanizeAmount);
     setParamNormalized(kVariationAmountId, variationAmount);
     setParamNormalized(kBassFollowId, bassSettings.follow);
     setParamNormalized(kBassMovementId, bassSettings.movement);
