@@ -105,7 +105,7 @@
     </view>
 
     <!-- Riff generation -->
-    <view class="CViewContainer" origin="24, 226" size="812, 270" transparent="false" background-color="Panel">
+    <view class="CViewContainer" origin="24, 226" size="812, 286" transparent="false" background-color="Panel">
       <view class="CTextLabel" origin="18, 10" size="180, 18" title="RIFF GENERATION" font="Heading" font-color="Accent" transparent="true"/>
       <view class="CTextLabel" origin="300, 11" size="494, 16" title="SHAPE CONTROLS APPLY TO NEW RIFF / VARIATION" font="Small" font-color="Muted" text-alignment="right" transparent="true"/>
       <view class="CView" origin="18, 32" size="776, 1" transparent="false" background-color="PanelEdge"/>
@@ -158,24 +158,24 @@
       <view class="CTextButton" control-tag="Variation" origin="562, 174" size="216, 48" title="VARIATION" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-color="ButtonEdge" frame-color-highlighted="AccentDark" frame-width="1" round-radius="5" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
 
       <!-- Role locks -->
-      <view class="CView" origin="18, 228" size="776, 1" transparent="false" background-color="PanelEdge"/>
-      <view class="CTextLabel" origin="18, 238" size="96, 18" title="LOCK PARTS" font="Heading" font-color="Accent" transparent="true"/>
-      <view class="CTextLabel" origin="118, 240" size="676, 14" title="LOCKED PARTS ARE PROTECTED FROM NEW RIFF / VARIATION" font="Small" font-color="Dim" text-alignment="right" transparent="true"/>
+      <view class="CView" origin="18, 226" size="776, 1" transparent="false" background-color="PanelEdge"/>
+      <view class="CTextLabel" origin="18, 234" size="96, 18" title="LOCK PARTS" font="Heading" font-color="Accent" transparent="true"/>
+      <view class="CTextLabel" origin="118, 235" size="676, 14" title="LOCKED PARTS ARE PROTECTED FROM NEW RIFF / VARIATION" font="Small" font-color="Dim" text-alignment="right" transparent="true"/>
 
-      <view class="CTextLabel" origin="126, 238" size="96, 14" title="GUITAR" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
-      <view class="COptionMenu" control-tag="GuitarLock" origin="126, 253" size="96, 22" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
-      <view class="CTextLabel" origin="240, 238" size="96, 14" title="BASS" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
-      <view class="COptionMenu" control-tag="BassLock" origin="240, 253" size="96, 22" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
-      <view class="CTextLabel" origin="354, 238" size="96, 14" title="DRUMS" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
-      <view class="COptionMenu" control-tag="DrumsLock" origin="354, 253" size="96, 22" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
-      <view class="CTextLabel" origin="468, 238" size="96, 14" title="PADS" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
-      <view class="COptionMenu" control-tag="PadLock" origin="468, 253" size="96, 22" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
-      <view class="CTextLabel" origin="582, 238" size="96, 14" title="SYNTH" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
-      <view class="COptionMenu" control-tag="SynthLock" origin="582, 253" size="96, 22" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CTextLabel" origin="126, 249" size="96, 14" title="GUITAR" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
+      <view class="COptionMenu" control-tag="GuitarLock" origin="126, 264" size="96, 20" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CTextLabel" origin="240, 249" size="96, 14" title="BASS" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
+      <view class="COptionMenu" control-tag="BassLock" origin="240, 264" size="96, 20" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CTextLabel" origin="354, 249" size="96, 14" title="DRUMS" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
+      <view class="COptionMenu" control-tag="DrumsLock" origin="354, 264" size="96, 20" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CTextLabel" origin="468, 249" size="96, 14" title="PADS" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
+      <view class="COptionMenu" control-tag="PadLock" origin="468, 264" size="96, 20" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CTextLabel" origin="582, 249" size="96, 14" title="SYNTH" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
+      <view class="COptionMenu" control-tag="SynthLock" origin="582, 264" size="96, 20" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
     </view>
 
     <!-- Role shaping / live -->
-    <view class="CViewContainer" origin="24, 510" size="812, 170" transparent="false" background-color="Panel">
+    <view class="CViewContainer" origin="24, 524" size="812, 162" transparent="false" background-color="Panel">
       <view class="CTextLabel" origin="18, 10" size="180, 18" title="ROLE SHAPING" font="Heading" font-color="Accent" transparent="true"/>
       <view class="CTextLabel" origin="180, 11" size="92, 16" title="LIVE" font="Small" font-color="Accent" transparent="true"/>
       <view class="CTextLabel" origin="300, 11" size="250, 16" title="CHANGES APPLY IMMEDIATELY" font="Small" font-color="Muted" text-alignment="right" transparent="true"/>
@@ -222,7 +222,7 @@
     </view>
 
     <!-- Footer -->
-    <view class="CTextLabel" origin="24, 688" size="812, 14" title="Library-neutral MIDI · Five dedicated outputs · Humanize 0% = exact generated timing" font="Small" font-color="Dim" text-alignment="center" transparent="true"/>
-    <view class="CTextLabel" origin="24, 706" size="812, 18" title="Generate an idea. Lock what works. Shape the band live. Record the MIDI." font="Normal" font-color="Text" text-alignment="center" transparent="true"/>
+    <view class="CTextLabel" origin="24, 692" size="812, 14" title="Library-neutral MIDI · Five dedicated outputs · Humanize 0% = exact generated timing" font="Small" font-color="Dim" text-alignment="center" transparent="true"/>
+    <view class="CTextLabel" origin="24, 710" size="812, 18" title="Generate an idea. Lock what works. Shape the band live. Record the MIDI." font="Normal" font-color="Text" text-alignment="center" transparent="true"/>
   </template>
 </vstgui-ui-description>
