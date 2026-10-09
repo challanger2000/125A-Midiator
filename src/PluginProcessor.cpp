@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "vstgui/lib/controls/ctextbutton.h"
 #include "SectionProfiles.h"
 
 #include "public.sdk/source/main/pluginfactory.h"
@@ -2695,6 +2696,9 @@ tresult PLUGIN_API MidiatorController::setParamNormalized(ParamID tag, ParamValu
         refreshTheory();
     if (tag == kStyleId || tag == kMetalStyleId)
         refreshStyleHint();
+    if (tag == kPowerChordsEnabledId ||
+        (tag >= kGuitarLockId && tag <= kSynthLockId))
+        refreshToggleLabels();
     return r;
 }
 
@@ -2725,6 +2729,13 @@ VSTGUI::CView* MidiatorController::verifyView(VSTGUI::CView* view,
             control->setListener(this);
             variationButton_ = control;
         }
+        if (auto* textButton = dynamic_cast<VSTGUI::CTextButton*>(control)) {
+            const auto tag = static_cast<ParamID>(control->getTag());
+            if (tag >= kGuitarLockId && tag <= kSynthLockId)
+                lockButtons_[static_cast<size_t>(tag - kGuitarLockId)] = textButton;
+            else if (tag == kPowerChordsEnabledId)
+                powerChordToggle_ = textButton;
+        }
     }
 
     const auto* id = attributes.getAttributeValue("midiator-id");
@@ -2740,6 +2751,7 @@ VSTGUI::CView* MidiatorController::verifyView(VSTGUI::CView* view,
 
     refreshTheory();
     refreshStyleHint();
+    refreshToggleLabels();
     return view;
 }
 
@@ -2754,6 +2766,23 @@ void MidiatorController::willClose(VSTGUI::VST3Editor*) {
     styleBpm_ = nullptr;
     newRiffButton_ = nullptr;
     variationButton_ = nullptr;
+    lockButtons_.fill(nullptr);
+    powerChordToggle_ = nullptr;
+}
+
+void MidiatorController::refreshToggleLabels() noexcept {
+    for (size_t i = 0; i < lockButtons_.size(); ++i) {
+        auto* button = lockButtons_[i];
+        if (!button) continue;
+        const auto tag = static_cast<ParamID>(kGuitarLockId + i);
+        button->setTitle(getParamNormalized(tag) > 0.5 ? "LOCK" : "OPEN");
+        button->invalid();
+    }
+    if (powerChordToggle_) {
+        powerChordToggle_->setTitle(
+            getParamNormalized(kPowerChordsEnabledId) > 0.5 ? "ON" : "OFF");
+        powerChordToggle_->invalid();
+    }
 }
 
 void MidiatorController::refreshTheory() noexcept {

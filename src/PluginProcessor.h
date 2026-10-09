@@ -21,6 +21,7 @@
 namespace VSTGUI {
 class CTextLabel;
 class CControl;
+class CTextButton;
 class CView;
 class IUIDescription;
 class VST3Editor;
@@ -194,6 +195,7 @@ public:
 private:
     void refreshTheory() noexcept;
     void refreshStyleHint() noexcept;
+    void refreshToggleLabels() noexcept;
 
     VSTGUI::CTextLabel* theoryKey_ = nullptr;
     VSTGUI::CTextLabel* theoryNotes_ = nullptr;
@@ -202,6 +204,8 @@ private:
     VSTGUI::CTextLabel* styleBpm_ = nullptr;
     VSTGUI::CControl* newRiffButton_ = nullptr;
     VSTGUI::CControl* variationButton_ = nullptr;
+    std::array<VSTGUI::CTextButton*, 5> lockButtons_{};
+    VSTGUI::CTextButton* powerChordToggle_ = nullptr;
     double fallbackNewRiffState_ = 0.0;
     double fallbackVariationState_ = 0.0;
 };
