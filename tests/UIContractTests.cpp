@@ -142,6 +142,19 @@ int main() {
     }
     require(textEditCount == 17,
             "sixteen slider value fields plus PM velocity must be editable");
+    require(xml.find("origin=\"24, 226\" size=\"812, 286\"") != std::string::npos,
+            "RIFF GENERATION panel must reserve full height for the LOCK row");
+    require(xml.find("origin=\"24, 524\" size=\"812, 162\"") != std::string::npos,
+            "ROLE SHAPING panel must start below the complete LOCK row");
+    for (const char* lockOrigin : {
+            "origin=\"126, 264\" size=\"96, 20\"",
+            "origin=\"240, 264\" size=\"96, 20\"",
+            "origin=\"354, 264\" size=\"96, 20\"",
+            "origin=\"468, 264\" size=\"96, 20\"",
+            "origin=\"582, 264\" size=\"96, 20\""}) {
+        require(xml.find(lockOrigin) != std::string::npos,
+                "every LOCK selector must fit fully inside its reserved row");
+    }
 
     std::cout << "Midiator UI contract test: PASS\n";
     return 0;
