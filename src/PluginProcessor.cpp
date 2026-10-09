@@ -1,5 +1,5 @@
 #include "PluginProcessor.h"
-#include "vstgui/lib/controls/ctextbutton.h"
+#include "vstgui/lib/controls/cbuttons.h"
 #include "SectionProfiles.h"
 
 #include "public.sdk/source/main/pluginfactory.h"
