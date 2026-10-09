@@ -39,6 +39,19 @@ int main() {
            xml.substr(a,p-a).find("class=\"CTextButton\"")!=std::string::npos,
            "binary toggles must be direct buttons");
  }
+ // Bounds contract: live-control labels must end before their sliders.
+ require(xml.find("origin=\"22, 219\" size=\"110, 20\" title=\"DRUM FILL\"")!=std::string::npos,
+         "Drum Fill label must not collide with slider");
+ require(xml.find("origin=\"620, 219\" size=\"135, 20\" title=\"HUMANIZE\"")!=std::string::npos,
+         "Humanize label must not collide with slider");
+ for(const char* tag:{"GuitarLock","BassLock","DrumsLock","PadLock","SynthLock","PowerChordsEnabled"}) {
+   auto p=xml.find(std::string("control-tag=\"")+tag+"\"");
+   require(p!=std::string::npos,"toggle control exists");
+   auto a=xml.rfind("<view",p);auto b=xml.find("/>",p);
+   require(a!=std::string::npos && b!=std::string::npos &&
+           xml.substr(a,b-a).find("kick-style=\"false\"")!=std::string::npos,
+           "OPEN/LOCK and ON/OFF must be persistent, not kick switches");
+ }
  for(const char* heading:{"01  SET THE MUSIC","02  GENERATE A RIFF",
                             "03  KEEP WHAT WORKS","04  SHAPE THE BAND"}) {
    require(xml.find(heading)!=std::string::npos,"workflow hierarchy present");

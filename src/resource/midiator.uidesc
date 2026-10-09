@@ -138,15 +138,15 @@
  <view class="CTextLabel" origin="22, 14" size="1028, 20" title="03  KEEP WHAT WORKS" font="Heading" font-color="Accent" text-alignment="left" transparent="true"/>
  <view class="CTextLabel" origin="22, 36" size="1028, 18" title="OPEN = can change   ·   LOCK = protected during NEW RIFF and VARIATION" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
  <view class="CView" origin="22, 62" size="1028, 1" transparent="false" background-color="PanelEdge"/>
- <view class="CTextLabel" origin="24, 66" size="183, 14" title="GUITAR" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
+ <view class="CTextLabel" origin="24, 66" size="183, 16" title="GUITAR" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
 <view class="CTextButton" control-tag="GuitarLock" origin="24, 83" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive" kick-style="false"/>
-<view class="CTextLabel" origin="231, 66" size="183, 14" title="BASS" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
+<view class="CTextLabel" origin="231, 66" size="183, 16" title="BASS" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
 <view class="CTextButton" control-tag="BassLock" origin="231, 83" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive" kick-style="false"/>
-<view class="CTextLabel" origin="438, 66" size="183, 14" title="DRUMS" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
+<view class="CTextLabel" origin="438, 66" size="183, 16" title="DRUMS" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
 <view class="CTextButton" control-tag="DrumsLock" origin="438, 83" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive" kick-style="false"/>
-<view class="CTextLabel" origin="645, 66" size="183, 14" title="PADS" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
+<view class="CTextLabel" origin="645, 66" size="183, 16" title="PADS" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
 <view class="CTextButton" control-tag="PadLock" origin="645, 83" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive" kick-style="false"/>
-<view class="CTextLabel" origin="852, 66" size="183, 14" title="SYNTH" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
+<view class="CTextLabel" origin="852, 66" size="183, 16" title="SYNTH" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
 <view class="CTextButton" control-tag="SynthLock" origin="852, 83" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive" kick-style="false"/>
  </view>
 <view class="CViewContainer" origin="24, 714" size="1072, 260" transparent="false" background-color="PanelLive">
@@ -181,10 +181,10 @@
 <view class="CTextLabel" origin="802, 157" size="237, 20" title="MOVEMENT" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
 <view class="CSlider" control-tag="SynthMovement" origin="802, 187" size="182, 20" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
 <view class="CTextEdit" control-tag="SynthMovement" origin="992, 184" size="47, 26" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
-<view class="CTextLabel" origin="22, 219" size="180, 20" title="DRUM FILL" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
+<view class="CTextLabel" origin="22, 219" size="110, 20" title="DRUM FILL" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
 <view class="CSlider" control-tag="FillIntensity" origin="145, 219" size="150, 20" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
 <view class="CTextEdit" control-tag="FillIntensity" origin="304, 217" size="48, 26" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
-<view class="CTextLabel" origin="620, 219" size="170, 20" title="HUMANIZE" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
+<view class="CTextLabel" origin="620, 219" size="135, 20" title="HUMANIZE" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
 <view class="CSlider" control-tag="Humanize" origin="770, 219" size="155, 20" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
 <view class="CTextEdit" control-tag="Humanize" origin="932, 217" size="48, 26" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
  </view>
