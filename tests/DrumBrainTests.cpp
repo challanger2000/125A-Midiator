@@ -496,7 +496,8 @@ void testVerifiedMapsNeverEmitSamePitchTwicePerStep() {
     const DrumMapId maps[] = {
         DrumMapId::GeneralMidi,
         DrumMapId::EZdrummer3,
-        DrumMapId::PerfectDrums
+        DrumMapId::PerfectDrums,
+        DrumMapId::AddictiveDrums2
     };
 
     for (auto mapId : maps) {
@@ -575,6 +576,30 @@ void testMappingLayerIndependentOfComposition() {
             "Perfect Drums ghost snare must use Snare Center with lower velocity");
     require(DrumMidiMap::presetIsVerified(DrumMapId::PerfectDrums),
             "Perfect Drums default preset must be marked verified");
+
+    const auto ad2 = DrumMidiMap::preset(DrumMapId::AddictiveDrums2);
+    require(ad2.midiNote(DrumVoice::Kick) == 36,
+            "AD2 Standard kick must be 36");
+    require(ad2.midiNote(DrumVoice::Snare) == 38,
+            "AD2 Standard Snare Open Hit must be 38");
+    require(ad2.midiNote(DrumVoice::ClosedHat) == 49,
+            "AD2 Standard Closed Hat 1 Tip must be 49");
+    require(ad2.midiNote(DrumVoice::OpenHat) == 54,
+            "AD2 Standard Open Hat A must be 54");
+    require(ad2.midiNote(DrumVoice::Crash) == 77,
+            "AD2 Standard Cymbal 1 Hit must be 77");
+    require(ad2.midiNote(DrumVoice::Ride) == 60,
+            "AD2 Standard Ride 1 Tip must be 60");
+    require(ad2.midiNote(DrumVoice::LowTom) == 65,
+            "AD2 Standard Tom 4 Open Hit must be 65");
+    require(ad2.midiNote(DrumVoice::MidTom) == 69,
+            "AD2 Standard Tom 2 Open Hit must be 69");
+    require(ad2.midiNote(DrumVoice::HighTom) == 71,
+            "AD2 Standard Tom 1 Open Hit must be 71");
+    require(ad2.midiNote(DrumVoice::GhostSnare) == 38,
+            "AD2 ghost snare must retain Snare Open Hit and use velocity");
+    require(DrumMidiMap::presetIsVerified(DrumMapId::AddictiveDrums2),
+            "AD2 Standard preset must be marked verified");
 
     require(!DrumMidiMap::presetIsVerified(DrumMapId::SuperiorDrummer3),
             "SD3 must not be claimed as a universal verified static map");

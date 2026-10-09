@@ -91,6 +91,16 @@ DrumMidiMap DrumMidiMap::preset(DrumMapId id) {
             };
             break;
 
+        case DrumMapId::AddictiveDrums2:
+            // XLN Audio official AD2 Standard keymap:
+            // Kick 36, Snare Open Hit 38, Closed Hat 1 Tip 49,
+            // Open Hat A 54, Cymbal 1 Hit 77, Ride 1 Tip 60,
+            // Tom 4/2/1 Open Hit 65/69/71.
+            m.note = {
+                36, 38, 49, 54, 77, 60, 65, 69, 71, 38
+            };
+            break;
+
         case DrumMapId::SuperiorDrummer3:
             // Compatibility fallback only. SD3 exposes its current MIDI
             // Mapping Layout and mappings can vary with library/preset.
@@ -115,6 +125,7 @@ bool DrumMidiMap::presetIsVerified(DrumMapId id) {
         case DrumMapId::GeneralMidi:
         case DrumMapId::EZdrummer3:
         case DrumMapId::PerfectDrums:
+        case DrumMapId::AddictiveDrums2:
             return true;
         case DrumMapId::SuperiorDrummer3:
         case DrumMapId::SSD55:

@@ -426,6 +426,19 @@ int main() {
     expectRejectedPatch(64, static_cast<int32>(midiator::DrumMapId::SuperiorDrummer3),
                         "V7 unverified Drum Map id must be rejected");
     {
+        MemoryStream preV15Ad2;
+        preV15Ad2.bytes() = first.bytes();
+        const uint32_t v14Version = 14u;
+        patchFixtureValue(preV15Ad2, sizeof(uint32_t), v14Version);
+        patchFixtureValue(
+            preV15Ad2, 64,
+            static_cast<int32>(midiator::DrumMapId::AddictiveDrums2));
+        preV15Ad2.rewind();
+        MidiatorProcessor target;
+        require(target.setState(&preV15Ad2) != kResultOk,
+                "pre-V15 state must not reinterpret the newly appended AD2 map ID");
+    }
+    {
         MemoryStream damaged;
         damaged.bytes() = first.bytes();
         const float nanValue = std::numeric_limits<float>::quiet_NaN();
@@ -850,7 +863,7 @@ int main() {
         // compatible with V10 while style IDs 0..11 are now valid.
         MemoryStream deathV12;
         deathV12.bytes() = first.bytes();
-        // Freeze this fixture as real V12. The V13/V14 tail bytes may remain
+        // Freeze this fixture as real V12. The V13-V15 tail bytes may remain
         // physically present because historical readers ignore trailing data;
         // the versioned contract decides which fields are semantically read.
         const uint32_t v12Version = 12u;
@@ -909,7 +922,7 @@ int main() {
 
         MemoryStream migratedV12;
         require(migratedSong.getState(&migratedV12) == kResultOk,
-                "retired V11 state must resave as V14");
+                "retired V11 state must resave as V15");
         uint32_t storedVersion = 0;
         int32 storedSection = -1;
         std::memcpy(&storedVersion,
@@ -918,8 +931,8 @@ int main() {
         std::memcpy(&storedSection,
                     migratedV12.bytes().data() + 104,
                     sizeof(storedSection));
-        require(storedVersion == 14u,
-                "retired V11 state must upgrade to V14");
+        require(storedVersion == 15u,
+                "retired V11 state must upgrade to V15");
         require(storedSection ==
                     static_cast<int32>(midiator::SectionType::Chorus),
                 "retired V11 AUTO flag must be discarded while preserving the manual Section");
@@ -940,57 +953,115 @@ int main() {
 
 
     {
-        MidiatorProcessor currentV14;
+        MidiatorProcessor currentV15;
         MemoryStream state;
-        require(currentV14.getState(&state) == kResultOk,
-                "V14 extended state must serialize");
+        require(currentV15.getState(&state) == kResultOk,
+                "V15 extended state must serialize");
         uint32_t version = 0;
         int32 pmVelocity = -1;
         int32 triggerMode = -1;
-        std::memcpy(&version, state.bytes().data() + sizeof(uint32_t), sizeof(version));
-        std::memcpy(&pmVelocity,
-                    state.bytes().data() + state.bytes().size() - 2 * sizeof(int32_t),
+        int32 lockMask = -1;
+        float humanize = -1.0f;
+        std::memcpy(&version,
+                    state.bytes().data() + sizeof(uint32_t),
+                    sizeof(version));
+        const size_t tail = state.bytes().size() -
+                            (3 * sizeof(int32_t) + sizeof(float));
+        std::memcpy(&pmVelocity, state.bytes().data() + tail,
                     sizeof(pmVelocity));
         std::memcpy(&triggerMode,
-                    state.bytes().data() + state.bytes().size() - sizeof(int32_t),
+                    state.bytes().data() + tail + sizeof(int32_t),
                     sizeof(triggerMode));
-        require(version == 14u,
-                "current state must be V14");
+        std::memcpy(&lockMask,
+                    state.bytes().data() + tail + 2 * sizeof(int32_t),
+                    sizeof(lockMask));
+        std::memcpy(&humanize,
+                    state.bytes().data() + tail + 3 * sizeof(int32_t),
+                    sizeof(humanize));
+        require(version == 15u,
+                "current state must be V15");
         require(pmVelocity == 30,
                 "new projects must persist PM < VEL default 30");
         require(triggerMode == 0,
                 "new projects must default Trigger to TRANSPORT");
+        require(lockMask == 0,
+                "new projects must default every role to OPEN");
+        require(std::abs(humanize) < 1e-9f,
+                "new projects must default Humanize to 0%");
 
         state.rewind();
         MidiatorController controller;
         require(controller.initialize(nullptr) == kResultOk,
-                "V14 controller must initialize");
+                "V15 controller must initialize");
         require(controller.setComponentState(&state) == kResultOk,
-                "V14 controller state must restore");
+                "V15 controller state must restore");
         require(std::abs(controller.getParamNormalized(kPalmMuteVelocityId) -
                          (27.0 / 84.0)) < 1e-9,
-                "V14 PM < VEL default 30 must restore exactly");
+                "V15 PM < VEL default 30 must restore exactly");
         require(std::abs(controller.getParamNormalized(kTriggerModeId)) < 1e-9,
-                "V14 Trigger TRANSPORT must restore exactly");
+                "V15 Trigger TRANSPORT must restore exactly");
+        require(std::abs(controller.getParamNormalized(kGuitarLockId)) < 1e-9 &&
+                std::abs(controller.getParamNormalized(kBassLockId)) < 1e-9 &&
+                std::abs(controller.getParamNormalized(kDrumsLockId)) < 1e-9 &&
+                std::abs(controller.getParamNormalized(kPadLockId)) < 1e-9 &&
+                std::abs(controller.getParamNormalized(kSynthLockId)) < 1e-9,
+                "V15 role locks must restore OPEN defaults");
+        require(std::abs(controller.getParamNormalized(kHumanizeId)) < 1e-9,
+                "V15 Humanize default 0% must restore exactly");
 
-        // V13 existed briefly with the PM threshold tail only. Keep it readable
-        // and default the later Trigger parameter to TRANSPORT.
+        // V14 had PM threshold + Trigger only. V15 must add OPEN locks and 0% Humanize.
+        MemoryStream frozenV14;
+        frozenV14.bytes() = state.bytes();
+        frozenV14.bytes().resize(
+            frozenV14.bytes().size() - sizeof(int32_t) - sizeof(float));
+        const uint32_t v14 = 14u;
+        patchFixtureValue(frozenV14, sizeof(uint32_t), v14);
+        frozenV14.rewind();
+
+        MidiatorProcessor migratedV14;
+        require(migratedV14.setState(&frozenV14) == kResultOk,
+                "frozen V14 state must migrate to V15");
+        MemoryStream upgradedV15;
+        require(migratedV14.getState(&upgradedV15) == kResultOk,
+                "migrated V14 state must serialize as V15");
+        int32 migratedLockMask = -1;
+        float migratedHumanize = -1.0f;
+        std::memcpy(&migratedLockMask,
+                    upgradedV15.bytes().data() +
+                        upgradedV15.bytes().size() -
+                        sizeof(float) - sizeof(int32_t),
+                    sizeof(migratedLockMask));
+        std::memcpy(&migratedHumanize,
+                    upgradedV15.bytes().data() +
+                        upgradedV15.bytes().size() - sizeof(float),
+                    sizeof(migratedHumanize));
+        require(migratedLockMask == 0 && std::abs(migratedHumanize) < 1e-9f,
+                "V14 migration must default locks OPEN and Humanize to 0%");
+
+        // V13 existed briefly with PM threshold only. Keep it readable and
+        // default Trigger, locks and Humanize to their safe values.
         MemoryStream frozenV13;
         frozenV13.bytes() = state.bytes();
-        frozenV13.bytes().resize(frozenV13.bytes().size() - sizeof(int32_t));
+        frozenV13.bytes().resize(
+            frozenV13.bytes().size() -
+            2 * sizeof(int32_t) - sizeof(float));
         const uint32_t v13 = 13u;
         patchFixtureValue(frozenV13, sizeof(uint32_t), v13);
         frozenV13.rewind();
 
         MidiatorProcessor migratedV13;
         require(migratedV13.setState(&frozenV13) == kResultOk,
-                "frozen V13 PM-only state must migrate to V14");
-        MemoryStream upgradedV14;
-        require(migratedV13.getState(&upgradedV14) == kResultOk,
-                "migrated V13 state must serialize as V14");
+                "frozen V13 PM-only state must migrate to V15");
+        MemoryStream upgradedFromV13;
+        require(migratedV13.getState(&upgradedFromV13) == kResultOk,
+                "migrated V13 state must serialize as V15");
+        const size_t migratedTail =
+            upgradedFromV13.bytes().size() -
+            (3 * sizeof(int32_t) + sizeof(float));
         int32 migratedTrigger = -1;
         std::memcpy(&migratedTrigger,
-                    upgradedV14.bytes().data() + upgradedV14.bytes().size() - sizeof(int32_t),
+                    upgradedFromV13.bytes().data() +
+                        migratedTail + sizeof(int32_t),
                     sizeof(migratedTrigger));
         require(migratedTrigger == 0,
                 "V13 migration must default Trigger to TRANSPORT");

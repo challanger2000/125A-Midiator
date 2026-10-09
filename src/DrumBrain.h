@@ -60,6 +60,8 @@ enum class DrumMapId : uint8_t {
     SSD55,
     PerfectDrums,
     Custom,
+    // Appended after all historical IDs to preserve serialized map values.
+    AddictiveDrums2,
     Count
 };
 

@@ -345,7 +345,10 @@ bool readStateHeader(IBStream* state,
             const bool verifiedMap =
                 storedDrumMap == static_cast<int32>(midiator::DrumMapId::GeneralMidi) ||
                 storedDrumMap == static_cast<int32>(midiator::DrumMapId::EZdrummer3) ||
-                storedDrumMap == static_cast<int32>(midiator::DrumMapId::PerfectDrums);
+                storedDrumMap == static_cast<int32>(midiator::DrumMapId::PerfectDrums) ||
+                (version >= 15u &&
+                 storedDrumMap ==
+                     static_cast<int32>(midiator::DrumMapId::AddictiveDrums2));
             if (!verifiedMap)
                 return false;
             drumMapId = static_cast<midiator::DrumMapId>(storedDrumMap);
@@ -1174,8 +1177,10 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
         midiator::StyleId metalStyle = midiator::StyleId::NDHIndustrial;
         bool hasRootSource = false;
         bool midiRootSource = true;
-        bool hasDrumMap = false;
-        midiator::DrumMapId drumMap = midiator::DrumMapId::GeneralMidi;
+        bool hasLegacyDrumMap = false;
+        midiator::DrumMapId legacyDrumMap = midiator::DrumMapId::GeneralMidi;
+        bool hasVerifiedDrumMap = false;
+        midiator::DrumMapId verifiedDrumMap = midiator::DrumMapId::GeneralMidi;
         bool hasBassFollow = false;
         float bassFollow = 0.0f;
         bool hasBassMovement = false;
@@ -1310,12 +1315,24 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
                 pending.midiRootSource = v > 0.5;
                 break;
             case kDrumMapId: {
-                pending.hasDrumMap = true;
+                pending.hasLegacyDrumMap = true;
                 const int index = normalizedIndex(v, 3);
-                pending.drumMap = index == 0
+                pending.legacyDrumMap = index == 0
                     ? midiator::DrumMapId::GeneralMidi
                     : (index == 1 ? midiator::DrumMapId::EZdrummer3
                                   : midiator::DrumMapId::PerfectDrums);
+                break;
+            }
+            case kVerifiedDrumMapId: {
+                pending.hasVerifiedDrumMap = true;
+                const int index = normalizedIndex(v, 4);
+                static constexpr midiator::DrumMapId maps[] = {
+                    midiator::DrumMapId::GeneralMidi,
+                    midiator::DrumMapId::EZdrummer3,
+                    midiator::DrumMapId::PerfectDrums,
+                    midiator::DrumMapId::AddictiveDrums2
+                };
+                pending.verifiedDrumMap = maps[index];
                 break;
             }
             case kBassFollowId:
@@ -1403,8 +1420,23 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
                 pending.roleLock[static_cast<size_t>(role)];
     if (pending.hasHumanize)
         humanizeAmount_ = std::clamp(pending.humanize, 0.0f, 1.0f);
-    if (pending.hasDrumMap && pending.drumMap != drumMapId_) {
-        drumMapId_ = pending.drumMap;
+    bool hasRequestedDrumMap = false;
+    midiator::DrumMapId requestedDrumMap = drumMapId_;
+    if (pending.hasVerifiedDrumMap &&
+        (pending.verifiedDrumMap != midiator::DrumMapId::GeneralMidi ||
+         !pending.hasLegacyDrumMap ||
+         pending.legacyDrumMap == midiator::DrumMapId::GeneralMidi)) {
+        requestedDrumMap = pending.verifiedDrumMap;
+        hasRequestedDrumMap = true;
+    } else if (pending.hasLegacyDrumMap) {
+        requestedDrumMap = pending.legacyDrumMap;
+        hasRequestedDrumMap = true;
+    } else if (pending.hasVerifiedDrumMap) {
+        requestedDrumMap = pending.verifiedDrumMap;
+        hasRequestedDrumMap = true;
+    }
+    if (hasRequestedDrumMap && requestedDrumMap != drumMapId_) {
+        drumMapId_ = requestedDrumMap;
         drumMap_ = midiator::DrumMidiMap::preset(drumMapId_);
         phraseChangedNeedsFlush_ = true;
     }
@@ -2415,13 +2447,25 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     addPercent(STR16("Density"), kDensityId, 56.0);
     addPercent(STR16("Complexity"), kComplexityId, 42.0);
     addPercent(STR16("Repetition"), kRepetitionId, 72.0);
-    auto* drumMap = new StringListParameter(STR16("Drum Map"), kDrumMapId);
+    auto* drumMap = new StringListParameter(
+        STR16("Drum Map (Legacy)"), kDrumMapId);
     drumMap->appendString(STR16("General MIDI"));
     drumMap->appendString(STR16("EZdrummer 3"));
     drumMap->appendString(STR16("Perfect Drums"));
     drumMap->getInfo().defaultNormalizedValue = 0.0;
     drumMap->setNormalized(0.0);
+    drumMap->getInfo().flags |= ParameterInfo::kIsHidden;
     parameters.addParameter(drumMap);
+
+    auto* verifiedDrumMap = new StringListParameter(
+        STR16("Drum Map"), kVerifiedDrumMapId);
+    verifiedDrumMap->appendString(STR16("General MIDI"));
+    verifiedDrumMap->appendString(STR16("EZdrummer 3"));
+    verifiedDrumMap->appendString(STR16("Perfect Drums"));
+    verifiedDrumMap->appendString(STR16("Addictive Drums 2"));
+    verifiedDrumMap->getInfo().defaultNormalizedValue = 0.0;
+    verifiedDrumMap->setNormalized(0.0);
+    parameters.addParameter(verifiedDrumMap);
 
     auto* powerChordsEnabled = new StringListParameter(STR16("Power Chords"), kPowerChordsEnabledId);
     powerChordsEnabled->appendString(STR16("OFF"));
@@ -2588,10 +2632,18 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     setParamNormalized(kRootId, static_cast<double>(manualRoot) / 11.0);
     setParamNormalized(kRootSourceId, midiRootSource ? 1.0 : 0.0);
     setParamNormalized(kPowerChordsEnabledId, powerChordsEnabled ? 1.0 : 0.0);
-    const double drumMapNormalized =
-        drumMapId == midiator::DrumMapId::GeneralMidi ? 0.0 :
-        (drumMapId == midiator::DrumMapId::EZdrummer3 ? 0.5 : 1.0);
-    setParamNormalized(kDrumMapId, drumMapNormalized);
+    const double legacyDrumMapNormalized =
+        drumMapId == midiator::DrumMapId::EZdrummer3 ? 0.5 :
+        (drumMapId == midiator::DrumMapId::PerfectDrums ? 1.0 : 0.0);
+    setParamNormalized(kDrumMapId, legacyDrumMapNormalized);
+    double verifiedDrumMapNormalized = 0.0;
+    if (drumMapId == midiator::DrumMapId::EZdrummer3)
+        verifiedDrumMapNormalized = 1.0 / 3.0;
+    else if (drumMapId == midiator::DrumMapId::PerfectDrums)
+        verifiedDrumMapNormalized = 2.0 / 3.0;
+    else if (drumMapId == midiator::DrumMapId::AddictiveDrums2)
+        verifiedDrumMapNormalized = 1.0;
+    setParamNormalized(kVerifiedDrumMapId, verifiedDrumMapNormalized);
     const int restoredStyleIndex = static_cast<int>(restored.style);
     const int legacyStyleIndex =
         restoredStyleIndex >= 0 && restoredStyleIndex < 3 ? restoredStyleIndex : 0;

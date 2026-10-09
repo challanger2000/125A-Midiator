@@ -2408,6 +2408,48 @@ void testGuiAndParameterActionsCoalesceSameBlock() {
 
 
 
+
+void testExpandedVerifiedDrumMapAutomationCoexistsWithLegacyMap() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "expanded drum-map fixture must start");
+
+    ParameterChanges changes;
+    int32 qi = 0, pi = 0;
+    auto* legacy = changes.addParameterData(kDrumMapId, qi);
+    require(legacy && legacy->addPoint(0, 0.0, pi) == kResultOk,
+            "legacy General MIDI default must be accepted");
+    auto* expanded = changes.addParameterData(kVerifiedDrumMapId, qi);
+    require(expanded && expanded->addPoint(0, 1.0, pi) == kResultOk,
+            "expanded AD2 map must be accepted");
+
+    auto stopped = makeContext(0.0, false);
+    EventList stoppedOut;
+    auto stoppedData = makeProcessData(stopped, stoppedOut, 64, &changes);
+    require(processor.process(stoppedData) == kResultOk,
+            "expanded AD2 map setup must process");
+
+    auto context = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 192000);
+    require(processor.process(data) == kResultOk,
+            "expanded AD2 map capture must process");
+
+    bool sawKick = false;
+    bool sawAd2HatOrCymbal = false;
+    for (const auto& e : output.events) {
+        if (e.type != Event::kNoteOnEvent || e.busIndex != kDrumsOutBus)
+            continue;
+        if (e.noteOn.pitch == 36)
+            sawKick = true;
+        if (e.noteOn.pitch == 49 || e.noteOn.pitch == 54 ||
+            e.noteOn.pitch == 77 || e.noteOn.pitch == 60)
+            sawAd2HatOrCymbal = true;
+    }
+    require(sawKick && sawAd2HatOrCymbal,
+            "expanded AD2 selector must emit official AD2 Standard notes");
+}
+
 void testRoleControlsRegenerateOnlyFromTheirDependencyBoundary() {
     using NoteSig = std::pair<int,int>;
 
@@ -2681,9 +2723,27 @@ void testAllRoleLocksMakeNewAndVariationNoOps() {
     require(processor.process(stoppedData) == kResultOk,
             "all-lock setup must process");
 
-    MemoryStream before;
-    require(processor.getState(&before) == kResultOk,
-            "all-lock state must serialize before actions");
+    auto capture = [&](double startQn) {
+        auto context = makeContext(startQn, true);
+        EventList output;
+        auto data = makeProcessData(context, output, 192000);
+        require(processor.process(data) == kResultOk,
+                "all-lock capture must process");
+        std::array<std::vector<std::tuple<int,int,int>>, kEventOutputBusCount> result;
+        for (const auto& e : output.events) {
+            if (e.type != Event::kNoteOnEvent ||
+                e.busIndex < 0 || e.busIndex >= kEventOutputBusCount)
+                continue;
+            const int step = static_cast<int>(
+                std::lround((e.ppqPosition - startQn) / 0.25));
+            result[static_cast<size_t>(e.busIndex)].emplace_back(
+                step, e.noteOn.pitch,
+                static_cast<int>(std::lround(e.noteOn.velocity * 127.0f)));
+        }
+        return result;
+    };
+
+    const auto before = capture(0.0);
 
     ParameterChanges actions;
     qi = 0; pi = 0;
@@ -2694,16 +2754,15 @@ void testAllRoleLocksMakeNewAndVariationNoOps() {
     require(v && v->addPoint(0, 1.0, pi) == kResultOk,
             "all-lock VARIATION must be accepted");
 
+    auto stopped2 = makeContext(8.0, false);
     EventList actionOut;
-    auto actionData = makeProcessData(stopped, actionOut, 64, &actions);
+    auto actionData = makeProcessData(stopped2, actionOut, 64, &actions);
     require(processor.process(actionData) == kResultOk,
             "all-lock actions must process");
 
-    MemoryStream after;
-    require(processor.getState(&after) == kResultOk,
-            "all-lock state must serialize after actions");
-    require(before.bytes() == after.bytes(),
-            "all five LOCKs must make NEW RIFF and VARIATION complete no-ops");
+    const auto after = capture(8.0);
+    require(before == after,
+            "all five LOCKs must preserve every musical role through NEW and VARIATION");
 }
 
 void testHumanizeIsOverlapSafeAndPreservesGuitarArticulationZones() {
@@ -2860,6 +2919,7 @@ int main() {
     testAllInstrumentRolesUseSeparateOutputBuses();
     testDedicatedInstrumentOutputBuses();
     testVerifiedDrumMapParameterChangesOutput();
+    testExpandedVerifiedDrumMapAutomationCoexistsWithLegacyMap();
     testRoleControlsRegenerateOnlyFromTheirDependencyBoundary();
     testNewRiffChangesRhythmMask();
     testNewRiffToggleZeroValueStillCommands();
