@@ -78,9 +78,9 @@
 
   <template name="MidiatorView" class="CViewContainer" origin="0, 0" size="1120, 744" minSize="896, 595" maxSize="1680, 1116" transparent="false" background-color="Bg">
 <view class="CView" origin="28, 15" size="118, 59" bitmap="BrandLogo" transparent="true"/>
-<view class="CTextLabel" origin="168, 14" size="300, 30" title="MIDIATOR" font="Title" font-color="Text" text-alignment="left" transparent="true"/>
-<view class="CTextLabel" origin="169, 47" size="360, 20" title="METAL MIDI COMPANION" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
-<view class="CTextButton" control-tag="UiDetails" origin="615, 32" size="284, 32" title="DETAIL CONTROLS" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
+<view class="CTextLabel" origin="375, 10" size="370, 33" title="MIDIATOR" font="Title" font-color="Text" text-alignment="center" transparent="true"/>
+<view class="CTextLabel" origin="375, 44" size="370, 20" title="METAL MIDI COMPANION" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
+<view class="CTextButton" control-tag="UiDetails" origin="748, 32" size="156, 32" title="DETAILS" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
 <view class="CTextLabel" origin="928, 13" size="145, 16" title="UI ZOOM" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
 <view class="CTextButton" control-tag="UiZoom" origin="928, 32" size="145, 32" title="80 %" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
 <view class="CViewContainer" origin="24, 82" size="1072, 176" transparent="false" background-color="PanelTonal">
@@ -192,6 +192,6 @@
 <view class="CSlider" control-tag="Humanize" origin="770, 219" size="155, 20" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
 <view class="CTextEdit" control-tag="Humanize" origin="932, 217" size="48, 26" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
  </view>
-<view class="CTextLabel" origin="24, 720" size="1072, 20" title="125A SYSTEMS   ·   5 MIDI OUTPUTS   ·   1 CHANNEL EACH" font="Small" font-color="Dim" text-alignment="center" transparent="true"/>
+<view class="CTextLabel" origin="24, 720" size="1072, 20" title="125A SYSTEMS  ·  MIDIATOR V1.0.0  ·  FIVE MIDI OUTPUTS" font="Small" font-color="Dim" text-alignment="center" transparent="true"/>
 </template>
 </vstgui-ui-description>

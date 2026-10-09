@@ -61,7 +61,7 @@ jobs:
           $bundles = Get-ChildItem "$env:GITHUB_WORKSPACE\build" -Recurse -Directory -Filter "Midiator.vst3" -ErrorAction SilentlyContinue
           $p = $bundles | Where-Object { Test-Path (Join-Path $_.FullName "Contents") } | Select-Object -First 1
           if (-not $p) { throw "Midiator.vst3 bundle not found" }
-          Copy-Item $p.FullName "$artifact\Midiator.vst3" -Recurse -Force
+          Copy-Item $p.FullName "$artifact\125A Midiator.vst3" -Recurse -Force
 
       - name: Upload Midiator VST3
         uses: actions/upload-artifact@v5

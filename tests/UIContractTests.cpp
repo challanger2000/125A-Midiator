@@ -55,6 +55,10 @@ int main() {
            xml.substr(a,b-a).find("kick-style=\"false\"")!=std::string::npos,
            "OPEN/LOCK and ON/OFF must be persistent, not kick switches");
  }
+ require(xml.find("origin=\"375, 10\" size=\"370, 33\" title=\"MIDIATOR\"")!=std::string::npos,
+         "MIDIATOR header must be centered independently of utility controls");
+ require(xml.find("MIDIATOR V1.0.0")!=std::string::npos,
+         "visible version 1.0.0 must appear in GUI");
  require(xml.find("control-tag=\"UiDetails\"")!=std::string::npos &&
          xml.find("midiator-id=\"detailsPanel\"")!=std::string::npos &&
          xml.find("midiator-id=\"mainGenerate\"")!=std::string::npos &&

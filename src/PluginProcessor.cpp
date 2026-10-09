@@ -2814,7 +2814,7 @@ void MidiatorController::refreshDetailsPage() noexcept {
     if (mainLocksPanel_) mainLocksPanel_->setVisible(!detailsShown_);
     if (detailsPanel_) detailsPanel_->setVisible(detailsShown_);
     if (detailsButton_) {
-        detailsButton_->setTitle(detailsShown_ ? "BACK TO RIFF" : "DETAIL CONTROLS");
+        detailsButton_->setTitle(detailsShown_ ? "BACK" : "DETAILS");
         detailsButton_->invalid();
     }
 }
@@ -2903,9 +2903,9 @@ using namespace Steinberg::Vst;
 BEGIN_FACTORY_DEF("125A", "https://github.com/challanger2000/125A-Midiator", "")
 DEF_CLASS2(INLINE_UID_FROM_FUID(ProcessorUID), PClassInfo::kManyInstances, kVstAudioEffectClass,
            "125A Midiator", Vst::kDistributable, Vst::PlugType::kInstrumentSynth,
-           "0.1.0", kVstVersionString, MidiatorProcessor::createInstance)
+           "1.0.0", kVstVersionString, MidiatorProcessor::createInstance)
 DEF_CLASS2(INLINE_UID_FROM_FUID(ControllerUID), PClassInfo::kManyInstances, kVstComponentControllerClass,
-           "125A Midiator Controller", 0, "", "0.1.0", kVstVersionString,
+           "125A Midiator Controller", 0, "", "1.0.0", kVstVersionString,
            MidiatorController::createInstance)
 END_FACTORY
 #endif
