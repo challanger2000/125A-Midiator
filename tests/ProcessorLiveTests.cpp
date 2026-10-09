@@ -1590,6 +1590,19 @@ void testManualRootChangeTransposesLiveWithoutGenerate() {
     require(processor.setProcessing(true) == kResultOk,
             "manual-root live fixture must start");
 
+    // Pin the historical two-bar test fixture explicitly; new instances default to eight.
+    ParameterChanges initialTwoBars;
+    int32 initialQueue = 0;
+    auto* initialParam = initialTwoBars.addParameterData(kSectionLengthId, initialQueue);
+    int32 initialPoint = 0;
+    require(initialParam && initialParam->addPoint(0, 0.25, initialPoint) == kResultOk,
+            "manual root fixture must accept two bars");
+    auto initialContext = makeContext(0.0, false);
+    EventList initialOutput;
+    auto initialData = makeProcessData(initialContext, initialOutput, 64, &initialTwoBars);
+    require(processor.process(initialData) == kResultOk,
+            "manual root fixture setup must succeed");
+
     auto captureGuitar = [](const EventList& list) {
         std::vector<std::pair<int32, int>> notes;
         for (const auto& e : list.events) {
