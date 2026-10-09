@@ -113,9 +113,9 @@ int main() {
    require(start!=std::string::npos && end!=std::string::npos,"UI panel delimiters");
    const std::string panel=xml.substr(start,end-start);
    const std::regex viewPattern(R"(<view\b[^>]*\/>)");
-   const std::regex originPattern(R"(origin="([0-9]+),\s*([0-9]+)")");
-   const std::regex sizePattern(R"(size="([0-9]+),\s*([0-9]+)")");
-   const std::regex classPattern(R"(class="([^"]+)")");
+   const std::regex originPattern(R"rx(origin="([0-9]+),\s*([0-9]+)")rx");
+   const std::regex sizePattern(R"rx(size="([0-9]+),\s*([0-9]+)")rx");
+   const std::regex classPattern(R"rx(class="([^"]+)")rx");
    std::vector<Element> elements;
    for(std::sregex_iterator it(panel.begin(),panel.end(),viewPattern),last;it!=last;++it) {
      const auto line=it->str();
