@@ -87,6 +87,8 @@ int main() {
             "SECTION LENGTH selector must be bound");
     require(xml.find("control-tag=\"SectionType\"") != std::string::npos,
             "SECTION selector must be bound");
+    require(xml.find("LIVE · Changes apply immediately · NEW RIFF not required") != std::string::npos,
+            "ROLE SHAPING must state clearly that its controls apply live");
     for (const char* roleTag : {"BassFollow", "BassMovement", "DrumDensity",
                                 "DrumComplexity", "PadSpread", "PadTension",
                                 "SynthActivity", "SynthMovement", "FillIntensity"}) {

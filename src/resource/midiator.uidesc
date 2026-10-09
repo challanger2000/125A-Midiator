@@ -146,6 +146,7 @@
     <!-- Role shaping -->
     <view class="CViewContainer" origin="24, 490" size="812, 170" transparent="false" background-color="Panel">
       <view class="CTextLabel" origin="18, 12" size="210, 18" title="ROLE SHAPING" font="Heading" font-color="Accent" transparent="true"/>
+      <view class="CTextLabel" origin="230, 13" size="564, 16" title="LIVE · Changes apply immediately · NEW RIFF not required" font="Small" font-color="Muted" text-alignment="right" transparent="true"/>
       <view class="CView" origin="18, 36" size="776, 1" transparent="false" background-color="PanelEdge"/>
 
       <view class="CTextLabel" origin="18, 48" size="176, 18" title="BASS" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
