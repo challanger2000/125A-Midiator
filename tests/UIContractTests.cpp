@@ -3,6 +3,8 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <regex>
+#include <vector>
 #ifndef MIDIATOR_UIDESC_PATH
 #error MIDIATOR_UIDESC_PATH is not defined
 #endif
@@ -101,6 +103,49 @@ int main() {
    require(xml.find(std::string("midiator-id=\"")+id+"\"")!=std::string::npos,
            "dynamic helper visible");
  }
+
+ // Check every functional view against its panel bounds and its neighbours.
+ // Decorative divider CView objects are excluded from collision checks.
+ struct Element { int x,y,w,h; std::string type; };
+ const auto checkPanel = [&](const char* startMarker,const char* endMarker,int width,int height) {
+   const auto start=xml.find(startMarker);
+   const auto end=xml.find(endMarker,start);
+   require(start!=std::string::npos && end!=std::string::npos,"UI panel delimiters");
+   const std::string panel=xml.substr(start,end-start);
+   const std::regex viewPattern(R"(<view\b[^>]*\/>)");
+   const std::regex originPattern(R"(origin="([0-9]+),\s*([0-9]+)")");
+   const std::regex sizePattern(R"(size="([0-9]+),\s*([0-9]+)")");
+   const std::regex classPattern(R"(class="([^"]+)")");
+   std::vector<Element> elements;
+   for(std::sregex_iterator it(panel.begin(),panel.end(),viewPattern),last;it!=last;++it) {
+     const auto line=it->str();
+     std::smatch origin,size,klass;
+     require(std::regex_search(line,origin,originPattern) &&
+             std::regex_search(line,size,sizePattern) &&
+             std::regex_search(line,klass,classPattern),"UI view geometry present");
+     Element e{std::stoi(origin[1]),std::stoi(origin[2]),
+               std::stoi(size[1]),std::stoi(size[2]),klass[1]};
+     require(e.x>=0 && e.y>=0 && e.w>0 && e.h>0 &&
+             e.x+e.w<=width && e.y+e.h<=height,"UI element within its panel");
+     if(e.type=="CView")continue;
+     for(const auto& prev:elements) {
+       const bool separated=e.x>=prev.x+prev.w || prev.x>=e.x+e.w ||
+                            e.y>=prev.y+prev.h || prev.y>=e.y+e.h;
+       require(separated,"UI functional elements must not overlap");
+     }
+     elements.push_back(e);
+   }
+   require(elements.size()>5,"UI panel must contain controls");
+ };
+ checkPanel("origin=\"24, 82\" size=\"1072, 176\"","midiator-id=\"mainGenerate\"",1072,176);
+ checkPanel("midiator-id=\"mainGenerate\"","midiator-id=\"mainLocks\"",1072,300);
+ checkPanel("midiator-id=\"mainLocks\"","midiator-id=\"detailsPanel\"",1072,122);
+ checkPanel("midiator-id=\"detailsPanel\"","origin=\"24, 720\"",1072,434);
+ require(xml.find("midiator-id=\"theoryKey\" origin=\"22, 145\" size=\"220, 20\"")!=std::string::npos &&
+         xml.find("midiator-id=\"theoryNotes\" origin=\"250, 145\" size=\"790, 20\"")!=std::string::npos,
+         "theory labels must remain adjacent at all displayed key lengths");
+ require(xml.find("control-tag=\"PalmMuteVelocity\" origin=\"190, 388\"")!=std::string::npos,
+         "palm-mute velocity field must sit next to its label");
  std::cout<<"Midiator UI contract test: PASS\n";
  return 0;
 }
