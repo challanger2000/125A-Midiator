@@ -23,11 +23,11 @@
     <color name="Line" rgba="#2B353DFF"/>
   </colors>
   <fonts>
-    <font name="Title" font-name="Arial" size="22" bold="true" italic="false"/>
-    <font name="Heading" font-name="Arial" size="14" bold="true" italic="false"/>
-    <font name="Normal" font-name="Arial" size="12" bold="false" italic="false"/>
-    <font name="Small" font-name="Arial" size="11" bold="false" italic="false"/>
-    <font name="ButtonFont" font-name="Arial" size="13" bold="true" italic="false"/>
+    <font name="Title" font-name="Arial" size="27" bold="true" italic="false"/>
+    <font name="Heading" font-name="Arial" size="16" bold="true" italic="false"/>
+    <font name="Normal" font-name="Arial" size="13" bold="false" italic="false"/>
+    <font name="Small" font-name="Arial" size="12" bold="false" italic="false"/>
+    <font name="ButtonFont" font-name="Arial" size="14" bold="true" italic="false"/>
   </fonts>
   <gradients>
     <gradient name="ButtonIdle"><color-stop rgba="#2A353EFF" start="0"/><color-stop rgba="#1B242BFF" start="1"/></gradient>
@@ -81,7 +81,7 @@
 <view class="CTextLabel" origin="640, 25" size="450, 20" title="CHOOSE  ·  GENERATE  ·  LOCK  ·  SHAPE" font="Normal" font-color="Text" text-alignment="right" transparent="true"/>
 <view class="CViewContainer" origin="24, 82" size="1072, 176" transparent="false" background-color="PanelTonal">
   <view class="CTextLabel" origin="22, 12" size="540, 20" title="01  SET THE MUSIC" font="Heading" font-color="Accent" text-alignment="left" transparent="true"/>
-  <view class="CTextLabel" origin="22, 34" size="900, 20" title="Pick a key, choose the timing, then generate." font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
+  <view class="CTextLabel" origin="22, 34" size="900, 20" title="ROOT SOURCE = pitch input   ·   TRIGGER = start and stop" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
   <view class="CView" origin="22, 63" size="1032, 1" transparent="false" background-color="PanelEdge"/>
   <view class="CTextLabel" origin="22, 77" size="90, 20" title="ROOT" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
 <view class="COptionMenu" control-tag="Root" origin="22, 101" size="90, 32" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
@@ -95,7 +95,7 @@
 <view class="COptionMenu" control-tag="Trigger" origin="654, 101" size="146, 32" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
 <view class="CTextLabel" origin="816, 77" size="140, 20" title="SECTION" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
 <view class="COptionMenu" control-tag="SectionType" origin="816, 101" size="140, 32" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
-<view class="CTextLabel" origin="22, 144" size="910, 20" title="Root Source chooses pitch; Trigger chooses when playback starts." font="Small" font-color="Dim" text-alignment="left" transparent="true"/>
+
   <view class="CTextLabel" midiator-id="theoryKey" origin="22, 145" size="340, 20" title="A  Phrygian" font="Heading" font-color="Text" transparent="true"/>
   <view class="CTextLabel" midiator-id="theoryNotes" origin="378, 145" size="660, 20" title="Notes: A A# C D E F G" font="Normal" font-color="Text" text-alignment="right" transparent="true"/>
  </view>
@@ -125,7 +125,7 @@
 <view class="CSlider" control-tag="PalmMute" origin="790, 206" size="123, 20" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
 <view class="CTextEdit" control-tag="PalmMute" origin="921, 203" size="47, 26" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
 <view class="CTextLabel" origin="22, 231" size="166, 20" title="POWER CHORDS" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
-<view class="CTextButton" control-tag="PowerChordsEnabled" origin="192, 229" size="90, 30" title="OFF" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive"/>
+<view class="CTextButton" control-tag="PowerChordsEnabled" origin="192, 229" size="90, 30" title="OFF" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive" kick-style="false"/>
 <view class="CTextLabel" origin="315, 231" size="108, 20" title="PM &lt; VEL" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
 <view class="CTextEdit" control-tag="PalmMuteVelocity" origin="430, 230" size="72, 30" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
 <view class="CTextLabel" origin="530, 231" size="204, 20" title="VARIATION AMOUNT" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
@@ -138,16 +138,16 @@
  <view class="CTextLabel" origin="22, 14" size="1028, 20" title="03  KEEP WHAT WORKS" font="Heading" font-color="Accent" text-alignment="left" transparent="true"/>
  <view class="CTextLabel" origin="22, 36" size="1028, 18" title="OPEN = can change   ·   LOCK = protected during NEW RIFF and VARIATION" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
  <view class="CView" origin="22, 62" size="1028, 1" transparent="false" background-color="PanelEdge"/>
- <view class="CTextLabel" origin="24, 60" size="183, 20" title="GUITAR" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
-<view class="CTextButton" control-tag="GuitarLock" origin="24, 75" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive"/>
-<view class="CTextLabel" origin="231, 60" size="183, 20" title="BASS" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
-<view class="CTextButton" control-tag="BassLock" origin="231, 75" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive"/>
-<view class="CTextLabel" origin="438, 60" size="183, 20" title="DRUMS" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
-<view class="CTextButton" control-tag="DrumsLock" origin="438, 75" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive"/>
-<view class="CTextLabel" origin="645, 60" size="183, 20" title="PADS" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
-<view class="CTextButton" control-tag="PadLock" origin="645, 75" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive"/>
-<view class="CTextLabel" origin="852, 60" size="183, 20" title="SYNTH" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
-<view class="CTextButton" control-tag="SynthLock" origin="852, 75" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive"/>
+ <view class="CTextLabel" origin="24, 66" size="183, 14" title="GUITAR" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
+<view class="CTextButton" control-tag="GuitarLock" origin="24, 83" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive" kick-style="false"/>
+<view class="CTextLabel" origin="231, 66" size="183, 14" title="BASS" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
+<view class="CTextButton" control-tag="BassLock" origin="231, 83" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive" kick-style="false"/>
+<view class="CTextLabel" origin="438, 66" size="183, 14" title="DRUMS" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
+<view class="CTextButton" control-tag="DrumsLock" origin="438, 83" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive" kick-style="false"/>
+<view class="CTextLabel" origin="645, 66" size="183, 14" title="PADS" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
+<view class="CTextButton" control-tag="PadLock" origin="645, 83" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive" kick-style="false"/>
+<view class="CTextLabel" origin="852, 66" size="183, 14" title="SYNTH" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
+<view class="CTextButton" control-tag="SynthLock" origin="852, 83" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive" kick-style="false"/>
  </view>
 <view class="CViewContainer" origin="24, 714" size="1072, 260" transparent="false" background-color="PanelLive">
  <view class="CTextLabel" origin="22, 14" size="1028, 20" title="04  SHAPE THE BAND  ·  LIVE" font="Heading" font-color="Accent" text-alignment="left" transparent="true"/>
