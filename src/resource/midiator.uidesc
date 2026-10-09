@@ -96,7 +96,7 @@
 <view class="COptionMenu" control-tag="RootSource" origin="498, 101" size="140, 32" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
 <view class="CTextLabel" origin="654, 77" size="146, 20" title="TRIGGER MODE" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
 <view class="COptionMenu" control-tag="Trigger" origin="654, 101" size="146, 32" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
-<view class="CTextLabel" origin="816, 77" size="140, 20" title="SECTION" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
+<view class="CTextLabel" origin="816, 77" size="140, 20" title="SONG SECTION" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
 <view class="COptionMenu" control-tag="SectionType" origin="816, 101" size="140, 32" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
 
   <view class="CTextLabel" midiator-id="theoryKey" origin="22, 145" size="340, 20" title="A  Phrygian" font="Heading" font-color="Text" transparent="true"/>
