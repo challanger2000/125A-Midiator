@@ -37,10 +37,10 @@ int main() {
             xml.find("maxSize=\"1720, 1460\"") != std::string::npos,
             "resizable editor contract must expose non-identical min/max sizes");
 
-    for (int tag = 100; tag <= 128; ++tag) {
+    for (int tag = 100; tag <= 135; ++tag) {
         const std::string needle = "tag=\"" + std::to_string(tag) + "\"";
         require(xml.find(needle) != std::string::npos,
-                "all Midiator parameter tags 100..128 must be declared");
+                "all Midiator parameter tags 100..135 must be declared");
     }
 
     const char* theoryIds[] = {
@@ -68,6 +68,8 @@ int main() {
     }
     require(xml.find("control-tag=\"RootSource\"") != std::string::npos,
             "ROOT SOURCE selector must be bound");
+    require(xml.find("origin=\"440, 40\" size=\"118, 16\" title=\"ROOT SOURCE\"") != std::string::npos,
+            "ROOT SOURCE label must have a dedicated full-width cell");
     require(xml.find("<control-tag name=\"LegacyStyle\" tag=\"112\"") != std::string::npos,
             "legacy STYLE tag must remain declared for old automation");
     require(xml.find("<control-tag name=\"Style\" tag=\"126\"") != std::string::npos &&
@@ -81,13 +83,32 @@ int main() {
             "style BPM recommendation label must exist");
     require(xml.find("control-tag=\"PowerChordsEnabled\"") != std::string::npos,
             "POWER CHORDS ON/OFF selector must be bound");
-    require(xml.find("control-tag=\"DrumMap\"") != std::string::npos,
-            "DRUM MAP selector must be bound");
+    require(xml.find("<control-tag name=\"LegacyDrumMap\" tag=\"114\"") != std::string::npos,
+            "legacy three-map parameter tag must remain declared");
+    require(xml.find("<control-tag name=\"DrumMap\" tag=\"135\"") != std::string::npos &&
+            xml.find("control-tag=\"DrumMap\"") != std::string::npos,
+            "visible verified DRUM MAP selector must use the expanded parameter");
     require(xml.find("control-tag=\"SectionLength\"") != std::string::npos,
             "SECTION LENGTH selector must be bound");
     require(xml.find("control-tag=\"SectionType\"") != std::string::npos,
             "SECTION selector must be bound");
-    require(xml.find("LIVE · Changes apply immediately · NEW RIFF not required") != std::string::npos,
+    require(xml.find("SHAPE CONTROLS APPLY TO NEW RIFF / VARIATION") != std::string::npos,
+            "generation-only controls must explain when they take effect");
+    require(xml.find("ROOT SOURCE = PITCH INPUT") != std::string::npos &&
+            xml.find("TRIGGER = START / STOP") != std::string::npos,
+            "Root Source and Trigger meanings must be visually distinguished");
+    require(xml.find("LOCKED PARTS ARE PROTECTED FROM NEW RIFF / VARIATION") != std::string::npos,
+            "role-lock behavior must be explained in the GUI");
+    for (const char* lockTag : {"GuitarLock", "BassLock", "DrumsLock",
+                                "PadLock", "SynthLock"}) {
+        const std::string needle = std::string("control-tag=\"") + lockTag + "\"";
+        require(xml.find(needle) != std::string::npos,
+                "every musical role must expose a LOCK selector");
+    }
+    require(xml.find("control-tag=\"Humanize\"") != std::string::npos,
+            "global Humanize control must be visible");
+    require(xml.find("CHANGES APPLY IMMEDIATELY") != std::string::npos &&
+            xml.find("title=\"LIVE\"") != std::string::npos,
             "ROLE SHAPING must state clearly that its controls apply live");
     for (const char* roleTag : {"BassFollow", "BassMovement", "DrumDensity",
                                 "DrumComplexity", "PadSpread", "PadTension",
@@ -111,7 +132,7 @@ int main() {
                 "every slider must use the visible native slider drawing");
         pos = end + 2;
     }
-    require(sliderCount == 15, "exactly fifteen visible native sliders are required");
+    require(sliderCount == 16, "exactly sixteen visible native sliders are required");
 
     size_t textEditCount = 0;
     pos = 0;
@@ -119,8 +140,8 @@ int main() {
         ++textEditCount;
         pos += 10;
     }
-    require(textEditCount == 16,
-            "fifteen percentage fields plus PM velocity must be editable");
+    require(textEditCount == 17,
+            "sixteen slider value fields plus PM velocity must be editable");
 
     std::cout << "Midiator UI contract test: PASS\n";
     return 0;
