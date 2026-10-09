@@ -163,15 +163,15 @@
       <view class="CTextLabel" origin="118, 235" size="676, 14" title="LOCKED PARTS ARE PROTECTED FROM NEW RIFF / VARIATION" font="Small" font-color="Dim" text-alignment="right" transparent="true"/>
 
       <view class="CTextLabel" origin="126, 249" size="96, 14" title="GUITAR" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
-      <view class="COptionMenu" control-tag="GuitarLock" origin="126, 264" size="96, 20" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CTextButton" control-tag="GuitarLock" origin="126, 264" size="96, 20" title="LOCK" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive"/>
       <view class="CTextLabel" origin="240, 249" size="96, 14" title="BASS" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
-      <view class="COptionMenu" control-tag="BassLock" origin="240, 264" size="96, 20" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CTextButton" control-tag="BassLock" origin="240, 264" size="96, 20" title="LOCK" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive"/>
       <view class="CTextLabel" origin="354, 249" size="96, 14" title="DRUMS" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
-      <view class="COptionMenu" control-tag="DrumsLock" origin="354, 264" size="96, 20" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CTextButton" control-tag="DrumsLock" origin="354, 264" size="96, 20" title="LOCK" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive"/>
       <view class="CTextLabel" origin="468, 249" size="96, 14" title="PADS" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
-      <view class="COptionMenu" control-tag="PadLock" origin="468, 264" size="96, 20" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CTextButton" control-tag="PadLock" origin="468, 264" size="96, 20" title="LOCK" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive"/>
       <view class="CTextLabel" origin="582, 249" size="96, 14" title="SYNTH" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
-      <view class="COptionMenu" control-tag="SynthLock" origin="582, 264" size="96, 20" font-color="Text" back-color="Panel2" frame-color="Line" frame-width="1" menu-popup-style="true"/>
+      <view class="CTextButton" control-tag="SynthLock" origin="582, 264" size="96, 20" title="LOCK" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive"/>
     </view>
 
     <!-- Role shaping / live -->

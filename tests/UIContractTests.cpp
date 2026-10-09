@@ -102,8 +102,14 @@ int main() {
     for (const char* lockTag : {"GuitarLock", "BassLock", "DrumsLock",
                                 "PadLock", "SynthLock"}) {
         const std::string needle = std::string("control-tag=\"") + lockTag + "\"";
-        require(xml.find(needle) != std::string::npos,
-                "every musical role must expose a LOCK selector");
+        const auto p = xml.find(needle);
+        require(p != std::string::npos,
+                "every musical role must expose a LOCK control");
+        const auto start = xml.rfind("<view", p);
+        const auto end = xml.find("/>", p);
+        require(start != std::string::npos && end != std::string::npos &&
+                xml.substr(start, end - start).find("class=\"CTextButton\"") != std::string::npos,
+                "role LOCK controls must be direct toggle buttons, never dropdown menus");
     }
     require(xml.find("control-tag=\"Humanize\"") != std::string::npos,
             "global Humanize control must be visible");
