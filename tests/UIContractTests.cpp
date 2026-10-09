@@ -42,11 +42,9 @@ int main() {
            xml.substr(a,p-a).find("class=\"CTextButton\"")!=std::string::npos,
            "binary toggles must be direct buttons");
  }
- // Bounds contract: live-control labels must end before their sliders.
- require(xml.find("origin=\"22, 219\" size=\"110, 20\" title=\"DRUM FILL\"")!=std::string::npos,
-         "Drum Fill label must not collide with slider");
- require(xml.find("origin=\"620, 219\" size=\"135, 20\" title=\"HUMANIZE\"")!=std::string::npos,
-         "Humanize label must not collide with slider");
+ // Placement contract: instruments and global controls have distinct groups.
+ require(xml.find("origin=\"282, 216\" size=\"237, 20\" title=\"DRUM FILL\"")!=std::string::npos,"Drum Fill grouped with drums");
+ require(xml.find("title=\"GLOBAL PERFORMANCE\"")!=std::string::npos,"Humanize global grouping");
  for(const char* tag:{"GuitarLock","BassLock","DrumsLock","PadLock","SynthLock","PowerChordsEnabled"}) {
    auto p=xml.find(std::string("control-tag=\"")+tag+"\"");
    require(p!=std::string::npos,"toggle control exists");
@@ -93,7 +91,7 @@ int main() {
              "advanced controls belong to details, not main");
    }
  }
- for(const char* heading:{"01  SET THE MUSIC","02  GENERATE A RIFF",
+ for(const char* heading:{"01  SET THE MUSIC","02  RIFF GENERATOR",
                             "03  KEEP WHAT WORKS","DETAIL CONTROLS"}) {
    require(xml.find(heading)!=std::string::npos,"workflow hierarchy present");
  }

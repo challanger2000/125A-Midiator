@@ -106,7 +106,7 @@ struct GeneratorSettings {
     ScaleId scale = ScaleId::Phrygian;
     StyleId style = StyleId::NDHIndustrial;
     SectionType section = SectionType::Free;
-    int bars = 2;
+    int bars = 8;
     float density = 0.56f;
     float complexity = 0.42f;
     float repetition = 0.72f;
@@ -145,7 +145,7 @@ struct Step {
 };
 
 struct Phrase {
-    int bars = 2;
+    int bars = 8;
     std::array<Step, kMaxSteps> steps{};
 
     int usedSteps() const { return bars * kStepsPerBar; }

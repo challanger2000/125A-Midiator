@@ -2421,8 +2421,8 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     sectionLength->appendString(STR16("4"));
     sectionLength->appendString(STR16("8"));
     sectionLength->appendString(STR16("16"));
-    sectionLength->getInfo().defaultNormalizedValue = 0.25;
-    sectionLength->setNormalized(0.25);
+    sectionLength->getInfo().defaultNormalizedValue = 0.75;
+    sectionLength->setNormalized(0.75);
     parameters.addParameter(sectionLength);
 
     auto* sectionType =
