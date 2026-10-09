@@ -50,7 +50,7 @@ int main() {
  require(xml.find("title=\"DETAIL CONTROLS\"")!=std::string::npos,"details header must not promise all parameters are live");
  require(xml.find("title=\"PALM MUTE BELOW VELOCITY\"")!=std::string::npos,"palm mute control uses an understandable full label");
  require(xml.find("title=\"SUGGESTED BPM 100-135\"")!=std::string::npos,"default tempo hint wording");
- require(xml.find("midiator-id=\"theoryNotes\" origin=\"250, 145\"")!=std::string::npos,"mode and associated notes must be adjacent");
+ require(xml.find("midiator-id=\"theoryNotes\" origin=\"505, 145\"")!=std::string::npos,"mode and associated notes must be adjacent");
  for(const char* tag:{"GuitarLock","BassLock","DrumsLock","PadLock","SynthLock","PowerChordsEnabled"}) {
    auto p=xml.find(std::string("control-tag=\"")+tag+"\"");
    require(p!=std::string::npos,"toggle control exists");
@@ -143,11 +143,39 @@ int main() {
  checkPanel("midiator-id=\"mainGenerate\"","midiator-id=\"mainLocks\"",1072,300);
  checkPanel("midiator-id=\"mainLocks\"","midiator-id=\"detailsPanel\"",1072,122);
  checkPanel("midiator-id=\"detailsPanel\"","origin=\"24, 720\"",1072,434);
- require(xml.find("midiator-id=\"theoryKey\" origin=\"22, 145\" size=\"220, 20\"")!=std::string::npos &&
-         xml.find("midiator-id=\"theoryNotes\" origin=\"250, 145\" size=\"790, 20\"")!=std::string::npos,
+ require(xml.find("midiator-id=\"theoryKey\" origin=\"277, 145\" size=\"220, 20\"")!=std::string::npos &&
+         xml.find("midiator-id=\"theoryNotes\" origin=\"505, 145\" size=\"530, 20\"")!=std::string::npos,
          "theory labels must remain adjacent at all displayed key lengths");
  require(xml.find("control-tag=\"PalmMuteVelocity\" origin=\"240, 388\"")!=std::string::npos,
          "palm-mute velocity field must sit next to its label");
+
+ // Whole-panel hierarchy: section titles and accompanying descriptions centered.
+ for(const char* title:{"01  SET THE MUSIC","02  RIFF GENERATOR",
+                         "03  KEEP WHAT WORKS","DETAIL CONTROLS"}) {
+   const auto pos=xml.find(std::string("title=\"")+title+"\"");
+   require(pos!=std::string::npos,"section heading exists");
+   const auto a=xml.rfind("<view",pos),b=xml.find("/>",pos);
+   require(a!=std::string::npos && b!=std::string::npos &&
+           xml.substr(a,b-a).find("size=\"1028, 20\"")!=std::string::npos &&
+           xml.substr(a,b-a).find("text-alignment=\"center\"")!=std::string::npos,
+           "section heading must be centered");
+ }
+ for(const char* caption:{"Choose the key, scale, phrase length and playback behaviour",
+                          "Choose a style and shape the next riff. NEW RIFF creates; VARIATION evolves.",
+                          "OPEN = can change   ·   LOCK = protected during NEW RIFF and VARIATION",
+                          "Fine-tune instruments, guitar articulations, drum maps and timing."}) {
+   const auto pos=xml.find(std::string("title=\"")+caption+"\"");
+   require(pos!=std::string::npos,"section caption exists");
+   const auto a=xml.rfind("<view",pos),b=xml.find("/>",pos);
+   require(a!=std::string::npos && b!=std::string::npos &&
+           xml.substr(a,b-a).find("size=\"1028, 18\"")!=std::string::npos &&
+           xml.substr(a,b-a).find("text-alignment=\"center\"")!=std::string::npos,
+           "section caption must share heading axis");
+ }
+ require(xml.find("control-tag=\"PowerChordsEnabled\" origin=\"438, 349\" size=\"180, 26\"")!=std::string::npos,
+         "Power Chords toggle must be vertically centered with sliders");
+ require(xml.find("origin=\"660, 365\" size=\"374, 18\" title=\"GLOBAL HUMANIZE\"")!=std::string::npos,
+         "Humanize aligned with right column");
  std::cout<<"Midiator UI contract test: PASS\n";
  return 0;
 }
