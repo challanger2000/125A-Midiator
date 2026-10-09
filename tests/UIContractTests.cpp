@@ -52,6 +52,18 @@ int main() {
            xml.substr(a,b-a).find("kick-style=\"false\"")!=std::string::npos,
            "OPEN/LOCK and ON/OFF must be persistent, not kick switches");
  }
+ for(const char* panel:{"PanelTonal","PanelGenerate","PanelLocks","PanelLive"}) {
+   const auto declaration=std::string("<color name=\"")+panel+"\"";
+   const auto usage=std::string("background-color=\"")+panel+"\"";
+   require(xml.find(declaration)!=std::string::npos &&
+           xml.find(usage)!=std::string::npos,
+           "each function group needs a distinct eye-friendly background");
+ }
+ for(const char* label:{"ROOT SOURCE","TRIGGER MODE","METAL STYLE",
+                       "DENSITY","COMPLEXITY","REPETITION","HUMANIZE"}) {
+   require(xml.find(std::string("title=\"")+label+"\"")!=std::string::npos,
+           "key controls must keep legible labels");
+ }
  for(const char* heading:{"01  SET THE MUSIC","02  GENERATE A RIFF",
                             "03  KEEP WHAT WORKS","04  SHAPE THE BAND"}) {
    require(xml.find(heading)!=std::string::npos,"workflow hierarchy present");
