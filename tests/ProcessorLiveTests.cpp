@@ -900,6 +900,19 @@ void testBarsResizePreservesExistingRiff() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk, "processor must start");
 
+    // Explicit two-bar fixture: the production default is now eight bars.
+    ParameterChanges initialTwoBars;
+    int32 initialQueue = 0;
+    auto* initialParam = initialTwoBars.addParameterData(kSectionLengthId, initialQueue);
+    int32 initialPoint = 0;
+    require(initialParam && initialParam->addPoint(0, 0.25, initialPoint) == kResultOk,
+            "two-bar fixture parameter must be accepted");
+    auto initialContext = makeContext(0.0, false);
+    EventList initialOutput;
+    auto initialData = makeProcessData(initialContext, initialOutput, 64, &initialTwoBars);
+    require(processor.process(initialData) == kResultOk,
+            "two-bar fixture setup must succeed");
+
     auto capture = [&](double startQn, int samples, IParameterChanges* changes = nullptr) {
         auto context = makeContext(startQn, true);
         EventList output;
@@ -968,6 +981,19 @@ void testSectionLengthResizePreservesRiffToSixteenBars() {
     MidiatorProcessor processor;
     require(processor.setProcessing(true) == kResultOk,
             "16-bar resize preservation fixture must start");
+
+    // Explicit two-bar fixture: the production default is now eight bars.
+    ParameterChanges initialTwoBars;
+    int32 initialQueue = 0;
+    auto* initialParam = initialTwoBars.addParameterData(kSectionLengthId, initialQueue);
+    int32 initialPoint = 0;
+    require(initialParam && initialParam->addPoint(0, 0.25, initialPoint) == kResultOk,
+            "two-bar fixture parameter must be accepted");
+    auto initialContext = makeContext(0.0, false);
+    EventList initialOutput;
+    auto initialData = makeProcessData(initialContext, initialOutput, 64, &initialTwoBars);
+    require(processor.process(initialData) == kResultOk,
+            "two-bar fixture setup must succeed");
 
     auto captureGuitar = [&](double startQn, int samples) {
         auto context = makeContext(startQn, true);
