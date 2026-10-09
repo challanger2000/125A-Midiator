@@ -6,6 +6,10 @@
   <colors>
     <color name="Bg" rgba="#0D1115FF"/>
     <color name="Panel" rgba="#151C22FF"/>
+    <color name="PanelTonal" rgba="#17232AFF"/>
+    <color name="PanelGenerate" rgba="#20252CFF"/>
+    <color name="PanelLocks" rgba="#202A2AFF"/>
+    <color name="PanelLive" rgba="#18282BFF"/>
     <color name="Panel2" rgba="#1B242BFF"/>
     <color name="Text" rgba="#E7ECEFFF"/>
     <color name="Muted" rgba="#9AA7B0FF"/>
@@ -75,7 +79,7 @@
 <view class="CTextLabel" origin="168, 14" size="300, 30" title="MIDIATOR" font="Title" font-color="Text" text-alignment="left" transparent="true"/>
 <view class="CTextLabel" origin="169, 47" size="360, 20" title="METAL MIDI COMPANION" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
 <view class="CTextLabel" origin="640, 25" size="450, 20" title="CHOOSE  ·  GENERATE  ·  LOCK  ·  SHAPE" font="Normal" font-color="Text" text-alignment="right" transparent="true"/>
-<view class="CViewContainer" origin="24, 82" size="1072, 176" transparent="false" background-color="Panel">
+<view class="CViewContainer" origin="24, 82" size="1072, 176" transparent="false" background-color="PanelTonal">
   <view class="CTextLabel" origin="22, 12" size="540, 20" title="01  SET THE MUSIC" font="Heading" font-color="Accent" text-alignment="left" transparent="true"/>
   <view class="CTextLabel" origin="22, 34" size="900, 20" title="Pick a key, choose the timing, then generate." font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
   <view class="CView" origin="22, 63" size="1032, 1" transparent="false" background-color="PanelEdge"/>
@@ -95,7 +99,7 @@
   <view class="CTextLabel" midiator-id="theoryKey" origin="22, 145" size="340, 20" title="A  Phrygian" font="Heading" font-color="Text" transparent="true"/>
   <view class="CTextLabel" midiator-id="theoryNotes" origin="378, 145" size="660, 20" title="Notes: A A# C D E F G" font="Normal" font-color="Text" text-alignment="right" transparent="true"/>
  </view>
-<view class="CViewContainer" origin="24, 270" size="1072, 300" transparent="false" background-color="Panel">
+<view class="CViewContainer" origin="24, 270" size="1072, 300" transparent="false" background-color="PanelGenerate">
  <view class="CTextLabel" origin="22, 14" size="1028, 20" title="02  GENERATE A RIFF" font="Heading" font-color="Accent" text-alignment="left" transparent="true"/>
  <view class="CTextLabel" origin="22, 36" size="1028, 18" title="Generation settings define the NEXT riff; only marked live controls change the existing one." font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
  <view class="CView" origin="22, 62" size="1028, 1" transparent="false" background-color="PanelEdge"/>
@@ -130,7 +134,7 @@
 <view class="CTextButton" control-tag="NewRiff" origin="756, 230" size="140, 46" title="NEW RIFF" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-color="AccentDark" frame-color-highlighted="Accent" frame-width="1" round-radius="5" gradient="ButtonPrimary" gradient-highlighted="ButtonPrimaryActive" kick-style="true"/>
 <view class="CTextButton" control-tag="Variation" origin="908, 230" size="140, 46" title="VARIATION" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-color="ButtonEdge" frame-color-highlighted="AccentDark" frame-width="1" round-radius="5" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
  </view>
-<view class="CViewContainer" origin="24, 582" size="1072, 122" transparent="false" background-color="Panel">
+<view class="CViewContainer" origin="24, 582" size="1072, 122" transparent="false" background-color="PanelLocks">
  <view class="CTextLabel" origin="22, 14" size="1028, 20" title="03  KEEP WHAT WORKS" font="Heading" font-color="Accent" text-alignment="left" transparent="true"/>
  <view class="CTextLabel" origin="22, 36" size="1028, 18" title="OPEN = can change   ·   LOCK = protected during NEW RIFF and VARIATION" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
  <view class="CView" origin="22, 62" size="1028, 1" transparent="false" background-color="PanelEdge"/>
@@ -145,7 +149,7 @@
 <view class="CTextLabel" origin="852, 60" size="183, 20" title="SYNTH" font="Small" font-color="Text" text-alignment="center" transparent="true"/>
 <view class="CTextButton" control-tag="SynthLock" origin="852, 75" size="183, 32" title="OPEN" text-color="Muted" text-color-highlighted="Text" font="Small" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonPrimaryActive"/>
  </view>
-<view class="CViewContainer" origin="24, 714" size="1072, 260" transparent="false" background-color="Panel">
+<view class="CViewContainer" origin="24, 714" size="1072, 260" transparent="false" background-color="PanelLive">
  <view class="CTextLabel" origin="22, 14" size="1028, 20" title="04  SHAPE THE BAND  ·  LIVE" font="Heading" font-color="Accent" text-alignment="left" transparent="true"/>
  <view class="CTextLabel" origin="22, 36" size="1028, 18" title="Changes apply immediately. Humanize defaults to 0% and preserves note safety." font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
  <view class="CView" origin="22, 62" size="1028, 1" transparent="false" background-color="PanelEdge"/>
@@ -179,10 +183,10 @@
 <view class="CTextEdit" control-tag="SynthMovement" origin="992, 184" size="47, 26" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
 <view class="CTextLabel" origin="22, 219" size="180, 20" title="DRUM FILL" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
 <view class="CSlider" control-tag="FillIntensity" origin="145, 219" size="150, 20" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
-<view class="CTextEdit" control-tag="FillIntensity" origin="304, 238" size="48, 26" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
+<view class="CTextEdit" control-tag="FillIntensity" origin="304, 217" size="48, 26" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
 <view class="CTextLabel" origin="620, 219" size="170, 20" title="HUMANIZE" font="Small" font-color="Muted" text-alignment="left" transparent="true"/>
 <view class="CSlider" control-tag="Humanize" origin="770, 219" size="155, 20" mode="free click" orientation="horizontal" transparent="false" draw-back="true" draw-frame="true" draw-value="true" draw-value-from-center="false" draw-back-color="Panel2" draw-frame-color="Line" draw-value-color="Accent" handle-offset="0, 0" wheel-inc-value="0.02"/>
-<view class="CTextEdit" control-tag="Humanize" origin="932, 238" size="48, 26" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
+<view class="CTextEdit" control-tag="Humanize" origin="932, 217" size="48, 26" back-color="Panel2" frame-color="Line" frame-width="1" font-color="Text" font="Small" text-alignment="center" value-precision="0" immediate-text-change="false" transparent="false"/>
  </view>
 <view class="CTextLabel" origin="24, 980" size="1072, 20" title="125A SYSTEMS   ·   5 MIDI OUTPUTS   ·   1 CHANNEL EACH" font="Small" font-color="Dim" text-alignment="center" transparent="true"/>
 </template>
