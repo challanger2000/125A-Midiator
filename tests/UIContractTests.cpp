@@ -76,6 +76,23 @@ int main() {
    require(xml.find(std::string("title=\"")+label+"\"")!=std::string::npos,
            "key controls must keep legible labels");
  }
+ // Keep advanced guitar controls and mapping out of the main workflow.
+ {
+   const auto main=xml.find("midiator-id=\"mainGenerate\"");
+   const auto locks=xml.find("midiator-id=\"mainLocks\"");
+   const auto detail=xml.find("midiator-id=\"detailsPanel\"");
+   require(main!=std::string::npos && locks>main && detail>locks,
+           "main and details panel hierarchy");
+   const auto mainBlock=xml.substr(main,locks-main);
+   const auto detailBlock=xml.substr(detail);
+   for(const char* tag:{"PowerChords","PalmMute","PowerChordsEnabled",
+                        "PalmMuteVelocity","DrumMap"}) {
+     const auto needle=std::string("control-tag=\"")+tag+"\"";
+     require(mainBlock.find(needle)==std::string::npos &&
+             detailBlock.find(needle)!=std::string::npos,
+             "advanced controls belong to details, not main");
+   }
+ }
  for(const char* heading:{"01  SET THE MUSIC","02  GENERATE A RIFF",
                             "03  KEEP WHAT WORKS","DETAIL CONTROLS"}) {
    require(xml.find(heading)!=std::string::npos,"workflow hierarchy present");
