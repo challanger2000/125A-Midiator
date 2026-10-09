@@ -46,6 +46,7 @@ int main() {
  require(xml.find("origin=\"282, 216\" size=\"237, 20\" title=\"DRUM FILL\"")!=std::string::npos,"Drum Fill grouped with drums");
  require(xml.find("title=\"GLOBAL HUMANIZE\"")!=std::string::npos,"Humanize global grouping");
  require(xml.find("title=\"SUGGESTED BPM 100-135\"")!=std::string::npos,"default tempo hint wording");
+ require(xml.find("midiator-id=\"theoryNotes\" origin=\"250, 145\"")!=std::string::npos,"mode and associated notes must be adjacent");
  for(const char* tag:{"GuitarLock","BassLock","DrumsLock","PadLock","SynthLock","PowerChordsEnabled"}) {
    auto p=xml.find(std::string("control-tag=\"")+tag+"\"");
    require(p!=std::string::npos,"toggle control exists");
@@ -71,7 +72,7 @@ int main() {
            "each function group needs a distinct eye-friendly background");
  }
  for(const char* label:{"ROOT SOURCE","TRIGGER MODE","METAL STYLE",
-                       "DENSITY","COMPLEXITY","REPETITION","HUMANIZE"}) {
+                       "DENSITY","COMPLEXITY","REPETITION","GLOBAL HUMANIZE","AMOUNT"}) {
    require(xml.find(std::string("title=\"")+label+"\"")!=std::string::npos,
            "key controls must keep legible labels");
  }
