@@ -850,6 +850,7 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     lastPublishedRootPitchClass_ = -1;
     smoothRootShiftPending_ = false;
     phrase_ = restoredPhrase;
+    snapshotGuitarRootReference();
 
     if (restoredStateVersion >= 5u) {
         bassPhrase_ = restoredBassPhrase;
@@ -993,6 +994,7 @@ void MidiatorProcessor::generateNew() {
                                         settings_.lowRootMidi);
     }
 
+    snapshotGuitarRootReference();
     regenerateUnlockedCompanions();
     phraseChangedNeedsFlush_ = true;
 
@@ -1014,6 +1016,7 @@ void MidiatorProcessor::generateVariation() {
             phrase_, effectiveSettings, variationAmount_, seed_);
         midiator::applySectionPhraseShape(phrase_, settings_.section, seed_);
     }
+    snapshotGuitarRootReference();
     regenerateUnlockedCompanions();
     phraseChangedNeedsFlush_ = true;
 }
@@ -1101,6 +1104,7 @@ void MidiatorProcessor::regenerateSectionFromCurrentSeed() {
     midiator::applySectionPhraseShape(phrase_, settings_.section, seed_);
     guitarRootMidi_ = generatorRootMidi(settings_.rootPitchClass,
                                         settings_.lowRootMidi);
+    snapshotGuitarRootReference();
     regenerateBass();
     phraseChangedNeedsFlush_ = true;
 }
@@ -1130,6 +1134,7 @@ void MidiatorProcessor::resizePhraseBars(int newBars, bool regenerateCompanions)
 
     phrase_ = resized;
     settings_.bars = newBars;
+    snapshotGuitarRootReference();
     if (regenerateCompanions)
         regenerateBass();
     phraseChangedNeedsFlush_ = true;
@@ -1142,6 +1147,7 @@ void MidiatorProcessor::applyPowerChordMode(bool enabled, bool regenerateCompani
         for (int i = 0; i < phrase_.usedSteps(); ++i)
             if (phrase_.steps[i].noteCount > 1)
                 phrase_.steps[i].noteCount = 1;
+        snapshotGuitarRootReference();
         if (regenerateCompanions)
             regenerateBass();
         phraseChangedNeedsFlush_ = true;
@@ -1207,6 +1213,7 @@ void MidiatorProcessor::applyPowerChordMode(bool enabled, bool regenerateCompani
         }
     }
 
+    snapshotGuitarRootReference();
     if (regenerateCompanions)
         regenerateBass();
     phraseChangedNeedsFlush_ = true;
@@ -1233,7 +1240,13 @@ void MidiatorProcessor::applyPalmMuteVelocityThreshold(int threshold) {
         }
     }
     settings_.palmMuteVelocityThreshold = newThreshold;
+    snapshotGuitarRootReference();
     phraseChangedNeedsFlush_ = true;
+}
+
+void MidiatorProcessor::snapshotGuitarRootReference() noexcept {
+    guitarRootReference_ = phrase_;
+    guitarReferenceRootMidi_ = guitarRootMidi_;
 }
 
 void MidiatorProcessor::transposePhraseToRoot(int newRootPitchClass,
@@ -1246,11 +1259,17 @@ void MidiatorProcessor::transposePhraseToRoot(int newRootPitchClass,
     const int delta = newRootMidi - guitarRootMidi_;
     if (delta == 0 && newRootPitchClass == settings_.rootPitchClass)
         return;
-    // Exact MIDI octave transposition preserves rhythm and articulation.
+    // Derive from the frozen musical reference, not the previously clipped
+    // MIDI output. Even an extreme A1 -> C8 -> A1 round-trip must reproduce
+    // every Guitar pitch and power chord, without touching rhythm/velocity.
+    const int referenceDelta = newRootMidi - guitarReferenceRootMidi_;
+    phrase_ = guitarRootReference_;
     for (int stepIndex = 0; stepIndex < phrase_.usedSteps(); ++stepIndex) {
         auto& step = phrase_.steps[stepIndex];
         for (int n = 0; n < step.noteCount; ++n)
-            step.notes[n].pitch = std::clamp(step.notes[n].pitch + delta, 0, 127);
+            step.notes[n].pitch = std::clamp(
+                guitarRootReference_.steps[stepIndex].notes[n].pitch +
+                    referenceDelta, 0, 127);
     }
     settings_.rootPitchClass = newRootPitchClass;
     guitarRootMidi_ = newRootMidi;

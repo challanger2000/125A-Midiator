@@ -3354,6 +3354,40 @@ void testRapidPianoRollInputsAboveOld64RootLimit() {
             "last accurately timed Piano Roll root must persist");
 }
 
+// Regression: last-version Guitar transposition clipped its previous output.
+// A deep/high octave excursion must never permanently alter the saved riff.
+void testExtremeGuitarRootRoundTripsAreReversible() {
+    MidiatorProcessor p;
+    require(p.setProcessing(true) == kResultOk,
+            "extreme MIDI octave fixture must start");
+
+    auto capture = [&](double startQn, int root) {
+        auto c = makeContext(startQn, true);
+        EventList in, out;
+        if (root >= 0) in.events.push_back(makeNoteOn(0, root));
+        auto d = makeProcessData(c, out, 768000, nullptr,
+                                 root >= 0 ? &in : nullptr);
+        require(p.process(d) == kResultOk,
+                "extreme MIDI octave root input must process");
+        std::vector<std::tuple<int32,int32,int16>> guitar;
+        for (const auto& e : out.events)
+            if (e.busIndex == kGuitarOutBus &&
+                e.type == Event::kNoteOnEvent && e.sampleOffset > 0)
+                guitar.emplace_back(e.busIndex, e.sampleOffset, e.noteOn.pitch);
+        return guitar;
+    };
+    const auto before = capture(0.0, -1);
+    require(!before.empty(), "extreme octave fixture needs a guitar riff");
+    capture(32.0, 120); // C8: must clamp physical MIDI pitch limits
+    const auto afterHigh = capture(64.0, 33); // Return to A1
+    require(before == afterHigh,
+            "A1 -> C8 -> A1 must exactly recover ALL original Guitar notes");
+    capture(96.0, 0);   // C-1: must clamp low MIDI pitch limits
+    const auto afterLow = capture(128.0, 33);
+    require(before == afterLow,
+            "A1 -> C-1 -> A1 must exactly recover ALL original Guitar notes");
+}
+
 void testRootReturnKeepsFiveRoleArrangementUnchanged() {
     MidiatorProcessor p;
     require(p.setProcessing(true) == kResultOk,
@@ -3435,6 +3469,7 @@ void testManualRootIgnoresLargeInputWithoutExpensiveRootSlicing() {
 } // namespace
 
 int main() {
+    testExtremeGuitarRootRoundTripsAreReversible();
     testManualRootIgnoresLargeInputWithoutExpensiveRootSlicing();
     testOctaveOnlyRootChangeDoesNotRetriggerUnchangedCompanions();
     testRapidPianoRollInputsAboveOld64RootLimit();

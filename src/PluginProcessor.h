@@ -123,6 +123,10 @@ private:
     std::unique_ptr<std::array<ScheduledEvent, kMaxScheduledEvents>> scheduledBuffer_;
     midiator::GeneratorSettings settings_{};
     midiator::Phrase phrase_{};
+    // Musical reference before root-only keyboard transposition. MIDI
+    // boundary clipping must not accumulate across repeated octave changes.
+    midiator::Phrase guitarRootReference_{};
+    int guitarReferenceRootMidi_ = 33;
     midiator::BassSettings bassSettings_{};
     midiator::Phrase bassPhrase_{};
     midiator::DrumSettings drumSettings_{};
@@ -192,6 +196,7 @@ private:
     void resizePhraseBars(int newBars, bool regenerateCompanions = true);
     void applyPowerChordMode(bool enabled, bool regenerateCompanions = true);
     void applyPalmMuteVelocityThreshold(int threshold);
+    void snapshotGuitarRootReference() noexcept;
     void transposePhraseToRoot(int newRootPitchClass, int newRootMidi,
                                bool regenerateCompanions = true);
     tresult processBlock(ProcessData& data);
