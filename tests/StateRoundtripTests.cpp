@@ -1008,7 +1008,7 @@ int main() {
         std::memcpy(&storedSection,
                     migratedV12.bytes().data() + 104,
                     sizeof(storedSection));
-        require(storedVersion == 15u,
+        require(storedVersion == 16u,
                 "retired V11 state must upgrade to V15");
         require(storedSection ==
                     static_cast<int32>(midiator::SectionType::Chorus),
@@ -1030,9 +1030,9 @@ int main() {
 
 
     {
-        MidiatorProcessor currentV15;
+        MidiatorProcessor currentV16;
         MemoryStream state;
-        require(currentV15.getState(&state) == kResultOk,
+        require(currentV16.getState(&state) == kResultOk,
                 "V15 extended state must serialize");
         uint32_t version = 0;
         int32 pmVelocity = -1;
@@ -1043,7 +1043,7 @@ int main() {
                     state.bytes().data() + sizeof(uint32_t),
                     sizeof(version));
         const size_t tail = state.bytes().size() -
-                            (3 * sizeof(int32_t) + sizeof(float));
+                            (4 * sizeof(int32_t) + sizeof(float));
         std::memcpy(&pmVelocity, state.bytes().data() + tail,
                     sizeof(pmVelocity));
         std::memcpy(&triggerMode,
@@ -1055,7 +1055,7 @@ int main() {
         std::memcpy(&humanize,
                     state.bytes().data() + tail + 3 * sizeof(int32_t),
                     sizeof(humanize));
-        require(version == 15u,
+        require(version == 16u,
                 "current state must be V15");
         require(pmVelocity == 30,
                 "new projects must persist PM < VEL default 30");
@@ -1065,6 +1065,19 @@ int main() {
                 "new projects must default every role to OPEN");
         require(std::abs(humanize) < 1e-9f,
                 "new projects must default Humanize to 0%");
+        int32 midiRoot = -1;
+        std::memcpy(&midiRoot,
+                    state.bytes().data() + state.bytes().size() - sizeof(midiRoot),
+                    sizeof(midiRoot));
+        require(midiRoot == 33, "V16 default guitar root is MIDI 33 (A1)");
+        MemoryStream frozenV15;
+        frozenV15.bytes() = state.bytes();
+        frozenV15.bytes().resize(frozenV15.bytes().size() - sizeof(int32_t));
+        patchFixtureValue(frozenV15, sizeof(uint32_t), uint32_t{15});
+        frozenV15.rewind();
+        MidiatorProcessor oldProject;
+        require(oldProject.setState(&frozenV15) == kResultOk,
+                "old V15 project must remain compatible with V16 root metadata");
 
         state.rewind();
         MidiatorController controller;
@@ -1090,7 +1103,7 @@ int main() {
         MemoryStream frozenV14;
         frozenV14.bytes() = state.bytes();
         frozenV14.bytes().resize(
-            frozenV14.bytes().size() - sizeof(int32_t) - sizeof(float));
+            frozenV14.bytes().size() - 2 * sizeof(int32_t) - sizeof(float));
         const uint32_t v14 = 14u;
         patchFixtureValue(frozenV14, sizeof(uint32_t), v14);
         frozenV14.rewind();
@@ -1106,11 +1119,11 @@ int main() {
         std::memcpy(&migratedLockMask,
                     upgradedV15.bytes().data() +
                         upgradedV15.bytes().size() -
-                        sizeof(float) - sizeof(int32_t),
+                        sizeof(float) - 2 * sizeof(int32_t),
                     sizeof(migratedLockMask));
         std::memcpy(&migratedHumanize,
                     upgradedV15.bytes().data() +
-                        upgradedV15.bytes().size() - sizeof(float),
+                        upgradedV15.bytes().size() - sizeof(float) - sizeof(int32_t),
                     sizeof(migratedHumanize));
         require(migratedLockMask == 0 && std::abs(migratedHumanize) < 1e-9f,
                 "V14 migration must default locks OPEN and Humanize to 0%");
@@ -1121,7 +1134,7 @@ int main() {
         frozenV13.bytes() = state.bytes();
         frozenV13.bytes().resize(
             frozenV13.bytes().size() -
-            2 * sizeof(int32_t) - sizeof(float));
+            3 * sizeof(int32_t) - sizeof(float));
         const uint32_t v13 = 13u;
         patchFixtureValue(frozenV13, sizeof(uint32_t), v13);
         frozenV13.rewind();
@@ -1134,7 +1147,7 @@ int main() {
                 "migrated V13 state must serialize as V15");
         const size_t migratedTail =
             upgradedFromV13.bytes().size() -
-            (3 * sizeof(int32_t) + sizeof(float));
+            (4 * sizeof(int32_t) + sizeof(float));
         int32 migratedTrigger = -1;
         std::memcpy(&migratedTrigger,
                     upgradedFromV13.bytes().data() +

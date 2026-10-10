@@ -44,7 +44,7 @@ The interface is split by behavior instead of presenting every parameter as if i
 **Tonal / Playback**
 - Root and Scale / Mode
 - Section Length: 1 / 2 / 4 / 8 / 16 bars
-- Root Source: Manual or MIDI. This chooses the pitch source only. The live theory header displays the effective root reported via VST3 host output-parameter feedback (subject to host support).
+- Root Source: Manual keeps the established guitar register. MIDI follows the absolute input note and octave for Guitar (D1 = MIDI 26, D2 = MIDI 38), while Bass/Pads/Synth retain their own appropriate registers. MIDI root notes 0..120 are supported. The live theory header follows the effective pitch class through host feedback.
 - Trigger: TRANSPORT or MIDI NOTE. TRANSPORT follows DAW Play; MIDI NOTE stays silent until at least one trigger note is held and stops when the last trigger note is released.
 
 **Riff Generation**
@@ -91,7 +91,7 @@ The processor requests VST3 musical timeline, tempo, time signature and transpor
 
 ## State
 
-State V15 stores the complete five-role arrangement plus all current musical settings, including the 12-style selector, verified Drum Map, Section, role-shaping controls, PM velocity threshold, Trigger mode, all five role locks and Humanize amount.
+State V16 stores the complete five-role arrangement plus all current musical settings, including the 12-style selector, verified Drum Map, Section, role-shaping controls, PM velocity threshold, Trigger mode, all five role locks and Humanize amount.
 
 Compatibility is explicit:
 - V1-V10 historical project states remain readable.
@@ -100,6 +100,7 @@ Compatibility is explicit:
 - V13 introduced PM < VEL.
 - V14 introduced TRANSPORT / MIDI NOTE trigger state.
 - V15 adds role locks and Humanize and permits the newly appended verified Addictive Drums 2 map ID.
+- V16 appends the absolute MIDI guitar-root note, preserving the selected octave after project reload while remaining backward compatible.
 - Older states default all role locks to OPEN and Humanize to 0%.
 
 The exact generated Guitar, Bass, Drum, Pad and Synth phrase payloads are recalled instead of being regenerated on project load.

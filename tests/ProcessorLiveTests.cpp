@@ -3053,9 +3053,68 @@ void testTriggerInputOverflowReleasesActiveNotes() {
             !containsType(following, Event::kNoteOnEvent),
             "trigger must remain closed after input overflow");
 }
+void testMidiRootOctaveIsAbsoluteAndPersists() {
+    auto downbeat = [](const EventList& l) {
+        for (const auto& e : l.events)
+            if (e.type == Event::kNoteOnEvent && e.busIndex == kGuitarOutBus &&
+                e.sampleOffset == 0)
+                return static_cast<int>(e.noteOn.pitch);
+        return -1;
+    };
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "octave test processor starts");
+    EventList d1;
+    d1.events.push_back(makeNoteOn(0, 26)); // MIDI D1
+    auto firstContext = makeContext(0.0, true);
+    EventList out1;
+    auto p1 = makeProcessData(firstContext, out1, 192000, nullptr, &d1);
+    require(processor.process(p1) == kResultOk &&
+            downbeat(out1) == 26, "MIDI D1 must produce guitar root 26");
+    EventList d2;
+    d2.events.push_back(makeNoteOn(0, 38)); // MIDI D2: same pitch class
+    auto secondContext = makeContext(32.0, true);
+    EventList out2;
+    auto p2 = makeProcessData(secondContext, out2, 192000, nullptr, &d2);
+    require(processor.process(p2) == kResultOk &&
+            downbeat(out2) == 38, "MIDI D2 must produce guitar root 38");
+    std::vector<std::pair<int32, int>> before, after;
+    for (const auto& e : out1.events)
+        if (e.type == Event::kNoteOnEvent && e.busIndex == kGuitarOutBus)
+            before.emplace_back(e.sampleOffset, e.noteOn.pitch);
+    for (const auto& e : out2.events)
+        if (e.type == Event::kNoteOnEvent && e.busIndex == kGuitarOutBus)
+            after.emplace_back(e.sampleOffset, e.noteOn.pitch);
+    require(before.size() == after.size(),
+            "octave-only MIDI edit must keep note-on count unchanged");
+    for (size_t i = 0; i < before.size(); ++i)
+        require(before[i].first == after[i].first &&
+                after[i].second == before[i].second + 12,
+                "D1 -> D2 must preserve guitar rhythm and transpose +12");
+    MemoryStream saved;
+    require(processor.getState(&saved) == kResultOk,
+            "MIDI octave metadata must serialize");
+    saved.rewind();
+    MidiatorProcessor reloaded;
+    require(reloaded.setState(&saved) == kResultOk,
+            "MIDI octave metadata must restore");
+    MemoryStream roundtripped;
+    require(reloaded.getState(&roundtripped) == kResultOk &&
+            roundtripped.bytes() == saved.bytes(),
+            "project reload must preserve octave and five-role arrangement");
+    EventList returnD1;
+    returnD1.events.push_back(makeNoteOn(0, 26));
+    auto reloadContext = makeContext(0.0, true);
+    EventList reloadOut;
+    auto reload = makeProcessData(reloadContext, reloadOut, 192000, nullptr, &returnD1);
+    require(reloaded.process(reload) == kResultOk &&
+            downbeat(reloadOut) == 26,
+            "reloaded D2 guitar root must return to absolute D1");
+}
+
 } // namespace
 
 int main() {
+    testMidiRootOctaveIsAbsoluteAndPersists();
     testReportedMidiRootAndRecovery();
     testPanicRetriesBoundedHostCapacity();
     testTriggerInputOverflowReleasesActiveNotes();

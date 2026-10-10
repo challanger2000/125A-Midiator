@@ -23,7 +23,7 @@ constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxScheduledEvents = 8192;
 constexpr int kMaxTriggerInputEvents = 2048;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 15u;
+constexpr uint32_t kStateVersion = 16u;
 constexpr int kLegacyStateSteps = 128; // V1-V7 fixed phrase payload width
 constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
 constexpr const char* kMsgVariation = "125A.Midiator.Variation";
@@ -516,6 +516,12 @@ uint32_t nextSeed(uint32_t x) {
     return x ? x : 0x125A2026u;
 }
 
+int generatorRootMidi(int pitchClass, int lowRootMidi) noexcept {
+    int note = std::clamp(lowRootMidi, 0, 120);
+    while (note < 120 && note % 12 != pitchClass) ++note;
+    return note;
+}
+
 int normalizedIndex(ParamValue v, int count) {
     if (count <= 1)
         return 0;
@@ -668,7 +674,8 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
         if (roleLocks_[static_cast<size_t>(bus)])
             lockMask |= (1 << bus);
     const float humanize = std::clamp(humanizeAmount_, 0.0f, 1.0f);
-    if (!writeValue(state, lockMask) || !writeValue(state, humanize))
+    if (!writeValue(state, lockMask) || !writeValue(state, humanize) ||
+        !writeValue(state, static_cast<int32>(guitarRootMidi_)))
         return kResultFalse;
 
     return kResultOk;
@@ -733,11 +740,34 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
             restoredMidiNoteTrigger, restoredRoleLocks, restoredHumanize))
         return kResultFalse;
 
+    // V16 appends the absolute Guitar root note after the unchanged V15 tail.
+    // Older project files keep their exact saved phrases and acquire an
+    // inferred root anchor without rewriting those notes.
+    int restoredRootMidi = generatorRootMidi(restored.rootPitchClass, 33);
+    if (restoredStateVersion >= 16u) {
+        int32 savedRoot = -1;
+        if (!readValue(state, savedRoot) || savedRoot < 0 ||
+            savedRoot > 120 || savedRoot % 12 != restored.rootPitchClass)
+            return kResultFalse;
+        restoredRootMidi = savedRoot;
+    } else if (restoredPhrase.steps[0].noteCount > 0) {
+        const int first = restoredPhrase.steps[0].notes[0].pitch;
+        int shortest = 128;
+        for (int pitch = 0; pitch <= 120; ++pitch)
+            if (pitch % 12 == restored.rootPitchClass &&
+                std::abs(pitch - first) < shortest) {
+                restoredRootMidi = pitch;
+                shortest = std::abs(pitch - first);
+            }
+    }
+
     settings_ = restored;
     variationAmount_ = restoredVariation;
     seed_ = restoredSeed ? restoredSeed : 0x125A2026u;
     manualRootPitchClass_ = restoredManualRoot;
     midiRootSource_ = restoredMidiRootSource;
+    guitarRootMidi_ = restoredRootMidi;
+    settings_.lowRootMidi = midiRootSource_ ? guitarRootMidi_ : 33;
     settings_.powerChordsEnabled = restoredPowerChordsEnabled;
     drumMapId_ = restoredDrumMapId;
     drumMap_ = midiator::DrumMidiMap::preset(drumMapId_);
@@ -882,6 +912,8 @@ void MidiatorProcessor::generateNew() {
 
     seed_ = bestSeed;
     phrase_ = bestCandidate;
+    guitarRootMidi_ = generatorRootMidi(settings_.rootPitchClass,
+                                        settings_.lowRootMidi);
     }
 
     regenerateUnlockedCompanions();
@@ -984,6 +1016,8 @@ void MidiatorProcessor::regenerateSectionFromCurrentSeed() {
     const auto effectiveSettings = sectionGeneratorSettings(settings_);
     phrase_ = midiator::RiffEngine::generate(effectiveSettings, seed_);
     midiator::applySectionPhraseShape(phrase_, settings_.section, seed_);
+    guitarRootMidi_ = generatorRootMidi(settings_.rootPitchClass,
+                                        settings_.lowRootMidi);
     regenerateBass();
     phraseChangedNeedsFlush_ = true;
 }
@@ -1119,25 +1153,24 @@ void MidiatorProcessor::applyPalmMuteVelocityThreshold(int threshold) {
     phraseChangedNeedsFlush_ = true;
 }
 
-void MidiatorProcessor::transposePhraseToRoot(int newRootPitchClass, bool regenerateCompanions) {
+void MidiatorProcessor::transposePhraseToRoot(int newRootPitchClass,
+                                             int newRootMidi,
+                                             bool regenerateCompanions) {
     newRootPitchClass = std::clamp(newRootPitchClass, 0, 11);
-    const int oldRoot = settings_.rootPitchClass;
-    if (newRootPitchClass == oldRoot)
+    if (newRootMidi < 0 || newRootMidi > 120 ||
+        newRootMidi % 12 != newRootPitchClass)
         return;
-
-    int delta = newRootPitchClass - oldRoot;
-    if (delta > 6)
-        delta -= 12;
-    else if (delta < -6)
-        delta += 12;
-
+    const int delta = newRootMidi - guitarRootMidi_;
+    if (delta == 0 && newRootPitchClass == settings_.rootPitchClass)
+        return;
+    // Exact MIDI octave transposition preserves rhythm and articulation.
     for (int stepIndex = 0; stepIndex < phrase_.usedSteps(); ++stepIndex) {
         auto& step = phrase_.steps[stepIndex];
-        for (int noteIndex = 0; noteIndex < step.noteCount; ++noteIndex)
-            step.notes[noteIndex].pitch = std::clamp(step.notes[noteIndex].pitch + delta, 0, 127);
+        for (int n = 0; n < step.noteCount; ++n)
+            step.notes[n].pitch = std::clamp(step.notes[n].pitch + delta, 0, 127);
     }
-
     settings_.rootPitchClass = newRootPitchClass;
+    guitarRootMidi_ = newRootMidi;
     if (regenerateCompanions)
         regenerateBass();
     phraseChangedNeedsFlush_ = true;
@@ -1519,22 +1552,22 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     // MIDI root is also a block-level command. Only the final NoteOn matters,
     // and whether it matters at all is decided from the final Root Source
     // parameter for this same block.
-    int finalMidiPitchClass = -1;
+    int finalMidiRootNote = -1;
     int32 finalMidiSampleOffset = -1;
     if (finalMidiRootSource && data.inputEvents) {
         for (int32 i = 0; i < data.inputEvents->getEventCount(); ++i) {
             Event event{};
-            if (data.inputEvents->getEvent(i, event) != kResultOk)
+            if (data.inputEvents->getEvent(i, event) != kResultOk ||
+                event.type != Event::kNoteOnEvent ||
+                event.noteOn.velocity <= 0.0f)
                 continue;
-            if (event.type != Event::kNoteOnEvent || event.noteOn.velocity <= 0.0f)
+            // Keep the *absolute MIDI pitch*, including its octave.
+            const int pitch = static_cast<int>(event.noteOn.pitch);
+            if (pitch < 0 || pitch > 120)
                 continue;
-
-            int pitchClass = static_cast<int>(event.noteOn.pitch) % 12;
-            if (pitchClass < 0)
-                pitchClass += 12;
             if (event.sampleOffset >= finalMidiSampleOffset) {
                 finalMidiSampleOffset = event.sampleOffset;
-                finalMidiPitchClass = pitchClass;
+                finalMidiRootNote = pitch;
             }
         }
     }
@@ -1546,18 +1579,40 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
 
     bool guitarEdited = false;
 
+    const bool wasMidiRootSource = midiRootSource_;
     midiRootSource_ = finalMidiRootSource;
-    int finalRootPitchClass = settings_.rootPitchClass;
-    if (!midiRootSource_)
-        finalRootPitchClass = manualRootPitchClass_;
-    else if (finalMidiPitchClass >= 0)
-        finalRootPitchClass = finalMidiPitchClass;
-
-    if (finalRootPitchClass != settings_.rootPitchClass) {
-        if (freshGeneration || sectionChanged) {
-            settings_.rootPitchClass = finalRootPitchClass;
+    int desiredRootClass = settings_.rootPitchClass;
+    int desiredGuitarRoot = guitarRootMidi_;
+    if (midiRootSource_) {
+        if (finalMidiRootNote >= 0) {
+            desiredRootClass = finalMidiRootNote % 12;
+            desiredGuitarRoot = finalMidiRootNote;
+        }
+        // Until a MIDI NoteOn arrives, retain the previously selected register.
+        settings_.lowRootMidi = desiredGuitarRoot;
+    } else {
+        desiredRootClass = manualRootPitchClass_;
+        if (wasMidiRootSource && pending.hasRootSource) {
+            // Returning to MANUAL restores the normal guitar register.
+            desiredGuitarRoot = generatorRootMidi(desiredRootClass, 33);
         } else {
-            transposePhraseToRoot(finalRootPitchClass, false);
+            // Preserve legacy manual shortest-path pitch-class edits.
+            int delta = desiredRootClass - settings_.rootPitchClass;
+            if (delta > 6) delta -= 12;
+            else if (delta < -6) delta += 12;
+            desiredGuitarRoot += delta;
+            if (desiredGuitarRoot < 0 || desiredGuitarRoot > 120)
+                desiredGuitarRoot = generatorRootMidi(desiredRootClass, 33);
+        }
+        settings_.lowRootMidi = 33;
+    }
+    if (desiredRootClass != settings_.rootPitchClass ||
+        desiredGuitarRoot != guitarRootMidi_) {
+        if (freshGeneration || sectionChanged) {
+            settings_.rootPitchClass = desiredRootClass;
+            guitarRootMidi_ = desiredGuitarRoot;
+        } else {
+            transposePhraseToRoot(desiredRootClass, desiredGuitarRoot, false);
             guitarEdited = true;
         }
     }

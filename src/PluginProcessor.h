@@ -148,6 +148,7 @@ private:
     bool lifecyclePanicPending_ = false;
     bool midiRootSource_ = true;
     int manualRootPitchClass_ = 9;
+    int guitarRootMidi_ = 33; // actual guitar root for transposition and V16 state
     std::atomic<uint32_t> pendingNewRiffCommands_{0};
     std::atomic<uint32_t> pendingVariationCommands_{0};
 
@@ -166,7 +167,8 @@ private:
     void resizePhraseBars(int newBars, bool regenerateCompanions = true);
     void applyPowerChordMode(bool enabled, bool regenerateCompanions = true);
     void applyPalmMuteVelocityThreshold(int threshold);
-    void transposePhraseToRoot(int newRootPitchClass, bool regenerateCompanions = true);
+    void transposePhraseToRoot(int newRootPitchClass, int newRootMidi,
+                               bool regenerateCompanions = true);
     void applyParameterChanges(ProcessData& data,
                                bool guiNewRiff = false,
                                bool guiVariation = false);
