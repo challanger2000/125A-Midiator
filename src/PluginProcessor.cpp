@@ -27,6 +27,9 @@ constexpr uint32_t kStateVersion = 15u;
 constexpr int kLegacyStateSteps = 128; // V1-V7 fixed phrase payload width
 constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
 constexpr const char* kMsgVariation = "125A.Midiator.Variation";
+constexpr uint32_t kControllerStateMagic = 0x4D445549u; // MDUI, separate from processor MDR1
+constexpr uint32_t kControllerStateVersion = 1u;
+constexpr std::array<double, 4> kGuiZoomLevels = {0.8, 1.0, 1.2, 1.5};
 
 template <typename T>
 bool writeValue(IBStream* stream, const T& value) {
@@ -2535,15 +2538,11 @@ void MidiatorController::valueChanged(VSTGUI::CControl* control) {
         return;
     }
     if (control->getTag() == 900) {
-        static constexpr double zooms[] = {0.8, 1.0, 1.2, 1.5};
-        static constexpr const char* labels[] = {"80 %", "100 %", "120 %", "150 %"};
-        zoomIndex_ = (zoomIndex_ + 1) % 4;
-        if (zoomButton_) {
-            zoomButton_->setTitle(labels[zoomIndex_]);
-            zoomButton_->invalid();
-        }
+        zoomIndex_ = (zoomIndex_ + 1) % static_cast<int>(kGuiZoomLevels.size());
+        zoomFactor_ = kGuiZoomLevels[static_cast<size_t>(zoomIndex_)];
+        refreshZoomButton();
         if (activeEditor_)
-            activeEditor_->setZoomFactor(zooms[zoomIndex_]);
+            activeEditor_->setZoomFactor(zoomFactor_);
         return;
     }
 
@@ -2572,6 +2571,37 @@ void MidiatorController::valueChanged(VSTGUI::CControl* control) {
     beginEdit(tag);
     performEdit(tag, *fallbackState);
     endEdit(tag);
+}
+
+// VST3 controller state belongs to the host project, independent of the
+// processor's MIDI arrangement/state payload. No processor state version bump.
+tresult PLUGIN_API MidiatorController::getState(IBStream* state) {
+    if (!state)
+        return kInvalidArgument;
+    return writeValue(state, kControllerStateMagic) &&
+                   writeValue(state, kControllerStateVersion) &&
+                   writeValue(state, zoomFactor_)
+        ? kResultOk : kResultFalse;
+}
+
+tresult PLUGIN_API MidiatorController::setState(IBStream* state) {
+    if (!state)
+        return kInvalidArgument;
+    uint32_t magic = 0;
+    uint32_t version = 0;
+    double restoredZoom = 0.8;
+    if (!readValue(state, magic) || !readValue(state, version) ||
+        !readValue(state, restoredZoom) ||
+        magic != kControllerStateMagic || version != kControllerStateVersion ||
+        !std::isfinite(restoredZoom) || restoredZoom < 0.8 ||
+        restoredZoom > 1.5)
+        return kResultFalse;
+
+    // Calling onZoomChanged also synchronizes the next Zoom-button action.
+    onZoomChanged(activeEditor_, restoredZoom);
+    if (activeEditor_)
+        activeEditor_->setZoomFactor(restoredZoom);
+    return kResultOk;
 }
 
 tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
@@ -2726,7 +2756,7 @@ IPlugView* PLUGIN_API MidiatorController::createView(FIDString name) {
         editor->setDelegate(this);
         editor->setMinZoomFactor(0.8);
         editor->setAllowedZoomFactors({0.8, 1.0, 1.2, 1.5});
-        editor->setZoomFactor(0.8);
+        editor->setZoomFactor(zoomFactor_);
         return editor;
     }
     return nullptr;
@@ -2744,6 +2774,7 @@ VSTGUI::CView* MidiatorController::verifyView(VSTGUI::CView* view,
         if (control->getTag() == 900) {
             control->setListener(this);
             zoomButton_ = dynamic_cast<VSTGUI::CTextButton*>(control);
+            refreshZoomButton();
         }
         if (control->getTag() == 901) {
             control->setListener(this);
@@ -2786,7 +2817,10 @@ VSTGUI::CView* MidiatorController::verifyView(VSTGUI::CView* view,
     return view;
 }
 
-void MidiatorController::willClose(VSTGUI::VST3Editor*) {
+void MidiatorController::willClose(VSTGUI::VST3Editor* editor) {
+    // Capture host/window resize as well as Zoom-button changes before editor teardown.
+    if (editor)
+        onZoomChanged(editor, editor->getZoomFactor());
     // verifyView stores raw pointers into the editor's view hierarchy.
     // They become invalid as soon as the editor closes. Clearing them here
     // prevents a second editor instance from touching freed views.
@@ -2806,7 +2840,30 @@ void MidiatorController::willClose(VSTGUI::VST3Editor*) {
     detailsPanel_ = nullptr;
     detailsShown_ = false;
     activeEditor_ = nullptr;
+    // Keep zoomFactor_ / zoomIndex_ across close and reopen of this editor.
+}
+
+void MidiatorController::refreshZoomButton() noexcept {
+    if (!zoomButton_)
+        return;
+    const int percent = static_cast<int>(std::lround(zoomFactor_ * 100.0));
+    const std::string label = std::to_string(percent) + " %";
+    zoomButton_->setTitle(label.c_str());
+    zoomButton_->invalid();
+}
+
+void MidiatorController::onZoomChanged(VSTGUI::VST3Editor*, double zoom) {
+    if (!std::isfinite(zoom) || zoom < 0.8 || zoom > 1.5)
+        return;
+    zoomFactor_ = zoom;
+    // At an arbitrary host-resized factor, next click selects the next
+    // larger listed zoom, rather than skipping one by rounding to the nearest.
     zoomIndex_ = 0;
+    for (size_t i = 1; i < kGuiZoomLevels.size(); ++i) {
+        if (kGuiZoomLevels[i] <= zoomFactor_ + 0.00001)
+            zoomIndex_ = static_cast<int>(i);
+    }
+    refreshZoomButton();
 }
 
 void MidiatorController::refreshDetailsPage() noexcept {

@@ -265,7 +265,84 @@ void verifyLegacyControllerMigration(uint32_t version,
 
 } // namespace
 
+void testControllerZoomPersistence() {
+    constexpr uint32_t magic = 0x4D445549u; // MDUI
+    constexpr uint32_t version = 1u;
+
+    MidiatorController initial;
+    require(initial.initialize(nullptr) == kResultOk,
+            "zoom-persistence controller must initialize");
+    MemoryStream defaultState;
+    require(initial.getState(&defaultState) == kResultOk,
+            "controller must serialize GUI state");
+    require(defaultState.bytes().size() ==
+                2 * sizeof(uint32_t) + sizeof(double),
+            "controller must store a versioned, fixed-size Zoom record");
+
+    uint32_t savedMagic = 0;
+    uint32_t savedVersion = 0;
+    double savedFactor = 0.0;
+    std::memcpy(&savedMagic, defaultState.bytes().data(), sizeof(savedMagic));
+    std::memcpy(&savedVersion, defaultState.bytes().data() + sizeof(uint32_t),
+                sizeof(savedVersion));
+    std::memcpy(&savedFactor, defaultState.bytes().data() +
+                    2 * sizeof(uint32_t), sizeof(savedFactor));
+    require(savedMagic == magic && savedVersion == version &&
+                std::abs(savedFactor - 0.8) < 1e-10,
+            "fresh editor starts at 80% and serializes that default");
+
+    for(double zoom : {0.8, 1.0, 1.2, 1.5, 1.13}) {
+        MemoryStream input;
+        appendFixtureValue(input, magic);
+        appendFixtureValue(input, version);
+        appendFixtureValue(input, zoom);
+        input.rewind();
+
+        MidiatorController restored;
+        require(restored.initialize(nullptr) == kResultOk,
+                "fresh controller must initialize before UI state restore");
+        require(restored.setState(&input) == kResultOk,
+                "controller must accept saved zoom state");
+        MemoryStream output;
+        require(restored.getState(&output) == kResultOk,
+                "controller must serialize restored zoom");
+        double actual = 0.0;
+        std::memcpy(&actual, output.bytes().data() +
+                        2 * sizeof(uint32_t), sizeof(actual));
+        require(std::abs(actual - zoom) < 1e-10,
+                "all preset zooms and arbitrary aspect-ratio window sizes must roundtrip");
+
+        // Reject invalid data without overwriting the last valid UI size.
+        for(double invalid : {0.0, 0.79, 1.51,
+                              std::numeric_limits<double>::quiet_NaN()}) {
+            MemoryStream bad;
+            appendFixtureValue(bad, magic);
+            appendFixtureValue(bad, version);
+            appendFixtureValue(bad, invalid);
+            bad.rewind();
+            require(restored.setState(&bad) == kResultFalse,
+                    "invalid GUI zoom data must be rejected");
+        }
+        MemoryStream afterInvalid;
+        require(restored.getState(&afterInvalid) == kResultOk,
+                "valid Zoom state survives corrupt project controller data");
+        double stable = 0.0;
+        std::memcpy(&stable, afterInvalid.bytes().data() +
+                        2 * sizeof(uint32_t), sizeof(stable));
+        require(std::abs(stable - zoom) < 1e-10,
+                "invalid UI state must not reset an existing zoom");
+
+        MemoryStream partial;
+        appendFixtureValue(partial, magic);
+        appendFixtureValue(partial, version);
+        partial.rewind();
+        require(restored.setState(&partial) == kResultFalse,
+                "truncated UI state must fail safely");
+    }
+}
+
 int main() {
+    testControllerZoomPersistence();
     MidiatorController controller;
     require(controller.initialize(nullptr) == kResultOk,
             "controller must initialize for parameter-contract test");

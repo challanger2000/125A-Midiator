@@ -181,6 +181,8 @@ public:
 
     tresult PLUGIN_API initialize(FUnknown* context) SMTG_OVERRIDE;
     tresult PLUGIN_API setComponentState(IBStream* state) SMTG_OVERRIDE;
+    tresult PLUGIN_API getState(IBStream* state) SMTG_OVERRIDE;
+    tresult PLUGIN_API setState(IBStream* state) SMTG_OVERRIDE;
     tresult PLUGIN_API setParamNormalized(ParamID tag, ParamValue value) SMTG_OVERRIDE;
     IPlugView* PLUGIN_API createView(FIDString name) SMTG_OVERRIDE;
 
@@ -191,12 +193,14 @@ public:
                               const VSTGUI::IUIDescription* description,
                               VSTGUI::VST3Editor* editor) SMTG_OVERRIDE;
     void willClose(VSTGUI::VST3Editor* editor) SMTG_OVERRIDE;
+    void onZoomChanged(VSTGUI::VST3Editor* editor, double zoom) SMTG_OVERRIDE;
 
 private:
     void refreshTheory() noexcept;
     void refreshStyleHint() noexcept;
     void refreshToggleLabels() noexcept;
     void refreshDetailsPage() noexcept;
+    void refreshZoomButton() noexcept;
 
     VSTGUI::CTextLabel* theoryKey_ = nullptr;
     VSTGUI::CTextLabel* theoryNotes_ = nullptr;
@@ -215,6 +219,7 @@ private:
     bool detailsShown_ = false;
     VSTGUI::VST3Editor* activeEditor_ = nullptr;
     int zoomIndex_ = 0;
+    double zoomFactor_ = 0.8;
     double fallbackNewRiffState_ = 0.0;
     double fallbackVariationState_ = 0.0;
 };
