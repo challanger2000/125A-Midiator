@@ -750,6 +750,7 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     humanizeAmount_ = restoredHumanize;
     triggerHeldPitches_.fill(false);
     triggerHeldCount_ = 0;
+    lastPublishedRootPitchClass_ = -1;
     phrase_ = restoredPhrase;
 
     if (restoredStateVersion >= 5u) {
@@ -1629,34 +1630,34 @@ bool MidiatorProcessor::flushActiveNotes(
     if (!output)
         return false;
 
+    // A host can reject MIDI events after reaching its per-block capacity.
+    // Continue the 640-note defensive panic at the *next unaccepted note*.
+    const int total = kEventOutputBusCount * 128;
     bool allDelivered = true;
-    for (int bus = 0; bus < kEventOutputBusCount; ++bus) {
-        for (int pitch = 0; pitch < 128; ++pitch) {
-            const bool trackedActive =
-                activePitchesByBus_[static_cast<size_t>(bus)][pitch];
-            if (!forceAllNotes && !trackedActive)
-                continue;
-
-            Event e{};
-            e.busIndex = bus;
-            e.sampleOffset = std::max<int32>(0, sampleOffset);
-            e.ppqPosition = ppqPosition;
-            e.type = Event::kNoteOffEvent;
-            e.noteOff.channel = 0;
-            e.noteOff.pitch = static_cast<int16>(pitch);
-            e.noteOff.velocity = 0.0f;
-            e.noteOff.noteId = -1;
-
-            // The host owns the event list and may reject an event. Only clear
-            // our active-note bookkeeping after the NoteOff was actually
-            // accepted; otherwise retry the flush on the next process call.
-            if (output->addEvent(e) == kResultOk) {
-                activePitchesByBus_[static_cast<size_t>(bus)][pitch] = false;
-            } else {
-                allDelivered = false;
-            }
+    for (int index = forceAllNotes ? panicNoteOffCursor_ : 0; index < total; ++index) {
+        const int bus = index / 128;
+        const int pitch = index % 128;
+        if (!forceAllNotes &&
+            !activePitchesByBus_[static_cast<size_t>(bus)][static_cast<size_t>(pitch)])
+            continue;
+        Event e{};
+        e.busIndex = bus;
+        e.sampleOffset = std::max<int32>(0, sampleOffset);
+        e.ppqPosition = ppqPosition;
+        e.type = Event::kNoteOffEvent;
+        e.noteOff.channel = 0;
+        e.noteOff.pitch = static_cast<int16>(pitch);
+        e.noteOff.velocity = 0.0f;
+        e.noteOff.noteId = -1;
+        if (output->addEvent(e) == kResultOk) {
+            activePitchesByBus_[static_cast<size_t>(bus)][static_cast<size_t>(pitch)] = false;
+            if (forceAllNotes) panicNoteOffCursor_ = index + 1;
+        } else {
+            allDelivered = false;
+            if (forceAllNotes) return false; // retry from rejected note
         }
     }
+    if (forceAllNotes && allDelivered) panicNoteOffCursor_ = 0;
     return allDelivered;
 }
 
@@ -1690,6 +1691,20 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         pendingVariationCommands_.exchange(0, std::memory_order_acq_rel);
 
     applyParameterChanges(data, newCount > 0, variationCount > 0);
+
+    // Host-owned VST3 output queue; no heap allocations or GUI messages on
+    // the real-time thread. Retry later when the host offers no output queue.
+    if (data.outputParameterChanges &&
+        lastPublishedRootPitchClass_ != settings_.rootPitchClass) {
+        int32 queueIndex = 0;
+        if (auto* queue = data.outputParameterChanges->addParameterData(
+                kLiveRootId, queueIndex)) {
+            int32 pointIndex = 0;
+            if (queue->addPoint(0, static_cast<double>(settings_.rootPitchClass) / 11.0,
+                                pointIndex) == kResultOk)
+                lastPublishedRootPitchClass_ = settings_.rootPitchClass;
+        }
+    }
 
     struct TriggerInputEvent {
         int32 sampleOffset = 0;
@@ -1787,8 +1802,17 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     if (triggerInputOverflow) {
         triggerHeldPitches_.fill(false);
         triggerHeldCount_ = 0;
-        if (midiNoteTrigger_)
+        if (midiNoteTrigger_) {
+            // No new notes on an invalid trigger burst. Release currently
+            // sounding notes; retry rejected NoteOffs in the next block.
+            const double ppq = data.processContext &&
+                    (data.processContext->state & ProcessContext::kProjectTimeMusicValid)
+                ? data.processContext->projectTimeMusic : 0.0;
+            if (!data.outputEvents ||
+                !flushActiveNotes(data.outputEvents, ppq))
+                phraseChangedNeedsFlush_ = true;
             return kResultFalse;
+        }
     }
 
     if (!data.outputEvents)
@@ -2370,6 +2394,16 @@ tresult PLUGIN_API MidiatorController::initialize(FUnknown* context) {
     rootSource->setNormalized(1.0);
     parameters.addParameter(rootSource);
 
+    // Controller display of the processor's *actual* pitch-class root.
+    // It is never part of the user's automation or MIDI generator state.
+    auto* liveRoot = new StringListParameter(STR16("Effective MIDI Root"), kLiveRootId);
+    for (auto* name : roots) liveRoot->appendString(name);
+    liveRoot->getInfo().defaultNormalizedValue = 9.0 / 11.0;
+    liveRoot->getInfo().flags |= ParameterInfo::kIsReadOnly | ParameterInfo::kIsHidden;
+    liveRoot->getInfo().flags &= ~ParameterInfo::kCanAutomate;
+    liveRoot->setNormalized(9.0 / 11.0);
+    parameters.addParameter(liveRoot);
+
     auto* legacyStyle = new StringListParameter(STR16("Riff Style (Legacy)"), kStyleId);
     legacyStyle->appendString(STR16("NDH / Industrial"));
     legacyStyle->appendString(STR16("Dark Rock / Gothic"));
@@ -2678,6 +2712,7 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
     };
 
     setParamNormalized(kRootId, static_cast<double>(manualRoot) / 11.0);
+    setParamNormalized(kLiveRootId, static_cast<double>(restored.rootPitchClass) / 11.0);
     setParamNormalized(kRootSourceId, midiRootSource ? 1.0 : 0.0);
     setParamNormalized(kPowerChordsEnabledId, powerChordsEnabled ? 1.0 : 0.0);
     const double legacyDrumMapNormalized =
@@ -2739,7 +2774,8 @@ tresult PLUGIN_API MidiatorController::setComponentState(IBStream* state) {
 
 tresult PLUGIN_API MidiatorController::setParamNormalized(ParamID tag, ParamValue value) {
     const auto r = EditControllerEx1::setParamNormalized(tag, value);
-    if (tag == kRootId || tag == kScaleId)
+    if (tag == kRootId || tag == kLiveRootId ||
+        tag == kRootSourceId || tag == kScaleId)
         refreshTheory();
     if (tag == kStyleId || tag == kMetalStyleId)
         refreshStyleHint();
@@ -2896,7 +2932,9 @@ void MidiatorController::refreshTheory() noexcept {
         "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
     };
 
-    const int root = normalizedIndex(getParamNormalized(kRootId), 12);
+    const bool midiSource = getParamNormalized(kRootSourceId) > 0.5;
+    const int root = normalizedIndex(
+        getParamNormalized(midiSource ? kLiveRootId : kRootId), 12);
     const auto scaleId = static_cast<midiator::ScaleId>(
         normalizedIndex(getParamNormalized(kScaleId), static_cast<int>(midiator::ScaleId::Count)));
     const auto& def = midiator::RiffEngine::scaleDefinition(scaleId);
@@ -2907,7 +2945,8 @@ void MidiatorController::refreshTheory() noexcept {
         label->invalid();
     };
 
-    set(theoryKey_, std::string(kNoteNames[root]) + "  " + def.name);
+    set(theoryKey_, std::string(kNoteNames[root]) + "  " + def.name +
+                        (midiSource ? "  [MIDI]" : ""));
 
     // Spell the seven-note modes diatonically: e.g. A Phrygian has Bb, not A#.
     // Pentatonic and blues patterns keep conventional chromatic note names.

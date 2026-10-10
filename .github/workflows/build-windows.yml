@@ -31,15 +31,39 @@ jobs:
       - name: Build Steinberg Validator
         run: cmake --build build --config Release --target validator --parallel
 
-      - name: Validate Midiator
+      - name: Stage final VST3 and assert package contract
+        shell: pwsh
+        run: |
+          $artifact = "$env:GITHUB_WORKSPACE\artifact"
+          New-Item -ItemType Directory -Force -Path $artifact | Out-Null
+          $bundles = Get-ChildItem "$env:GITHUB_WORKSPACE\build" -Recurse -Directory -Filter "Midiator.vst3" -ErrorAction SilentlyContinue
+          $p = $bundles | Where-Object { Test-Path (Join-Path $_.FullName "Contents") } | Select-Object -First 1
+          if (-not $p) { throw "Midiator.vst3 built bundle not found" }
+          $final = Join-Path $artifact "125A Midiator.vst3"
+          Copy-Item $p.FullName $final -Recurse -Force
+          $archDir = Join-Path $final "Contents\x86_64-win"
+          $source = Join-Path $archDir "Midiator.vst3"
+          $target = Join-Path $archDir "125A Midiator.vst3"
+          if (-not (Test-Path -PathType Leaf $source)) { throw "Built VST3 binary missing" }
+          Rename-Item $source "125A Midiator.vst3"
+          if (-not (Test-Path -PathType Leaf $target) -or (Test-Path $source)) {
+            throw "Final bundle/binary naming mismatch"
+          }
+          foreach ($name in @("midiator.uidesc", "125A_Logo.png", "moduleinfo.json")) {
+            if (-not (Test-Path -PathType Leaf (Join-Path $final "Contents\Resources\$name"))) {
+              throw "Missing release resource: $name"
+            }
+          }
+
+      - name: Validate exact shipping VST3 bundle
         shell: pwsh
         run: |
           $validator = Get-ChildItem -Path build -Recurse -File -Filter validator.exe | Select-Object -First 1
           if (-not $validator) { throw "Steinberg validator.exe not found" }
-          $plugin = Get-ChildItem -Path build -Recurse -Directory -Filter Midiator.vst3 | Where-Object { Test-Path (Join-Path $_.FullName "Contents") } | Select-Object -First 1
-          if (-not $plugin) { throw "Midiator.vst3 bundle not found for validation" }
-          & $validator.FullName $plugin.FullName
-          if ($LASTEXITCODE -ne 0) { throw "Steinberg validator failed with exit code $LASTEXITCODE" }
+          $final = "$env:GITHUB_WORKSPACE\artifact\125A Midiator.vst3"
+          if (-not (Test-Path -PathType Container $final)) { throw "Staged VST3 missing" }
+          & $validator.FullName $final
+          if ($LASTEXITCODE -ne 0) { throw "Staged Steinberg validator failed with exit code $LASTEXITCODE" }
 
       - name: Generate measurement report
         shell: pwsh
@@ -52,16 +76,6 @@ jobs:
           name: Midiator-Measurements
           path: midiator-measurements.txt
           if-no-files-found: error
-
-      - name: Locate Midiator VST3 bundle
-        shell: pwsh
-        run: |
-          $artifact = "$env:GITHUB_WORKSPACE\artifact"
-          New-Item -ItemType Directory -Force -Path $artifact | Out-Null
-          $bundles = Get-ChildItem "$env:GITHUB_WORKSPACE\build" -Recurse -Directory -Filter "Midiator.vst3" -ErrorAction SilentlyContinue
-          $p = $bundles | Where-Object { Test-Path (Join-Path $_.FullName "Contents") } | Select-Object -First 1
-          if (-not $p) { throw "Midiator.vst3 bundle not found" }
-          Copy-Item $p.FullName "$artifact\125A Midiator.vst3" -Recurse -Force
 
       - name: Upload Midiator VST3
         uses: actions/upload-artifact@v5

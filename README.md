@@ -36,7 +36,7 @@ Bass is style-aware; Drums derive kick pressure from Guitar/Bass context; Pads u
 
 ## GUI and workflow
 
-The redesigned editor uses a 1120 × 1000 base layout, with 80%, 100%, 120% and 150% zoom steps. Controls are arranged in clear, lightly differentiated panels with readable typography and persistent OPEN/LOCK or OFF/ON text buttons instead of binary dropdown menus.
+The redesigned editor uses a 1120 × 744 base layout, with 80%, 100%, 120% and 150% zoom steps. Zoom is saved separately in VST3 controller state. Controls are arranged in clear, lightly differentiated panels with readable typography and persistent OPEN/LOCK or OFF/ON text buttons instead of binary dropdown menus.
 
 
 The interface is split by behavior instead of presenting every parameter as if it did the same thing.
@@ -44,7 +44,7 @@ The interface is split by behavior instead of presenting every parameter as if i
 **Tonal / Playback**
 - Root and Scale / Mode
 - Section Length: 1 / 2 / 4 / 8 / 16 bars
-- Root Source: Manual or MIDI. This chooses the pitch source only.
+- Root Source: Manual or MIDI. This chooses the pitch source only. The live theory header displays the effective root reported via VST3 host output-parameter feedback (subject to host support).
 - Trigger: TRANSPORT or MIDI NOTE. TRANSPORT follows DAW Play; MIDI NOTE stays silent until at least one trigger note is held and stops when the last trigger note is released.
 
 **Riff Generation**

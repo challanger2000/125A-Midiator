@@ -2940,9 +2940,125 @@ void testLegacyAndExpandedStyleAutomationCoexistSafely() {
             "legacy default NDH must not override expanded Death Metal automation");
 }
 
+void testReportedMidiRootAndRecovery() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "root telemetry init");
+    auto stopped = makeContext(0.0, false);
+    EventList out;
+    ParameterChanges updates;
+    auto d = makeProcessData(stopped, out, 64);
+    d.outputParameterChanges = &updates;
+    require(processor.process(d) == kResultOk, "initial root telemetry process");
+    require(updates.getParameterCount() == 1, "initial MIDI root must be published");
+    auto* q = updates.getParameterData(0);
+    int32 offset = -1; ParamValue value = -1;
+    require(q && q->getParameterId() == kLiveRootId &&
+            q->getPoint(0, offset, value) == kResultOk &&
+            std::abs(value - 9.0 / 11.0) < 1e-10,
+            "initial A root published via host output parameter");
+    ParameterChanges unchanged;
+    d.outputParameterChanges = &unchanged;
+    require(processor.process(d) == kResultOk &&
+            unchanged.getParameterCount() == 0,
+            "unchanged root must not flood host queues");
+    EventList input;
+    input.events.push_back(makeNoteOn(0, 62)); // D
+    d.inputEvents = &input;
+    ParameterChanges change;
+    d.outputParameterChanges = &change;
+    require(processor.process(d) == kResultOk && change.getParameterCount() == 1,
+            "MIDI pitch change must report new effective root");
+    q = change.getParameterData(0);
+    require(q && q->getParameterId() == kLiveRootId &&
+            q->getPoint(0, offset, value) == kResultOk &&
+            std::abs(value - 2.0 / 11.0) < 1e-10,
+            "live root telemetry must identify MIDI D");
+    MidiatorController controller;
+    require(controller.initialize(nullptr) == kResultOk, "root display controller init");
+    bool found = false;
+    for(int32 i=0; i<controller.getParameterCount(); ++i) {
+        ParameterInfo info{};
+        require(controller.getParameterInfo(i, info) == kResultOk, "root param query");
+        if (info.id == kLiveRootId) {
+            found = true;
+            require((info.flags & ParameterInfo::kIsReadOnly) != 0 &&
+                    (info.flags & ParameterInfo::kCanAutomate) == 0,
+                    "live MIDI root must be read-only and not automatable");
+        }
+    }
+    require(found && controller.setParamNormalized(kLiveRootId, value) == kResultOk &&
+            std::abs(controller.getParamNormalized(kLiveRootId) - value) < 1e-10,
+            "host root feedback must reach controller");
+}
+
+void testPanicRetriesBoundedHostCapacity() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "panic fixture start");
+    auto playing = makeContext(0.0, true);
+    EventList began;
+    auto initial = makeProcessData(playing, began, 64);
+    require(processor.process(initial) == kResultOk &&
+            containsType(began, Event::kNoteOnEvent), "panic fixture sound");
+    auto stopped = makeContext(64.0 * 120.0 / (60.0 * 48000.0), false);
+    std::array<std::array<bool, 128>, kEventOutputBusCount> sent{};
+    int total = 0;
+    bool finished = false;
+    for(int block=0; block<32; ++block) {
+        RejectingEventList limited(32);
+        auto data = makeProcessData(stopped, limited, 64);
+        const auto result = processor.process(data);
+        require(limited.events.size() <= 32, "host capacity respected");
+        for(const auto& e : limited.events) {
+            require(e.type == Event::kNoteOffEvent &&
+                    e.busIndex >= 0 && e.busIndex < kEventOutputBusCount &&
+                    e.noteOff.pitch >= 0 && e.noteOff.pitch < 128,
+                    "panic must send valid NoteOff");
+            auto& prior = sent[static_cast<size_t>(e.busIndex)]
+                              [static_cast<size_t>(e.noteOff.pitch)];
+            require(!prior, "panic retries must not restart at note zero");
+            prior = true; ++total;
+        }
+        if(result == kResultOk) { finished = true; break; }
+        require(result == kResultFalse, "rejected MIDI event must be signalled");
+    }
+    require(finished && total == 640, "panic must finish all five buses");
+}
+
+void testTriggerInputOverflowReleasesActiveNotes() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk, "trigger overflow init");
+    ParameterChanges changes;
+    int32 qi = 0, pi = 0;
+    auto* q = changes.addParameterData(kTriggerModeId, qi);
+    require(q && q->addPoint(0, 1.0, pi) == kResultOk, "enable MIDI trigger");
+    EventList input;
+    input.events.push_back(makeNoteOn(0, 60));
+    auto playing = makeContext(0.0, true);
+    EventList opened;
+    auto begin = makeProcessData(playing, opened, 64, &changes, &input);
+    require(processor.process(begin) == kResultOk &&
+            containsType(opened, Event::kNoteOnEvent), "fixture must hold generated notes");
+    EventList flood;
+    for(int i=0;i<2049;++i) flood.events.push_back(makeNoteOn(0,60));
+    auto nextContext = makeContext(64.0 * 120.0 / (60.0 * 48000.0), true);
+    EventList cleanup;
+    auto overflow = makeProcessData(nextContext, cleanup, 64, nullptr, &flood);
+    require(processor.process(overflow) == kResultFalse, "input overflow safely rejected");
+    require(containsType(cleanup, Event::kNoteOffEvent) &&
+            !containsType(cleanup, Event::kNoteOnEvent),
+            "input overflow must immediately stop active notes");
+    EventList following;
+    auto next = makeProcessData(nextContext, following, 64);
+    require(processor.process(next) == kResultOk &&
+            !containsType(following, Event::kNoteOnEvent),
+            "trigger must remain closed after input overflow");
+}
 } // namespace
 
 int main() {
+    testReportedMidiRootAndRecovery();
+    testPanicRetriesBoundedHostCapacity();
+    testTriggerInputOverflowReleasesActiveNotes();
     testRoleLocksProtectOnlyLockedPartsDuringNewAndVariation();
     testAllRoleLocksMakeNewAndVariationNoOps();
     testHumanizeIsOverlapSafeAndPreservesGuitarArticulationZones();

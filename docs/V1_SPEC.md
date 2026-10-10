@@ -13,7 +13,7 @@ It is not intended to finish a performance automatically. The user remains free 
 - guitar-focused
 - 4/4 only
 - 16th-note internal grid
-- phrase lengths: 1, 2, 4 or 8 bars
+- phrase lengths: 1, 2, 4, 8 or 16 bars
 - library-neutral MIDI output
 - no internal sound engine
 - no AI/ML dependency

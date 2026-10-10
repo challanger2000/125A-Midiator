@@ -70,7 +70,8 @@ enum : ParamID {
     kSynthLockId = 133,
     kHumanizeId = 134,
     // kDrumMapId=114 stays frozen with the historical verified 3-map normalization.
-    kVerifiedDrumMapId = 135
+    kVerifiedDrumMapId = 135,
+    kLiveRootId = 136 // read-only processor->host->GUI effective root
 };
 
 static const FUID ProcessorUID(0x125A4001, 0x6D494449, 0x41544F52, 0x00000100);
@@ -139,6 +140,8 @@ private:
     bool midiNoteTrigger_ = false;
     std::array<bool, kEventOutputBusCount> roleLocks_{};
     float humanizeAmount_ = 0.0f;
+    int lastPublishedRootPitchClass_ = -1;
+    int panicNoteOffCursor_ = 0;
 
     float variationAmount_ = 0.35f;
     bool phraseChangedNeedsFlush_ = false;
