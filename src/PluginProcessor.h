@@ -14,6 +14,7 @@
 #include "pluginterfaces/base/ibstream.h"
 
 #include <array>
+#include <memory>
 #include <atomic>
 #include <cstdint>
 #include <string>
@@ -104,6 +105,7 @@ public:
     tresult PLUGIN_API notify(IMessage* message) SMTG_OVERRIDE;
 
 private:
+    static constexpr int kMaxScheduledEvents = 8192;
     struct ScheduledEvent {
         int32 sampleOffset = 0;
         double ppqPosition = 0.0;
@@ -116,6 +118,9 @@ private:
         int noteIndex = -1;
     };
 
+    // Reused realtime scheduler buffer: allocate once at construction, not
+    // once per MIDI root slice. No callback heap allocation or 300KB reset.
+    std::unique_ptr<std::array<ScheduledEvent, kMaxScheduledEvents>> scheduledBuffer_;
     midiator::GeneratorSettings settings_{};
     midiator::Phrase phrase_{};
     midiator::BassSettings bassSettings_{};

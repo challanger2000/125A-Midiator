@@ -21,7 +21,6 @@ namespace Steinberg::Vst {
 namespace {
 
 constexpr double kStepQuarterNotes = 0.25;
-constexpr int kMaxScheduledEvents = 8192;
 constexpr int kMaxTriggerInputEvents = 2048;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
 constexpr uint32_t kStateVersion = 16u;
@@ -595,7 +594,9 @@ int normalizedIndex(ParamValue v, int count) {
 
 } // namespace
 
-MidiatorProcessor::MidiatorProcessor() {
+MidiatorProcessor::MidiatorProcessor()
+    : scheduledBuffer_(
+          std::make_unique<std::array<ScheduledEvent, kMaxScheduledEvents>>()) {
     setControllerClass(ControllerUID);
 
     // The sequencer depends on musical timeline position, tempo and
@@ -1954,11 +1955,26 @@ tresult PLUGIN_API MidiatorProcessor::notify(IMessage* message) {
 }
 
 tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
-    // Split root MIDI changes at their REAL sample offsets. This supports
-    // live playing and drawn Piano-Roll events with the same codepath.
-    // Unlike the old last-note-at-block-start method, the earlier portion
-    // of the buffer is processed in its original root. No heap allocations.
-    if (data.inputEvents && data.numSamples > 1) {
+    // Split only when the effective Root Source is MIDI. The independent
+    // MIDI NOTE trigger already handles sample-timed on/off transitions:
+    // splitting its note burst as if every key were a root change would
+    // perform huge redundant scheduling work on the realtime thread.
+    bool effectiveMidiRoot = midiRootSource_;
+    if (data.inputParameterChanges) {
+        for (int32 q = 0; q < data.inputParameterChanges->getParameterCount(); ++q) {
+            auto* queue = data.inputParameterChanges->getParameterData(q);
+            if (!queue || queue->getParameterId() != kRootSourceId ||
+                queue->getPointCount() <= 0)
+                continue;
+            int32 sampleOffset = 0;
+            ParamValue v = 0.0;
+            if (queue->getPoint(queue->getPointCount() - 1,
+                                sampleOffset, v) == kResultOk)
+                effectiveMidiRoot = v > 0.5;
+        }
+    }
+    // Host-sample-accurate root edits for live and drawn Piano Roll notes.
+    if (effectiveMidiRoot && data.inputEvents && data.numSamples > 1) {
         // Preserve up to a full 16-bar chromatic Piano Roll in one offline
         // block; do not silently discard or coalesce timed key commands.
         constexpr int kMaxTimedRootChanges = 1024;
@@ -2282,7 +2298,7 @@ tresult MidiatorProcessor::processBlock(ProcessData& data) {
     if (patternLengthQn <= 0.0)
         return kResultOk;
 
-    std::array<ScheduledEvent, kMaxScheduledEvents> scheduled{};
+    auto& scheduled = *scheduledBuffer_;
     int scheduledCount = 0;
     bool schedulerOverflow = false;
 

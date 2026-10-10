@@ -125,6 +125,7 @@ void require(bool condition, const char* message) {
 
 struct EventList final : FObject, IEventList {
     std::vector<Event> events;
+    int getEventCalls = 0;
 
     int32 PLUGIN_API getEventCount() SMTG_OVERRIDE {
         return static_cast<int32>(events.size());
@@ -133,6 +134,7 @@ struct EventList final : FObject, IEventList {
     tresult PLUGIN_API getEvent(int32 index, Event& event) SMTG_OVERRIDE {
         if (index < 0 || index >= static_cast<int32>(events.size()))
             return kInvalidArgument;
+        ++getEventCalls;
         event = events[static_cast<size_t>(index)];
         return kResultOk;
     }
@@ -3411,9 +3413,29 @@ void testOctaveOnlyRootChangeDoesNotRetriggerUnchangedCompanions() {
             "A1 to A2 must immediately retune the held Guitar at sample 1200");
 }
 
+void testManualRootIgnoresLargeInputWithoutExpensiveRootSlicing() {
+    MidiatorProcessor p;
+    require(p.setProcessing(true) == kResultOk,
+            "manual root input-load test setup");
+    ParameterChanges parameters;
+    int32 queueIndex=0, pointIndex=0;
+    auto* source=parameters.addParameterData(kRootSourceId,queueIndex);
+    require(source && source->addPoint(0,0.0,pointIndex)==kResultOk,
+            "MANUAL Root Source must be configured");
+    EventList input, output;
+    for(int n=0;n<80;++n)
+        input.events.push_back(makeNoteOn(100+n*350,24+n%12));
+    auto c=makeContext(0.0,true);
+    auto d=makeProcessData(c,output,32000,&parameters,&input);
+    require(p.process(d)==kResultOk,"MANUAL + MIDI burst must process");
+    require(input.getEventCalls < 200,
+            "MANUAL Root Source must not repeatedly slice unrelated MIDI trigger notes");
+}
+
 } // namespace
 
 int main() {
+    testManualRootIgnoresLargeInputWithoutExpensiveRootSlicing();
     testOctaveOnlyRootChangeDoesNotRetriggerUnchangedCompanions();
     testRapidPianoRollInputsAboveOld64RootLimit();
     testRootReturnKeepsFiveRoleArrangementUnchanged();
