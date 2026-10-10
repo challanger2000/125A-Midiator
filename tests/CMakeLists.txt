@@ -41,6 +41,13 @@ add_executable(MidiatorStateRoundtripTests
 target_include_directories(MidiatorStateRoundtripTests PRIVATE ../src)
 target_compile_definitions(MidiatorStateRoundtripTests PRIVATE MIDIATOR_NO_FACTORY=1)
 target_link_libraries(MidiatorStateRoundtripTests PRIVATE sdk vstgui_support)
+if(MSVC)
+    # This single-function legacy migration fixture owns dozens of large
+    # processor snapshots in nested scopes. MSVC reserves their frame space
+    # on function entry and the default 1 MiB test .exe stack can overflow
+    # before assertions run. This is a TEST-HARNESS limit, not plugin stack.
+    target_link_options(MidiatorStateRoundtripTests PRIVATE /STACK:8388608)
+endif()
 add_test(NAME MidiatorStateRoundtripTests COMMAND MidiatorStateRoundtripTests)
 
 

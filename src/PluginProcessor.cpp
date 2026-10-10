@@ -23,7 +23,7 @@ namespace {
 constexpr double kStepQuarterNotes = 0.25;
 constexpr int kMaxTriggerInputEvents = 2048;
 constexpr uint32_t kStateMagic = 0x4D445231u; // "MDR1"
-constexpr uint32_t kStateVersion = 16u;
+constexpr uint32_t kStateVersion = 17u;
 constexpr int kLegacyStateSteps = 128; // V1-V7 fixed phrase payload width
 constexpr const char* kMsgNewRiff = "125A.Midiator.NewRiff";
 constexpr const char* kMsgVariation = "125A.Midiator.Variation";
@@ -741,7 +741,21 @@ tresult PLUGIN_API MidiatorProcessor::getState(IBStream* state) {
         if (roleLocks_[static_cast<size_t>(bus)])
             lockMask |= (1 << bus);
     const float humanize = std::clamp(humanizeAmount_, 0.0f, 1.0f);
-    if (!writeValue(state, lockMask) || !writeValue(state, humanize) ||
+    if (!writeValue(state, lockMask) || !writeValue(state, humanize))
+        return kResultFalse;
+
+    // V17: all four immutable tonal references are essential for lossless
+    // root round-trips AFTER a project has been saved at an extreme octave.
+    // Keep V16's absolute guitar root as the FINAL 32-bit field so the
+    // canonical root metadata remains at the same end-of-state position.
+    if (!writeValue(state, static_cast<int32>(guitarReferenceRootMidi_)) ||
+        !writeValue(state, static_cast<int32>(bassReferenceRootClass_)) ||
+        !writeValue(state, static_cast<int32>(padReferenceRootClass_)) ||
+        !writeValue(state, static_cast<int32>(synthReferenceRootClass_)) ||
+        !writePhraseState(state, guitarRootReference_) ||
+        !writePhraseState(state, bassRootReference_) ||
+        !writePadPhraseState(state, padRootReference_) ||
+        !writePhraseState(state, synthRootReference_) ||
         !writeValue(state, static_cast<int32>(guitarRootMidi_)))
         return kResultFalse;
 
@@ -807,9 +821,49 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
             restoredMidiNoteTrigger, restoredRoleLocks, restoredHumanize))
         return kResultFalse;
 
-    // V16 appends the absolute Guitar root note after the unchanged V15 tail.
+    // V17 keeps a stable reference for each tonal role; previous versions
+    // never stored those references and must migrate from exact saved phrases.
+    midiator::Phrase restoredGuitarReference = restoredPhrase;
+    midiator::Phrase restoredBassReference = restoredBassPhrase;
+    midiator::PadPhrase restoredPadReference = restoredPadPhrase;
+    midiator::Phrase restoredSynthReference = restoredSynthPhrase;
+    int restoredReferenceGuitarMidi = -1;
+    int restoredReferenceBassClass = restored.rootPitchClass;
+    int restoredReferencePadClass = restored.rootPitchClass;
+    int restoredReferenceSynthClass = restored.rootPitchClass;
+    if (restoredStateVersion >= 17u) {
+        int32 storedGuitarMidi = -1, storedBassClass = -1;
+        int32 storedPadClass = -1, storedSynthClass = -1;
+        if (!readValue(state, storedGuitarMidi) ||
+            !readValue(state, storedBassClass) ||
+            !readValue(state, storedPadClass) ||
+            !readValue(state, storedSynthClass) ||
+            storedGuitarMidi < 0 || storedGuitarMidi > 120 ||
+            storedBassClass < 0 || storedBassClass > 11 ||
+            storedPadClass < 0 || storedPadClass > 11 ||
+            storedSynthClass < 0 || storedSynthClass > 11 ||
+            !readPhraseState(state, restoredGuitarReference, restored.bars,
+                             midiator::kMaxSteps, true, true) ||
+            !readPhraseState(state, restoredBassReference, restored.bars,
+                             midiator::kMaxSteps, true, true) ||
+            !readPadPhraseState(state, restoredPadReference, restored.bars,
+                                midiator::kMaxSteps, true, true) ||
+            !readPhraseState(state, restoredSynthReference, restored.bars,
+                             midiator::kMaxSteps, true, true) ||
+            restoredGuitarReference.bars != restoredPhrase.bars ||
+            restoredBassReference.bars != restoredBassPhrase.bars ||
+            restoredPadReference.bars != restoredPadPhrase.bars ||
+            restoredSynthReference.bars != restoredSynthPhrase.bars)
+            return kResultFalse;
+        restoredReferenceGuitarMidi = storedGuitarMidi;
+        restoredReferenceBassClass = storedBassClass;
+        restoredReferencePadClass = storedPadClass;
+        restoredReferenceSynthClass = storedSynthClass;
+    }
+
+    // The V16 final absolute Guitar root is retained, also in V17.
     // Older project files keep their exact saved phrases and acquire an
-    // inferred root anchor without rewriting those notes.
+    // inferred root anchor without rewriting notes.
     int restoredRootMidi = generatorRootMidi(restored.rootPitchClass, 33);
     if (restoredStateVersion >= 16u) {
         int32 savedRoot = -1;
@@ -827,6 +881,8 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
                 shortest = std::abs(pitch - first);
             }
     }
+    if (restoredStateVersion < 17u)
+        restoredReferenceGuitarMidi = restoredRootMidi;
 
     settings_ = restored;
     variationAmount_ = restoredVariation;
@@ -850,7 +906,8 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     lastPublishedRootPitchClass_ = -1;
     smoothRootShiftPending_ = false;
     phrase_ = restoredPhrase;
-    snapshotGuitarRootReference();
+    guitarRootReference_ = restoredGuitarReference;
+    guitarReferenceRootMidi_ = restoredReferenceGuitarMidi;
 
     if (restoredStateVersion >= 5u) {
         bassPhrase_ = restoredBassPhrase;
@@ -863,14 +920,17 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
         regenerateBass();
     }
 
-    // Recreate reference phrases from the exact saved musical content.
-    // They are derivable runtime state, not a new serialized data field.
-    bassRootReference_ = bassPhrase_;
-    padRootReference_ = padPhrase_;
-    synthRootReference_ = synthPhrase_;
-    bassReferenceRootClass_ = settings_.rootPitchClass;
-    padReferenceRootClass_ = settings_.rootPitchClass;
-    synthReferenceRootClass_ = settings_.rootPitchClass;
+    // V17 restores immutable references verbatim. V1-V16 infer them
+    // from their saved current phrases, preserving legacy project recall.
+    bassRootReference_ = restoredStateVersion >= 17u
+        ? restoredBassReference : bassPhrase_;
+    padRootReference_ = restoredStateVersion >= 17u
+        ? restoredPadReference : padPhrase_;
+    synthRootReference_ = restoredStateVersion >= 17u
+        ? restoredSynthReference : synthPhrase_;
+    bassReferenceRootClass_ = restoredReferenceBassClass;
+    padReferenceRootClass_ = restoredReferencePadClass;
+    synthReferenceRootClass_ = restoredReferenceSynthClass;
 
     // If state is restored while processing, preserve knowledge of currently
     // active notes so the next process call can emit proper NoteOff events.
@@ -1830,7 +1890,11 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
             // Root-only controls must never launch a five-engine regeneration
             // in the realtime callback. Preserve existing role timing and
             // perform a same-sample handoff of currently sustained notes.
-            const bool rootOnly = !phraseChangedNeedsFlush_ &&
+            // A pending cleanup after project restore or prior parameter
+            // edits must not force recomposition of saved companion material.
+            // Retune the exact saved phrases and retain that cleanup request.
+            const bool hadPendingFlush = phraseChangedNeedsFlush_;
+            const bool rootOnly =
                 !pending.variation && !pending.hasBars &&
                 !pending.hasSectionLength && !pending.hasPowerChordsEnabled &&
                 !pending.hasPalmMuteVelocity &&
@@ -1846,8 +1910,10 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
                 else if (semitones < -6) semitones += 12;
                 transposeCompanionPhrases(semitones);
                 companionsRetuned = true;
-                phraseChangedNeedsFlush_ = false;
-                smoothRootShiftPending_ = true;
+                // If the host still owes us a lifecycle/restore NoteOff
+                // cleanup, do NOT erase it or force a mid-note migration.
+                phraseChangedNeedsFlush_ = hadPendingFlush;
+                smoothRootShiftPending_ = !hadPendingFlush;
                 smoothGuitarSemitones_ = desiredGuitarRoot - oldGuitarRoot;
                 smoothCompanionSemitones_ = semitones;
             }

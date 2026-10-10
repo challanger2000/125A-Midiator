@@ -3356,6 +3356,42 @@ void testRapidPianoRollInputsAboveOld64RootLimit() {
 
 // Regression: last-version Guitar transposition clipped its previous output.
 // A deep/high octave excursion must never permanently alter the saved riff.
+void testSavedExtremeRootRestoresOriginalAllFiveRoles() {
+    MidiatorProcessor original;
+    require(original.setProcessing(true) == kResultOk,
+            "saved-extreme-root source processor must start");
+    auto capture = [](MidiatorProcessor& p, double qn, int root) {
+        auto c = makeContext(qn, true);
+        EventList in, out;
+        if (root >= 0) in.events.push_back(makeNoteOn(0, root));
+        auto d = makeProcessData(c, out, 768000, nullptr,
+                                  root >= 0 ? &in : nullptr);
+        require(p.process(d) == kResultOk,
+                "saved-extreme-root MIDI process must succeed");
+        std::vector<std::tuple<int32,int32,int16>> noteOns;
+        for (const auto& e : out.events)
+            if (e.type == Event::kNoteOnEvent && e.sampleOffset > 0)
+                noteOns.emplace_back(e.busIndex, e.sampleOffset, e.noteOn.pitch);
+        return noteOns;
+    };
+    const auto baseline = capture(original, 0.0, -1);
+    require(!baseline.empty(), "saved-extreme-root fixture needs active MIDI");
+    capture(original, 32.0, 120); // extreme C8; physically clipped voices
+    MemoryStream state;
+    require(original.getState(&state) == kResultOk,
+            "save original reference phrases while extreme C8 is active");
+
+    MidiatorProcessor reloaded;
+    require(reloaded.setProcessing(true) == kResultOk,
+            "saved-extreme-root restored processor must start");
+    state.rewind();
+    require(reloaded.setState(&state) == kResultOk,
+            "V17 saved extreme-root project must restore");
+    const auto returned = capture(reloaded, 0.0, 33);
+    require(returned == baseline,
+            "after saving at C8, reloading and switching back to A1 must exactly restore all five role phrases");
+}
+
 void testExtremeGuitarRootRoundTripsAreReversible() {
     MidiatorProcessor p;
     require(p.setProcessing(true) == kResultOk,
@@ -3469,6 +3505,7 @@ void testManualRootIgnoresLargeInputWithoutExpensiveRootSlicing() {
 } // namespace
 
 int main() {
+    testSavedExtremeRootRestoresOriginalAllFiveRoles();
     testExtremeGuitarRootRoundTripsAreReversible();
     testManualRootIgnoresLargeInputWithoutExpensiveRootSlicing();
     testOctaveOnlyRootChangeDoesNotRetriggerUnchangedCompanions();
