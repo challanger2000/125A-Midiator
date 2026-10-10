@@ -135,6 +135,10 @@ private:
     bool haveTransportAnchor_ = false;
     double transportAnchorQn_ = 0.0;
     std::array<std::array<bool, 128>, kEventOutputBusCount> activePitchesByBus_{};
+    std::array<std::array<int, 128>, kEventOutputBusCount> activeVelocitiesByBus_{};
+    bool smoothRootShiftPending_ = false;
+    int smoothGuitarSemitones_ = 0;
+    int smoothCompanionSemitones_ = 0;
     std::array<bool, 128> triggerHeldPitches_{};
     int triggerHeldCount_ = 0;
     bool midiNoteTrigger_ = false;
@@ -169,6 +173,9 @@ private:
     void applyPalmMuteVelocityThreshold(int threshold);
     void transposePhraseToRoot(int newRootPitchClass, int newRootMidi,
                                bool regenerateCompanions = true);
+    tresult processBlock(ProcessData& data);
+    void transposeCompanionPhrases(int semitones) noexcept;
+    bool migrateHeldTonalNotes(IEventList* output, double ppqPosition) noexcept;
     void applyParameterChanges(ProcessData& data,
                                bool guiNewRiff = false,
                                bool guiVariation = false);

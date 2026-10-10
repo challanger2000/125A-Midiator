@@ -1853,8 +1853,32 @@ void testMidiRootBurstUsesFinalNote() {
         return notes;
     };
 
-    require(capture(singleOutput) == capture(burstOutput),
-            "same-block MIDI root burst must equal one final-root command across all role buses");
+    // Intermediate MIDI notes are now real, accurately timed key changes:
+    // they must not be discarded simply because a later note arrives in the
+    // same VST3 buffer. Both streams nonetheless finish in the same G root.
+    require(capture(singleOutput) != capture(burstOutput),
+            "multiple same-block MIDI roots must preserve their distinct early timing");
+    auto finalGuitar = [](const EventList& list) {
+        std::vector<std::pair<int32,int16>> result;
+        for (const auto& e : list.events)
+            if (e.type == Event::kNoteOnEvent &&
+                e.busIndex == kGuitarOutBus && e.sampleOffset > 20)
+                result.emplace_back(e.sampleOffset, e.noteOn.pitch);
+        return result;
+    };
+    require(finalGuitar(singleOutput) == finalGuitar(burstOutput),
+            "once the last root has arrived, Guitar must resume the same G phrase");
+    MemoryStream singleState, burstState;
+    require(single.getState(&singleState) == kResultOk &&
+            burst.getState(&burstState) == kResultOk,
+            "timed MIDI input state must serialize");
+    int32 singleRoot = -1, burstRoot = -1;
+    std::memcpy(&singleRoot,
+                singleState.bytes().data() + singleState.bytes().size() - 4, 4);
+    std::memcpy(&burstRoot,
+                burstState.bytes().data() + burstState.bytes().size() - 4, 4);
+    require(singleRoot == 43 && burstRoot == 43,
+            "multiple timed root changes must end at the last actual MIDI pitch");
 }
 
 void testManualRootSourceIgnoresMidiRootNotes() {
@@ -3206,9 +3230,111 @@ void testMidiRootOctaveIsAbsoluteAndPersists() {
             "reloaded D2 guitar root must return to absolute D1");
 }
 
+
+void testTimedMidiRootPreservesEarlierSamplesAndDrumEvents() {
+    MidiatorProcessor p;
+    require(p.setProcessing(true) == kResultOk, "timed-root processor starts");
+    EventList input;
+    input.events.push_back(makeNoteOn(0, 33));
+    input.events.push_back(makeNoteOn(1200, 34)); // A1 -> A#1
+    auto context = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 9000, nullptr, &input);
+    require(p.process(data) == kResultOk,
+            "live A to A-sharp mid-block must process successfully");
+
+    bool sawOldStart = false, sawOldOff = false, sawNewOn = false;
+    for (const auto& e : output.events) {
+        if (e.busIndex == kGuitarOutBus &&
+            e.type == Event::kNoteOnEvent && e.sampleOffset == 0 &&
+            e.noteOn.pitch == 33)
+            sawOldStart = true;
+        if (e.busIndex == kGuitarOutBus &&
+            e.type == Event::kNoteOffEvent && e.sampleOffset == 1200 &&
+            e.noteOff.pitch == 33)
+            sawOldOff = true;
+        if (e.busIndex == kGuitarOutBus &&
+            e.type == Event::kNoteOnEvent && e.sampleOffset == 1200 &&
+            e.noteOn.pitch == 34)
+            sawNewOn = true;
+        require(e.sampleOffset >= 0 && e.sampleOffset < 9000,
+                "sample-accurate root change must keep every event in the original host block");
+        require(!(e.busIndex == kDrumsOutBus &&
+                  e.type == Event::kNoteOffEvent && e.sampleOffset == 1200),
+                "pure MIDI key changes must never flush the Drum lane");
+    }
+    require(sawOldStart && sawOldOff && sawNewOn,
+            "A to A# must keep old key before offset and hand off exactly at offset 1200");
+}
+
+void testAllTwelveTimedMidiPitchesAndRepeatedNotes() {
+    MidiatorProcessor p;
+    require(p.setProcessing(true) == kResultOk, "all-keys processor starts");
+    EventList input;
+    input.events.push_back(makeNoteOn(0, 33)); // A1
+    for (int pc = 0; pc < 12; ++pc)
+        input.events.push_back(makeNoteOn(200 + pc * 100, 24 + pc));
+    input.events.push_back(makeNoteOn(1500, 35)); // repeated B1 -> no spurious handoff
+    auto context = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 2400, nullptr, &input);
+    require(p.process(data) == kResultOk,
+            "all twelve live semitone/root changes in one block must process");
+    for (int pc = 0; pc < 12; ++pc) {
+        const int offset = 200 + pc * 100;
+        const int midi = 24 + pc;
+        bool found = false;
+        for (const auto& e : output.events)
+            if (e.busIndex == kGuitarOutBus &&
+                e.type == Event::kNoteOnEvent &&
+                e.sampleOffset == offset && e.noteOn.pitch == midi)
+                found = true;
+        require(found,
+                "every chromatic MIDI key must hand off Guitar at the exact sample offset");
+    }
+    for (const auto& e : output.events)
+        require(!(e.busIndex == kGuitarOutBus &&
+                  e.type == Event::kNoteOnEvent && e.sampleOffset == 1500),
+                "pressing the currently selected MIDI root again must not reattack Guitar");
+}
+
+void testDrawnPianoRollNotesUseExactSamplePositions() {
+    MidiatorProcessor p;
+    require(p.setProcessing(true) == kResultOk, "Piano Roll processor starts");
+    EventList input;
+    input.events.push_back(makeNoteOn(0, 33));
+    input.events.push_back(makeNoteOff(3000, 33));
+    input.events.push_back(makeNoteOn(6000, 38)); // D2 on exact 1/16 grid
+    input.events.push_back(makeNoteOff(9000, 38));
+    input.events.push_back(makeNoteOn(12000, 26)); // D1, same pitch class lower octave
+    auto context = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 18000, nullptr, &input);
+    require(p.process(data) == kResultOk,
+            "drawn 1/16-grid note changes must process without losing timeline");
+    bool sawD2 = false, sawD1 = false;
+    for (const auto& e : output.events) {
+        if (e.busIndex != kGuitarOutBus ||
+            e.type != Event::kNoteOnEvent) continue;
+        if (e.sampleOffset == 6000 && e.noteOn.pitch == 38) sawD2 = true;
+        if (e.sampleOffset == 12000 && e.noteOn.pitch == 26) sawD1 = true;
+    }
+    require(sawD2 && sawD1,
+            "Piano Roll notes D2 and D1 must take effect at their own exact grid samples");
+    MemoryStream state;
+    require(p.getState(&state) == kResultOk, "drawn-note state must serialize");
+    int32 rootMidi = -1;
+    std::memcpy(&rootMidi, state.bytes().data() + state.bytes().size() - 4, 4);
+    require(rootMidi == 26,
+            "drawn note-offs must not reset the last played absolute MIDI root");
+}
+
 } // namespace
 
 int main() {
+    testTimedMidiRootPreservesEarlierSamplesAndDrumEvents();
+    testAllTwelveTimedMidiPitchesAndRepeatedNotes();
+    testDrawnPianoRollNotesUseExactSamplePositions();
     testMidiRootOctaveIsAbsoluteAndPersists();
     testReportedMidiRootAndRecovery();
     testPanicRetriesBoundedHostCapacity();

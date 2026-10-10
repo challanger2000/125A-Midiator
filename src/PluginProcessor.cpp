@@ -522,6 +522,64 @@ int generatorRootMidi(int pitchClass, int lowRootMidi) noexcept {
     return note;
 }
 
+// A bounded stack-only VST3 event view. Root control notes divide a process
+// block at their actual sample offsets; no copying vectors, heap allocations
+// or host-owned event-list mutations are needed.
+class MidiatorEventSlice final : public IEventList {
+public:
+    MidiatorEventSlice(IEventList* target, int32 begin, int32 end, bool output)
+        : target_(target), begin_(begin), end_(end), output_(output) {}
+    tresult PLUGIN_API queryInterface(const TUID iid, void** obj) SMTG_OVERRIDE {
+        if (!obj) return kInvalidArgument;
+        if (FUnknownPrivate::iidEqual(iid, IEventList::iid) ||
+            FUnknownPrivate::iidEqual(iid, FUnknown::iid)) {
+            *obj = static_cast<IEventList*>(this);
+            return kResultOk;
+        }
+        *obj = nullptr;
+        return kNoInterface;
+    }
+    uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return 1; }
+    uint32 PLUGIN_API release() SMTG_OVERRIDE { return 1; }
+    int32 PLUGIN_API getEventCount() SMTG_OVERRIDE {
+        if (!target_ || output_) return 0;
+        int32 count = 0;
+        for (int32 i = 0; i < target_->getEventCount(); ++i) {
+            Event e{};
+            if (target_->getEvent(i, e) == kResultOk &&
+                e.sampleOffset >= begin_ && e.sampleOffset < end_)
+                ++count;
+        }
+        return count;
+    }
+    tresult PLUGIN_API getEvent(int32 index, Event& event) SMTG_OVERRIDE {
+        if (!target_ || output_ || index < 0) return kInvalidArgument;
+        for (int32 i = 0; i < target_->getEventCount(); ++i) {
+            Event e{};
+            if (target_->getEvent(i, e) != kResultOk ||
+                e.sampleOffset < begin_ || e.sampleOffset >= end_)
+                continue;
+            if (index-- == 0) {
+                e.sampleOffset -= begin_;
+                event = e;
+                return kResultOk;
+            }
+        }
+        return kInvalidArgument;
+    }
+    tresult PLUGIN_API addEvent(Event& event) SMTG_OVERRIDE {
+        if (!target_ || !output_) return kInvalidArgument;
+        Event shifted = event;
+        shifted.sampleOffset += begin_;
+        return target_->addEvent(shifted);
+    }
+private:
+    IEventList* target_ = nullptr;
+    int32 begin_ = 0;
+    int32 end_ = 0;
+    bool output_ = false;
+};
+
 int normalizedIndex(ParamValue v, int count) {
     if (count <= 1)
         return 0;
@@ -583,6 +641,7 @@ tresult PLUGIN_API MidiatorProcessor::setActive(TBool state) {
     transportAnchorQn_ = 0.0;
     triggerHeldPitches_.fill(false);
     triggerHeldCount_ = 0;
+    smoothRootShiftPending_ = false;
     return AudioEffect::setActive(state);
 }
 
@@ -605,6 +664,7 @@ tresult PLUGIN_API MidiatorProcessor::setProcessing(TBool state) {
     transportAnchorQn_ = 0.0;
     triggerHeldPitches_.fill(false);
     triggerHeldCount_ = 0;
+    smoothRootShiftPending_ = false;
     return kResultOk;
 }
 
@@ -781,6 +841,7 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
     triggerHeldPitches_.fill(false);
     triggerHeldCount_ = 0;
     lastPublishedRootPitchClass_ = -1;
+    smoothRootShiftPending_ = false;
     phrase_ = restoredPhrase;
 
     if (restoredStateVersion >= 5u) {
@@ -1174,6 +1235,95 @@ void MidiatorProcessor::transposePhraseToRoot(int newRootPitchClass,
     if (regenerateCompanions)
         regenerateBass();
     phraseChangedNeedsFlush_ = true;
+}
+
+void MidiatorProcessor::transposeCompanionPhrases(int semitones) noexcept {
+    // Root changes are key commands, never a new arrangement. Translate the
+    // existing Bass/Pad/Synth phrases in-place without changing their rhythm,
+    // while retaining each role's musical register. Drum MIDI is untouched.
+    const auto transpose = [semitones](auto& phrase, int lo, int hi) {
+        for (int i = 0; i < phrase.usedSteps(); ++i) {
+            auto& step = phrase.steps[i];
+            for (int n = 0; n < step.noteCount; ++n) {
+                int pitch = step.notes[n].pitch + semitones;
+                while (pitch < lo) pitch += 12;
+                while (pitch > hi) pitch -= 12;
+                step.notes[n].pitch = std::clamp(pitch, lo, hi);
+            }
+        }
+    };
+    transpose(bassPhrase_, 24, 60);
+    transpose(padPhrase_, 45, 88);
+    transpose(synthPhrase_, 48, 96);
+    bassSettings_.rootPitchClass = settings_.rootPitchClass;
+    padSettings_.rootPitchClass = settings_.rootPitchClass;
+    synthSettings_.rootPitchClass = settings_.rootPitchClass;
+}
+
+bool MidiatorProcessor::migrateHeldTonalNotes(IEventList* output,
+                                               double ppqPosition) noexcept {
+    if (!output) return false;
+    struct Held { int bus, oldPitch, newPitch, velocity; };
+    std::array<Held, kEventOutputBusCount * 128> held{};
+    int count = 0;
+    auto remap = [](int pitch, int delta, int low, int high) noexcept {
+        pitch += delta;
+        while (pitch < low) pitch += 12;
+        while (pitch > high) pitch -= 12;
+        return std::clamp(pitch, low, high);
+    };
+    for (int bus : {kGuitarOutBus, kBassOutBus, kPadOutBus, kSynthOutBus}) {
+        const int delta = bus == kGuitarOutBus
+                            ? smoothGuitarSemitones_ : smoothCompanionSemitones_;
+        const int low = bus == kGuitarOutBus ? 0 :
+                        bus == kBassOutBus ? 24 : bus == kPadOutBus ? 45 : 48;
+        const int high = bus == kGuitarOutBus ? 127 :
+                         bus == kBassOutBus ? 60 : bus == kPadOutBus ? 88 : 96;
+        for (int pitch = 0; pitch < 128; ++pitch) {
+            if (!activePitchesByBus_[static_cast<size_t>(bus)][static_cast<size_t>(pitch)])
+                continue;
+            held[count++] = {bus, pitch,
+                             bus == kGuitarOutBus
+                                 ? std::clamp(pitch + delta, 0, 127)
+                                 : remap(pitch, delta, low, high),
+                             std::max(1, activeVelocitiesByBus_[static_cast<size_t>(bus)]
+                                                               [static_cast<size_t>(pitch)])};
+        }
+    }
+    // NoteOff first, then immediate NoteOn at the same exact MIDI sample:
+    // no lost sustain or gap waiting for the next sequencer onset. On an
+    // output-capacity failure, defer to the established active-note recovery.
+    for (int i = 0; i < count; ++i) {
+        const auto& h = held[i];
+        Event off{};
+        off.busIndex = h.bus;
+        off.sampleOffset = 0;
+        off.ppqPosition = ppqPosition;
+        off.type = Event::kNoteOffEvent;
+        off.noteOff.channel = 0;
+        off.noteOff.pitch = static_cast<int16>(h.oldPitch);
+        off.noteOff.noteId = -1;
+        if (output->addEvent(off) != kResultOk) return false;
+        activePitchesByBus_[static_cast<size_t>(h.bus)][static_cast<size_t>(h.oldPitch)] = false;
+        activeVelocitiesByBus_[static_cast<size_t>(h.bus)][static_cast<size_t>(h.oldPitch)] = 0;
+    }
+    for (int i = 0; i < count; ++i) {
+        const auto& h = held[i];
+        Event on{};
+        on.busIndex = h.bus;
+        on.sampleOffset = 0;
+        on.ppqPosition = ppqPosition;
+        on.type = Event::kNoteOnEvent;
+        on.noteOn.channel = 0;
+        on.noteOn.pitch = static_cast<int16>(h.newPitch);
+        on.noteOn.velocity = static_cast<float>(h.velocity) / 127.0f;
+        on.noteOn.length = std::max<int32>(1, static_cast<int32>(sampleRate_ * 0.10));
+        on.noteOn.noteId = -1;
+        if (output->addEvent(on) != kResultOk) return false;
+        activePitchesByBus_[static_cast<size_t>(h.bus)][static_cast<size_t>(h.newPitch)] = true;
+        activeVelocitiesByBus_[static_cast<size_t>(h.bus)][static_cast<size_t>(h.newPitch)] = h.velocity;
+    }
+    return true;
 }
 
 void MidiatorProcessor::applyParameterChanges(ProcessData& data,
@@ -1578,6 +1728,7 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     const bool freshGeneration = tonalFrameChanged || pending.newRiff;
 
     bool guitarEdited = false;
+    bool companionsRetuned = false;
 
     const bool wasMidiRootSource = midiRootSource_;
     midiRootSource_ = finalMidiRootSource;
@@ -1612,8 +1763,30 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
             settings_.rootPitchClass = desiredRootClass;
             guitarRootMidi_ = desiredGuitarRoot;
         } else {
+            // Root-only controls must never launch a five-engine regeneration
+            // in the realtime callback. Preserve existing role timing and
+            // perform a same-sample handoff of currently sustained notes.
+            const bool rootOnly = !phraseChangedNeedsFlush_ &&
+                !pending.variation && !pending.hasBars &&
+                !pending.hasSectionLength && !pending.hasPowerChordsEnabled &&
+                !pending.hasPalmMuteVelocity &&
+                !bassRoleChanged && !drumRoleChanged &&
+                !padRoleChanged && !synthRoleChanged;
+            const int oldRootClass = settings_.rootPitchClass;
+            const int oldGuitarRoot = guitarRootMidi_;
             transposePhraseToRoot(desiredRootClass, desiredGuitarRoot, false);
             guitarEdited = true;
+            if (rootOnly) {
+                int semitones = desiredRootClass - oldRootClass;
+                if (semitones > 6) semitones -= 12;
+                else if (semitones < -6) semitones += 12;
+                transposeCompanionPhrases(semitones);
+                companionsRetuned = true;
+                phraseChangedNeedsFlush_ = false;
+                smoothRootShiftPending_ = true;
+                smoothGuitarSemitones_ = desiredGuitarRoot - oldGuitarRoot;
+                smoothCompanionSemitones_ = semitones;
+            }
         }
     }
 
@@ -1651,9 +1824,10 @@ void MidiatorProcessor::applyParameterChanges(ProcessData& data,
     } else if (sectionChanged) {
         regenerateSectionFromCurrentSeed();
     } else if (guitarEdited && !pending.variation) {
-        // Root/Bars/Power-Chord edits may all occur in one host block. Refresh
-        // Bass -> Drums -> Pad -> Synth once from the final Guitar state.
-        regenerateBass();
+        // A pure root edit already transposed tonal companions without
+        // touching drums; other structural edits still regenerate once.
+        if (!companionsRetuned)
+            regenerateBass();
     }
 
     // Variation is always last so Style/Scale/New-Riff and structural edits
@@ -1706,6 +1880,7 @@ bool MidiatorProcessor::flushActiveNotes(
         e.noteOff.noteId = -1;
         if (output->addEvent(e) == kResultOk) {
             activePitchesByBus_[static_cast<size_t>(bus)][static_cast<size_t>(pitch)] = false;
+            activeVelocitiesByBus_[static_cast<size_t>(bus)][static_cast<size_t>(pitch)] = 0;
             if (forceAllNotes) panicNoteOffCursor_ = index + 1;
         } else {
             allDelivered = false;
@@ -1733,6 +1908,73 @@ tresult PLUGIN_API MidiatorProcessor::notify(IMessage* message) {
 }
 
 tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
+    // Split root MIDI changes at their REAL sample offsets. This supports
+    // live playing and drawn Piano-Roll events with the same codepath.
+    // Unlike the old last-note-at-block-start method, the earlier portion
+    // of the buffer is processed in its original root. No heap allocations.
+    if (data.inputEvents && data.numSamples > 1) {
+        constexpr int kMaxTimedRootChanges = 64;
+        std::array<int32, kMaxTimedRootChanges + 2> cuts{};
+        int cutCount = 1;
+        cuts[0] = 0;
+        for (int32 i = 0; i < data.inputEvents->getEventCount(); ++i) {
+            Event e{};
+            if (data.inputEvents->getEvent(i, e) != kResultOk ||
+                e.type != Event::kNoteOnEvent || e.noteOn.velocity <= 0.0f ||
+                e.noteOn.pitch < 0 || e.noteOn.pitch > 120 ||
+                e.sampleOffset <= 0 || e.sampleOffset >= data.numSamples)
+                continue;
+            if (cutCount >= kMaxTimedRootChanges + 1) {
+                lifecyclePanicPending_ = true;
+                return kResultFalse;
+            }
+            cuts[cutCount++] = e.sampleOffset;
+        }
+        if (cutCount > 1) {
+            std::sort(cuts.begin(), cuts.begin() + cutCount);
+            cutCount = static_cast<int>(std::unique(cuts.begin(),
+                cuts.begin() + cutCount) - cuts.begin());
+            cuts[cutCount++] = data.numSamples;
+            // Use a separate scheduler function rather than recursion, so
+            // the large fixed realtime event array occupies ONE stack frame.
+            tresult result = kResultOk;
+            const auto* original = data.processContext;
+            for (int i = 0; i < cutCount - 1; ++i) {
+                const int32 begin = cuts[i];
+                const int32 end = cuts[i + 1];
+                if (begin >= end) continue;
+                ProcessContext segmentContext{};
+                if (original) {
+                    segmentContext = *original;
+                    if ((original->state & ProcessContext::kProjectTimeMusicValid) &&
+                        (original->state & ProcessContext::kTempoValid) &&
+                        original->tempo > 0.0 && original->sampleRate > 0.0)
+                        segmentContext.projectTimeMusic +=
+                            static_cast<double>(begin) * original->tempo /
+                            (60.0 * original->sampleRate);
+                    segmentContext.projectTimeSamples += begin;
+                }
+                MidiatorEventSlice input(data.inputEvents, begin, end, false);
+                MidiatorEventSlice output(data.outputEvents, begin, end, true);
+                ProcessData segment = data;
+                segment.numSamples = end - begin;
+                segment.processContext = original ? &segmentContext : nullptr;
+                segment.inputEvents = &input;
+                segment.outputEvents = data.outputEvents ? &output : nullptr;
+                segment.inputParameterChanges = i == 0 ? data.inputParameterChanges : nullptr;
+                // Report the final effective root once to the host controller.
+                segment.outputParameterChanges =
+                    i == cutCount - 2 ? data.outputParameterChanges : nullptr;
+                result = processBlock(segment);
+                if (result != kResultOk) break;
+            }
+            return result;
+        }
+    }
+    return processBlock(data);
+}
+
+tresult MidiatorProcessor::processBlock(ProcessData& data) {
     if (data.processContext && data.processContext->sampleRate > 0.0)
         sampleRate_ = data.processContext->sampleRate;
 
@@ -1870,8 +2112,13 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         }
     }
 
-    if (!data.outputEvents)
+    if (!data.outputEvents) {
+        if (smoothRootShiftPending_) {
+            smoothRootShiftPending_ = false;
+            phraseChangedNeedsFlush_ = true;
+        }
         return kResultOk;
+    }
 
     const auto* context = data.processContext;
     const bool hasTempo = context && (context->state & ProcessContext::kTempoValid) && context->tempo > 0.0;
@@ -1883,6 +2130,18 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
         (context->timeSigNumerator != 4 || context->timeSigDenominator != 4);
     const bool playing = context && (context->state & ProcessContext::kPlaying);
     const double currentPpq = hasProjectTime ? context->projectTimeMusic : 0.0;
+
+    // A tonal key change is a zero-gap MIDI handoff; drums continue without
+    // even one NoteOff. Do it before normal scheduling at this sample offset.
+    if (smoothRootShiftPending_) {
+        smoothRootShiftPending_ = false;
+        if (phraseChangedNeedsFlush_ || lifecyclePanicPending_) {
+            // A separate structural/lifecycle change owns the cleanup.
+        } else if (!migrateHeldTonalNotes(data.outputEvents, currentPpq)) {
+            phraseChangedNeedsFlush_ = true;
+            return kResultFalse;
+        }
+    }
 
     // Any previously interrupted 640-note panic MUST resume even after
     // transport state was marked stopped by the host. The cursor belongs to
@@ -2368,6 +2627,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
 
                 if (data.outputEvents->addEvent(e) == kResultOk) {
                     activePitchesByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = true;
+                    activeVelocitiesByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = s.velocity;
                 } else {
                     allDelivered = false;
                 }
@@ -2380,6 +2640,7 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
 
                 if (data.outputEvents->addEvent(e) == kResultOk) {
                     activePitchesByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = false;
+                    activeVelocitiesByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = 0;
                 } else {
                     allDelivered = false;
                 }
