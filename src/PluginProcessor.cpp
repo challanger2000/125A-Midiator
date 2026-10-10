@@ -1829,7 +1829,10 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     const bool playing = context && (context->state & ProcessContext::kPlaying);
     const double currentPpq = hasProjectTime ? context->projectTimeMusic : 0.0;
 
-    if (lifecyclePanicPending_) {
+    // Any previously interrupted 640-note panic MUST resume even after
+    // transport state was marked stopped by the host. The cursor belongs to
+    // the pending flush, not to wasPlaying_.
+    if (lifecyclePanicPending_ || panicNoteOffCursor_ > 0) {
         if (!flushActiveNotes(data.outputEvents, currentPpq, true))
             return kResultFalse;
         lifecyclePanicPending_ = false;
