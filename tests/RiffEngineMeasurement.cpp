@@ -1577,7 +1577,12 @@ int main() {
     const auto synthBass=BassBrain::generate(synthGuitar,synthBassSettings,0x53594E12u);
     PadSettings synthPadSettings{};
     const auto synthPads=PadBrain::generate(synthGuitar,synthBass,synthPadSettings,0x53594E13u);
-    for(float v:sweepValues){ SynthSettings ss{}; ss.activity=v; printSynthSweepLine("Activity ",v,measureSynth(synthGuitar,synthBass,synthPads,ss,910000u)); }
+    // Include the actual 10% complaint and legacy 46% default in release evidence.
+    for(float v:{0.0f,0.10f,0.25f,0.46f,0.50f,0.75f,1.0f}){
+        SynthSettings ss{}; ss.activity=v;
+        printSynthSweepLine("Activity ",v,
+            measureSynth(synthGuitar,synthBass,synthPads,ss,910000u));
+    }
     std::cout<<"\n";
     for(float v:sweepValues){ SynthSettings ss{}; ss.movement=v; printSynthSweepLine("Movement ",v,measureSynth(synthGuitar,synthBass,synthPads,ss,920000u)); }
     std::cout<<"\n";

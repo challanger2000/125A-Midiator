@@ -10,7 +10,7 @@ Midiator currently generates five independently routable musical roles:
 - **Bass Out** — monophonic bass accompaniment derived from the riff context
 - **Drums Out** — semantic drum patterns with mapping abstraction
 - **Pad Out** — polyphonic sustained harmony with voice-leading
-- **Synth Out** — compact arps, short phrases and occasional two-note chord stabs
+- **Synth Out** — compact arps, short phrases and occasional two-note chord stabs; Synth Activity 0% is silent, 10% generates rare accents, while 46% and above retain the established rhythm behavior
 
 Each role uses its own VST3 event output bus. Each output exposes one MIDI channel, so hosts do not show fifteen unused channels between Guitar, Bass, Drums, Pad and Synth. The MIDI input remains 16-channel for flexible controller, Root Source and trigger input.
 

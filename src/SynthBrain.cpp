@@ -145,6 +145,9 @@ Phrase SynthBrain::generate(const Phrase& guitar,
     Phrase out{};
     out.bars=std::clamp(std::max(guitar.bars,bass.bars),1,kMaxBars);
     Rng rhythmRng(seed);
+    // Independent sparse-activity gate: changing Activity must not alter
+    // melody, velocity, gesture or the existing default rhythm RNG streams.
+    Rng activityRng(seed ^ 0x41435456u); // ACTV
     Rng pitchRng(seed ^ 0x50495443u);
     Rng lengthRng(seed ^ 0x4C454E47u);
     Rng harmonyRng(seed ^ 0x4841524Du);
@@ -168,6 +171,14 @@ Phrase SynthBrain::generate(const Phrase& guitar,
         case StyleId::DjentProgressive:motifDegree={{0,3,0,4,2,5,0,1}};motifHit={{1,1,0,1,0,1,1,0}};break;
         case StyleId::Count:break;
     }
+
+    // The old motif kept playing almost constantly even at Activity = 0%.
+    // Preserve the exact established 46%-100% behavior (including frozen
+    // golden references), but make the lower range genuinely sparse.
+    // 0% = no events, 10% = occasional accents, 46% = historic default.
+    constexpr float kLegacyActivity = 0.46f;
+    const float keepChance = s.activity >= kLegacyActivity ? 1.0f
+        : std::pow(s.activity / kLegacyActivity, 1.5f);
 
     int previousPitch=nearestScalePitch(s.centerMidi,s);
     for(int step=0;step<out.usedSteps();++step){
@@ -203,6 +214,12 @@ Phrase SynthBrain::generate(const Phrase& guitar,
 
         if(step%16==0)
             hit=true;
+
+        // Apply LAST, after the forced downbeat and stylistic syncopation.
+        // No mandatory hit can defeat 0%. Keep a separate PRNG stream so
+        // musical material at the established default is bit-identical.
+        if (hit && !activityRng.chance(keepChance))
+            hit = false;
 
         if(!hit) continue;
 

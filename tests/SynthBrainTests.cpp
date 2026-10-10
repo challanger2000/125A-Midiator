@@ -58,7 +58,37 @@ void testActivityRaisesHitCount(){
         }
         return hits/256.0;
     };
-    require(avg(1.0f)>avg(0.0f)+6.0,"Synth Activity must materially increase hit count");
+    const double silent = avg(0.0f);
+    const double sparse10 = avg(0.10f);
+    const double sparse25 = avg(0.25f);
+    const double default46 = avg(0.46f);
+    const double busy100 = avg(1.0f);
+    require(silent == 0.0,"Activity 0% must emit absolutely no Synth notes");
+    require(sparse10 > 0.0 && sparse10 <= 4.0,
+            "Activity 10% must be sparse: at most one hit per bar on average");
+    require(sparse10 < sparse25 * 0.50,
+            "Activity 10% must be materially quieter than 25%");
+    require(sparse25 < default46 * 0.55,
+            "Activity 25% must remain well below the normal 46% pattern");
+    require(default46 > sparse10 * 5.0,
+            "Activity 46% must be much busier than 10%");
+    require(busy100 > default46 + 6.0,
+            "Activity 100% must add considerably more hits than default");
+}
+
+void testActivityZeroIsSilentForEveryMetalStyle(){
+    Phrase g{},b{}; PadPhrase p{}; makeContext(g,b,p);
+    for(int style=0;style<static_cast<int>(StyleId::Count);++style){
+        for(unsigned seed=1;seed<=32;++seed){
+            SynthSettings s{};
+            s.style=static_cast<StyleId>(style);
+            s.activity=0.0f;
+            const auto q=SynthBrain::generate(g,b,p,s,0x125A0000u+seed);
+            for(int i=0;i<q.usedSteps();++i)
+                require(q.steps[i].noteCount==0,
+                        "Synth 0% must be silent regardless of style or forced downbeat");
+        }
+    }
 }
 
 
@@ -311,6 +341,7 @@ void testStylesDiffer(){
 int main(){
     testDeterministicCompactGestureScaleSafe();
     testActivityRaisesHitCount();
+    testActivityZeroIsSilentForEveryMetalStyle();
     testMovementMateriallyIncreasesPitchTravel();
     testSyncopationRaisesOffbeatShare();
     testSustainRaisesLongNoteShare();
