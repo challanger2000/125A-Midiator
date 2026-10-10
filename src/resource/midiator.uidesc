@@ -82,7 +82,7 @@
 <view class="CTextLabel" origin="375, 44" size="370, 20" title="METAL MIDI COMPANION" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
 <view class="CTextButton" control-tag="UiDetails" origin="748, 32" size="156, 32" title="DETAILS" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
 <view class="CTextLabel" origin="928, 13" size="145, 16" title="UI ZOOM" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>
-<view class="CTextButton" control-tag="UiZoom" origin="928, 32" size="145, 32" title="80 %" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
+<view class="CTextButton" control-tag="UiZoom" origin="928, 32" size="145, 32" title="100 %" text-color="Text" text-color-highlighted="Text" font="ButtonFont" frame-color="Line" frame-color-highlighted="Accent" frame-width="1" round-radius="4" gradient="ButtonIdle" gradient-highlighted="ButtonActive" kick-style="true"/>
 <view class="CViewContainer" origin="24, 82" size="1072, 176" transparent="false" background-color="PanelTonal">
   <view class="CTextLabel" origin="22, 12" size="1028, 20" title="01  SET THE MUSIC" font="Heading" font-color="Accent" text-alignment="center" transparent="true"/>
   <view class="CTextLabel" origin="22, 36" size="1028, 18" title="Choose the key, scale, phrase length and playback behaviour" font="Small" font-color="Muted" text-alignment="center" transparent="true"/>

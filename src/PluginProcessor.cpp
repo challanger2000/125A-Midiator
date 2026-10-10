@@ -2626,7 +2626,7 @@ tresult PLUGIN_API MidiatorController::setState(IBStream* state) {
         return kInvalidArgument;
     uint32_t magic = 0;
     uint32_t version = 0;
-    double restoredZoom = 0.8;
+    double restoredZoom = 1.0;
     if (!readValue(state, magic) || !readValue(state, version) ||
         !readValue(state, restoredZoom) ||
         magic != kControllerStateMagic || version != kControllerStateVersion ||

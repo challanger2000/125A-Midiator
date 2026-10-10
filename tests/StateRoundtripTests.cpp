@@ -288,8 +288,8 @@ void testControllerZoomPersistence() {
     std::memcpy(&savedFactor, defaultState.bytes().data() +
                     2 * sizeof(uint32_t), sizeof(savedFactor));
     require(savedMagic == magic && savedVersion == version &&
-                std::abs(savedFactor - 0.8) < 1e-10,
-            "fresh editor starts at 80% and serializes that default");
+                std::abs(savedFactor - 1.0) < 1e-10,
+            "fresh editor starts at 100% and serializes that default");
 
     for(double zoom : {0.8, 1.0, 1.2, 1.5, 1.13}) {
         MemoryStream input;

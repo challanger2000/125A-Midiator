@@ -221,8 +221,8 @@ private:
     VSTGUI::CView* detailsPanel_ = nullptr;
     bool detailsShown_ = false;
     VSTGUI::VST3Editor* activeEditor_ = nullptr;
-    int zoomIndex_ = 0;
-    double zoomFactor_ = 0.8;
+    int zoomIndex_ = 1; // fresh instances open at 100%; saved project state wins
+    double zoomFactor_ = 1.0;
     double fallbackNewRiffState_ = 0.0;
     double fallbackVariationState_ = 0.0;
 };

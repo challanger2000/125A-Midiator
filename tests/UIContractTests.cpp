@@ -20,6 +20,9 @@ int main() {
  require(xml.find("control-tag=\"UiZoom\"")!=std::string::npos &&
          xml.find("title=\"UI ZOOM\"")!=std::string::npos,
          "explicit and visible zoom button required");
+ require(xml.find("control-tag=\"UiZoom\" origin=\"928, 32\" size=\"145, 32\" title=\"100 %\"")
+           != std::string::npos,
+         "new Midiator instances must start with 100% zoom displayed");
  for(int i=100;i<=135;++i) {
    auto needle="tag=\""+std::to_string(i)+"\"";
    require(xml.find(needle)!=std::string::npos,"all parameter IDs remain bound");

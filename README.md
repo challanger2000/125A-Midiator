@@ -36,7 +36,7 @@ Bass is style-aware; Drums derive kick pressure from Guitar/Bass context; Pads u
 
 ## GUI and workflow
 
-The redesigned editor uses a 1120 × 744 base layout, with 80%, 100%, 120% and 150% zoom steps. Zoom is saved separately in VST3 controller state. Controls are arranged in clear, lightly differentiated panels with readable typography and persistent OPEN/LOCK or OFF/ON text buttons instead of binary dropdown menus.
+The redesigned editor uses a 1120 × 744 base layout, with 80%, 100%, 120% and 150% zoom steps. New instances start at 100% zoom; 80%, 120% and 150% remain selectable. Saved per-project zoom overrides the default and is stored separately in VST3 controller state. Controls are arranged in clear, lightly differentiated panels with readable typography and persistent OPEN/LOCK or OFF/ON text buttons instead of binary dropdown menus.
 
 
 The interface is split by behavior instead of presenting every parameter as if it did the same thing.
