@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "vstgui/lib/controls/cbuttons.h"
 #include "SectionProfiles.h"
+#include "TonalRetune.h"
 
 #include "public.sdk/source/main/pluginfactory.h"
 #include "public.sdk/source/vst/vstparameters.h"
@@ -527,8 +528,28 @@ int generatorRootMidi(int pitchClass, int lowRootMidi) noexcept {
 // or host-owned event-list mutations are needed.
 class MidiatorEventSlice final : public IEventList {
 public:
+    // Each segment builds a bounded flat index once. getEventCount/getEvent
+    // are now O(1) rather than repeatedly traversing the complete host list.
+    // 4096 MIDI events per segment exceeds all normal Piano Roll / keyboard
+    // use and preserves predictable realtime memory/time.
+    static constexpr int32 kMaxIndexedEvents = 4096;
     MidiatorEventSlice(IEventList* target, int32 begin, int32 end, bool output)
-        : target_(target), begin_(begin), end_(end), output_(output) {}
+        : target_(target), begin_(begin), output_(output) {
+        if (!target_ || output_) return;
+        const int32 count = target_->getEventCount();
+        for (int32 i = 0; i < count; ++i) {
+            Event e{};
+            if (target_->getEvent(i, e) != kResultOk ||
+                e.sampleOffset < begin || e.sampleOffset >= end)
+                continue;
+            if (indexedCount_ >= kMaxIndexedEvents) {
+                overflow_ = true;
+                break;
+            }
+            indices_[static_cast<size_t>(indexedCount_++)] = i;
+        }
+    }
+    bool overflow() const noexcept { return overflow_; }
     tresult PLUGIN_API queryInterface(const TUID iid, void** obj) SMTG_OVERRIDE {
         if (!obj) return kInvalidArgument;
         if (FUnknownPrivate::iidEqual(iid, IEventList::iid) ||
@@ -541,31 +562,14 @@ public:
     }
     uint32 PLUGIN_API addRef() SMTG_OVERRIDE { return 1; }
     uint32 PLUGIN_API release() SMTG_OVERRIDE { return 1; }
-    int32 PLUGIN_API getEventCount() SMTG_OVERRIDE {
-        if (!target_ || output_) return 0;
-        int32 count = 0;
-        for (int32 i = 0; i < target_->getEventCount(); ++i) {
-            Event e{};
-            if (target_->getEvent(i, e) == kResultOk &&
-                e.sampleOffset >= begin_ && e.sampleOffset < end_)
-                ++count;
-        }
-        return count;
-    }
+    int32 PLUGIN_API getEventCount() SMTG_OVERRIDE { return indexedCount_; }
     tresult PLUGIN_API getEvent(int32 index, Event& event) SMTG_OVERRIDE {
-        if (!target_ || output_ || index < 0) return kInvalidArgument;
-        for (int32 i = 0; i < target_->getEventCount(); ++i) {
-            Event e{};
-            if (target_->getEvent(i, e) != kResultOk ||
-                e.sampleOffset < begin_ || e.sampleOffset >= end_)
-                continue;
-            if (index-- == 0) {
-                e.sampleOffset -= begin_;
-                event = e;
-                return kResultOk;
-            }
-        }
-        return kInvalidArgument;
+        if (!target_ || output_ || index < 0 || index >= indexedCount_)
+            return kInvalidArgument;
+        if (target_->getEvent(indices_[static_cast<size_t>(index)], event) != kResultOk)
+            return kResultFalse;
+        event.sampleOffset -= begin_;
+        return kResultOk;
     }
     tresult PLUGIN_API addEvent(Event& event) SMTG_OVERRIDE {
         if (!target_ || !output_) return kInvalidArgument;
@@ -576,8 +580,10 @@ public:
 private:
     IEventList* target_ = nullptr;
     int32 begin_ = 0;
-    int32 end_ = 0;
     bool output_ = false;
+    bool overflow_ = false;
+    int32 indexedCount_ = 0;
+    std::array<int32, kMaxIndexedEvents> indices_{};
 };
 
 int normalizedIndex(ParamValue v, int count) {
@@ -855,6 +861,15 @@ tresult PLUGIN_API MidiatorProcessor::setState(IBStream* state) {
         regenerateBass();
     }
 
+    // Recreate reference phrases from the exact saved musical content.
+    // They are derivable runtime state, not a new serialized data field.
+    bassRootReference_ = bassPhrase_;
+    padRootReference_ = padPhrase_;
+    synthRootReference_ = synthPhrase_;
+    bassReferenceRootClass_ = settings_.rootPitchClass;
+    padReferenceRootClass_ = settings_.rootPitchClass;
+    synthReferenceRootClass_ = settings_.rootPitchClass;
+
     // If state is restored while processing, preserve knowledge of currently
     // active notes so the next process call can emit proper NoteOff events.
     phraseChangedNeedsFlush_ = true;
@@ -1010,6 +1025,8 @@ void MidiatorProcessor::regenerateBassOnly() {
         sectionBassSettings(bassSettings_, settings_.section);
     bassPhrase_ = midiator::BassBrain::generate(
         phrase_, effectiveBass, seed_ ^ 0xB4552026u);
+    bassRootReference_ = bassPhrase_;
+    bassReferenceRootClass_ = settings_.rootPitchClass;
 }
 
 void MidiatorProcessor::regenerateDrumsOnly() {
@@ -1028,6 +1045,8 @@ void MidiatorProcessor::regeneratePadsOnly() {
         sectionPadSettings(padSettings_, settings_.section);
     padPhrase_ = midiator::PadBrain::generate(
         phrase_, bassPhrase_, effectivePads, seed_ ^ 0x50414426u);
+    padRootReference_ = padPhrase_;
+    padReferenceRootClass_ = settings_.rootPitchClass;
 }
 
 void MidiatorProcessor::regenerateSynthOnly() {
@@ -1038,6 +1057,8 @@ void MidiatorProcessor::regenerateSynthOnly() {
         sectionSynthSettings(synthSettings_, settings_.section);
     synthPhrase_ = midiator::SynthBrain::generate(
         phrase_, bassPhrase_, padPhrase_, effectiveSynth, seed_ ^ 0x53594E26u);
+    synthRootReference_ = synthPhrase_;
+    synthReferenceRootClass_ = settings_.rootPitchClass;
 }
 
 void MidiatorProcessor::regenerateBass() {
@@ -1237,24 +1258,18 @@ void MidiatorProcessor::transposePhraseToRoot(int newRootPitchClass,
     phraseChangedNeedsFlush_ = true;
 }
 
-void MidiatorProcessor::transposeCompanionPhrases(int semitones) noexcept {
-    // Root changes are key commands, never a new arrangement. Translate the
-    // existing Bass/Pad/Synth phrases in-place without changing their rhythm,
-    // while retaining each role's musical register. Drum MIDI is untouched.
-    const auto transpose = [semitones](auto& phrase, int lo, int hi) {
-        for (int i = 0; i < phrase.usedSteps(); ++i) {
-            auto& step = phrase.steps[i];
-            for (int n = 0; n < step.noteCount; ++n) {
-                int pitch = step.notes[n].pitch + semitones;
-                while (pitch < lo) pitch += 12;
-                while (pitch > hi) pitch -= 12;
-                step.notes[n].pitch = std::clamp(pitch, lo, hi);
-            }
-        }
-    };
-    transpose(bassPhrase_, 24, 60);
-    transpose(padPhrase_, 45, 88);
-    transpose(synthPhrase_, 48, 96);
+void MidiatorProcessor::transposeCompanionPhrases(int /*semitones*/) noexcept {
+    // Avoid cumulative octave drift even when switching through extreme keys.
+    // The saved role content is the reference until that role regenerates.
+    midiator::retunePhraseFromReference(
+        bassPhrase_, bassRootReference_,
+        settings_.rootPitchClass, bassReferenceRootClass_, 24, 60);
+    midiator::retunePhraseFromReference(
+        padPhrase_, padRootReference_,
+        settings_.rootPitchClass, padReferenceRootClass_, 45, 88);
+    midiator::retunePhraseFromReference(
+        synthPhrase_, synthRootReference_,
+        settings_.rootPitchClass, synthReferenceRootClass_, 48, 96);
     bassSettings_.rootPitchClass = settings_.rootPitchClass;
     padSettings_.rootPitchClass = settings_.rootPitchClass;
     synthSettings_.rootPitchClass = settings_.rootPitchClass;
@@ -1263,7 +1278,7 @@ void MidiatorProcessor::transposeCompanionPhrases(int semitones) noexcept {
 bool MidiatorProcessor::migrateHeldTonalNotes(IEventList* output,
                                                double ppqPosition) noexcept {
     if (!output) return false;
-    struct Held { int bus, oldPitch, newPitch, velocity; };
+    struct Held { int bus, oldPitch, newPitch, velocity, step, voice; };
     std::array<Held, kEventOutputBusCount * 128> held{};
     int count = 0;
     auto remap = [](int pitch, int delta, int low, int high) noexcept {
@@ -1282,12 +1297,35 @@ bool MidiatorProcessor::migrateHeldTonalNotes(IEventList* output,
         for (int pitch = 0; pitch < 128; ++pitch) {
             if (!activePitchesByBus_[static_cast<size_t>(bus)][static_cast<size_t>(pitch)])
                 continue;
-            held[count++] = {bus, pitch,
-                             bus == kGuitarOutBus
-                                 ? std::clamp(pitch + delta, 0, 127)
-                                 : remap(pitch, delta, low, high),
+            const int step = activeStepByBus_[static_cast<size_t>(bus)][static_cast<size_t>(pitch)];
+            const int voice = activeVoiceByBus_[static_cast<size_t>(bus)][static_cast<size_t>(pitch)];
+            int newPitch = bus == kGuitarOutBus
+                ? std::clamp(pitch + delta, 0, 127)
+                : remap(pitch, delta, low, high);
+            // Prefer the EXACT corresponding generated voice after retuning
+            // rather than generic pitch folding; this preserves Pad octaves.
+            if (step >= 0 && voice >= 0) {
+                if (bus == kGuitarOutBus && step < phrase_.usedSteps() &&
+                    voice < phrase_.steps[step].noteCount)
+                    newPitch = phrase_.steps[step].notes[voice].pitch;
+                else if (bus == kBassOutBus && step < bassPhrase_.usedSteps() &&
+                         voice < bassPhrase_.steps[step].noteCount)
+                    newPitch = bassPhrase_.steps[step].notes[voice].pitch;
+                else if (bus == kPadOutBus && step < padPhrase_.usedSteps() &&
+                         voice < padPhrase_.steps[step].noteCount)
+                    newPitch = padPhrase_.steps[step].notes[voice].pitch;
+                else if (bus == kSynthOutBus && step < synthPhrase_.usedSteps() &&
+                         voice < synthPhrase_.steps[step].noteCount)
+                    newPitch = synthPhrase_.steps[step].notes[voice].pitch;
+            }
+            // An octave-only guitar change must not retrigger the unchanged
+            // Pad/Bass/Synth held notes. This would create the reported stutter.
+            if (newPitch == pitch)
+                continue;
+            held[count++] = {bus, pitch, newPitch,
                              std::max(1, activeVelocitiesByBus_[static_cast<size_t>(bus)]
-                                                               [static_cast<size_t>(pitch)])};
+                                                               [static_cast<size_t>(pitch)]),
+                             step, voice};
         }
     }
     // NoteOff first, then immediate NoteOn at the same exact MIDI sample:
@@ -1306,6 +1344,8 @@ bool MidiatorProcessor::migrateHeldTonalNotes(IEventList* output,
         if (output->addEvent(off) != kResultOk) return false;
         activePitchesByBus_[static_cast<size_t>(h.bus)][static_cast<size_t>(h.oldPitch)] = false;
         activeVelocitiesByBus_[static_cast<size_t>(h.bus)][static_cast<size_t>(h.oldPitch)] = 0;
+        activeStepByBus_[static_cast<size_t>(h.bus)][static_cast<size_t>(h.oldPitch)] = -1;
+        activeVoiceByBus_[static_cast<size_t>(h.bus)][static_cast<size_t>(h.oldPitch)] = -1;
     }
     for (int i = 0; i < count; ++i) {
         const auto& h = held[i];
@@ -1317,11 +1357,15 @@ bool MidiatorProcessor::migrateHeldTonalNotes(IEventList* output,
         on.noteOn.channel = 0;
         on.noteOn.pitch = static_cast<int16>(h.newPitch);
         on.noteOn.velocity = static_cast<float>(h.velocity) / 127.0f;
-        on.noteOn.length = std::max<int32>(1, static_cast<int32>(sampleRate_ * 0.10));
+        // VST3 NoteOn.length is optional. Actual release belongs to the
+        // subsequent scheduled NoteOff, not an invented 100 ms duration.
+        on.noteOn.length = 0;
         on.noteOn.noteId = -1;
         if (output->addEvent(on) != kResultOk) return false;
         activePitchesByBus_[static_cast<size_t>(h.bus)][static_cast<size_t>(h.newPitch)] = true;
         activeVelocitiesByBus_[static_cast<size_t>(h.bus)][static_cast<size_t>(h.newPitch)] = h.velocity;
+        activeStepByBus_[static_cast<size_t>(h.bus)][static_cast<size_t>(h.newPitch)] = h.step;
+        activeVoiceByBus_[static_cast<size_t>(h.bus)][static_cast<size_t>(h.newPitch)] = h.voice;
     }
     return true;
 }
@@ -1881,6 +1925,8 @@ bool MidiatorProcessor::flushActiveNotes(
         if (output->addEvent(e) == kResultOk) {
             activePitchesByBus_[static_cast<size_t>(bus)][static_cast<size_t>(pitch)] = false;
             activeVelocitiesByBus_[static_cast<size_t>(bus)][static_cast<size_t>(pitch)] = 0;
+            activeStepByBus_[static_cast<size_t>(bus)][static_cast<size_t>(pitch)] = -1;
+            activeVoiceByBus_[static_cast<size_t>(bus)][static_cast<size_t>(pitch)] = -1;
             if (forceAllNotes) panicNoteOffCursor_ = index + 1;
         } else {
             allDelivered = false;
@@ -1913,7 +1959,9 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
     // Unlike the old last-note-at-block-start method, the earlier portion
     // of the buffer is processed in its original root. No heap allocations.
     if (data.inputEvents && data.numSamples > 1) {
-        constexpr int kMaxTimedRootChanges = 64;
+        // Preserve up to a full 16-bar chromatic Piano Roll in one offline
+        // block; do not silently discard or coalesce timed key commands.
+        constexpr int kMaxTimedRootChanges = 1024;
         std::array<int32, kMaxTimedRootChanges + 2> cuts{};
         int cutCount = 1;
         cuts[0] = 0;
@@ -1956,6 +2004,10 @@ tresult PLUGIN_API MidiatorProcessor::process(ProcessData& data) {
                 }
                 MidiatorEventSlice input(data.inputEvents, begin, end, false);
                 MidiatorEventSlice output(data.outputEvents, begin, end, true);
+                if (input.overflow()) {
+                    lifecyclePanicPending_ = true;
+                    return kResultFalse;
+                }
                 ProcessData segment = data;
                 segment.numSamples = end - begin;
                 segment.processContext = original ? &segmentContext : nullptr;
@@ -2235,7 +2287,8 @@ tresult MidiatorProcessor::processBlock(ProcessData& data) {
     bool schedulerOverflow = false;
 
     auto addScheduled = [&](double eventQn, bool noteOn, int pitch, int velocity,
-                            int32 busIndex, double noteOffQn = -1.0) {
+                            int32 busIndex, double noteOffQn = -1.0,
+        int stepIndex = -1, int noteIndex = -1) {
         constexpr double eps = 1e-9;
         if (eventQn + eps < blockStartQn || eventQn >= blockEndQn - eps)
             return;
@@ -2255,6 +2308,8 @@ tresult MidiatorProcessor::processBlock(ProcessData& data) {
         e.pitch = std::clamp(pitch, 0, 127);
         e.velocity = std::clamp(velocity, 0, 126);
         e.busIndex = std::clamp<int32>(busIndex, 0, kEventOutputBusCount - 1);
+        e.stepIndex = stepIndex;
+        e.noteIndex = noteIndex;
 
         if (noteOn && noteOffQn > eventQn) {
             const double lengthSamples =
@@ -2391,7 +2446,7 @@ tresult MidiatorProcessor::processBlock(ProcessData& data) {
                 addScheduled(
                     onQn, true, note.pitch,
                     humanizedVelocity(busIndex, stepIndex, cycle, note.velocity),
-                    busIndex, offQn);
+                    busIndex, offQn, stepIndex, n);
                 addScheduled(offQn, false, note.pitch, 0, busIndex);
             }
         }
@@ -2497,7 +2552,7 @@ tresult MidiatorProcessor::processBlock(ProcessData& data) {
                     onQn, true, note.pitch,
                     humanizedVelocity(
                         kPadOutBus, stepIndex, cycle, note.velocity),
-                    kPadOutBus, offQn);
+                    kPadOutBus, offQn, stepIndex, n);
                 addScheduled(offQn, false, note.pitch, 0, kPadOutBus);
             }
         }
@@ -2550,7 +2605,7 @@ tresult MidiatorProcessor::processBlock(ProcessData& data) {
                     onQn, true, note.pitch,
                     humanizedVelocity(
                         kSynthOutBus, stepIndex, cycle, note.velocity),
-                    kSynthOutBus, offQn);
+                    kSynthOutBus, offQn, stepIndex, n);
                 addScheduled(offQn, false, note.pitch, 0, kSynthOutBus);
             }
         }
@@ -2628,6 +2683,8 @@ tresult MidiatorProcessor::processBlock(ProcessData& data) {
                 if (data.outputEvents->addEvent(e) == kResultOk) {
                     activePitchesByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = true;
                     activeVelocitiesByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = s.velocity;
+                    activeStepByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = s.stepIndex;
+                    activeVoiceByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = s.noteIndex;
                 } else {
                     allDelivered = false;
                 }
@@ -2641,6 +2698,8 @@ tresult MidiatorProcessor::processBlock(ProcessData& data) {
                 if (data.outputEvents->addEvent(e) == kResultOk) {
                     activePitchesByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = false;
                     activeVelocitiesByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = 0;
+                    activeStepByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = -1;
+                    activeVoiceByBus_[static_cast<size_t>(s.busIndex)][s.pitch] = -1;
                 } else {
                     allDelivered = false;
                 }

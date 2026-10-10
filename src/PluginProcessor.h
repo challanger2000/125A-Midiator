@@ -112,6 +112,8 @@ private:
         int velocity = 0;
         int32 busIndex = kGuitarOutBus;
         int32 noteLengthSamples = 0;
+        int stepIndex = -1;
+        int noteIndex = -1;
     };
 
     midiator::GeneratorSettings settings_{};
@@ -126,6 +128,15 @@ private:
     midiator::PadPhrase padPhrase_{};
     midiator::SynthSettings synthSettings_{};
     midiator::Phrase synthPhrase_{};
+    // Immutable note-register references for fully reversible key changes.
+    // Refreshed only when an individual role is musically regenerated;
+    // reconstructed from the exact phrase on project load (no V17 migration).
+    midiator::Phrase bassRootReference_{};
+    midiator::PadPhrase padRootReference_{};
+    midiator::Phrase synthRootReference_{};
+    int bassReferenceRootClass_ = 9;
+    int padReferenceRootClass_ = 9;
+    int synthReferenceRootClass_ = 9;
     uint32_t seed_ = 0x125A2026u;
 
     double sampleRate_ = 44100.0;
@@ -136,6 +147,11 @@ private:
     double transportAnchorQn_ = 0.0;
     std::array<std::array<bool, 128>, kEventOutputBusCount> activePitchesByBus_{};
     std::array<std::array<int, 128>, kEventOutputBusCount> activeVelocitiesByBus_{};
+    // Provenance of every sounding note, including polyphonic Pad voices.
+    // The source step/note is needed to retune the EXACT held pitch even
+    // when a registered octave fold would otherwise alias two Pad voices.
+    std::array<std::array<int, 128>, kEventOutputBusCount> activeStepByBus_{};
+    std::array<std::array<int, 128>, kEventOutputBusCount> activeVoiceByBus_{};
     bool smoothRootShiftPending_ = false;
     int smoothGuitarSemitones_ = 0;
     int smoothCompanionSemitones_ = 0;

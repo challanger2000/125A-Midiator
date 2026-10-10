@@ -3329,9 +3329,94 @@ void testDrawnPianoRollNotesUseExactSamplePositions() {
             "drawn note-offs must not reset the last played absolute MIDI root");
 }
 
+void testRapidPianoRollInputsAboveOld64RootLimit() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "long Piano Roll MIDI root test setup");
+    EventList input;
+    constexpr int rootCount = 80;
+    for (int i = 0; i < rootCount; ++i)
+        input.events.push_back(makeNoteOn(120 + i * 350, 24 + i % 12));
+    auto context = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 32000, nullptr, &input);
+    require(processor.process(data) == kResultOk,
+            "more than 64 timed roots must process without errors or lost data");
+    MemoryStream state;
+    require(processor.getState(&state) == kResultOk, "long Piano Roll must save");
+    int32 savedRoot = -1;
+    std::memcpy(&savedRoot,
+                state.bytes().data() + state.bytes().size() - sizeof(savedRoot),
+                sizeof(savedRoot));
+    require(savedRoot == 24 + (rootCount - 1) % 12,
+            "last accurately timed Piano Roll root must persist");
+}
+
+void testRootReturnKeepsFiveRoleArrangementUnchanged() {
+    MidiatorProcessor p;
+    require(p.setProcessing(true) == kResultOk,
+            "exact arrangement key-cycle test setup");
+    auto capture = [&](double startQn, int root, bool send) {
+        auto c = makeContext(startQn, true);
+        EventList input, out;
+        if (send) input.events.push_back(makeNoteOn(0, root));
+        // Eight bars @120 BPM / 48 kHz = 768000 sample frames.
+        auto d = makeProcessData(c, out, 768000, nullptr,
+                                 send ? &input : nullptr);
+        require(p.process(d) == kResultOk,
+                "key cycle must preserve MIDI scheduler under 8-bar load");
+        std::vector<std::tuple<int32,int32,int16>> notes;
+        for (const auto& e : out.events)
+            if (e.type == Event::kNoteOnEvent && e.sampleOffset > 0)
+                notes.emplace_back(e.busIndex, e.sampleOffset, e.noteOn.pitch);
+        return notes;
+    };
+    const auto before = capture(0.0, 33, false);
+    require(!before.empty(), "key-cycle baseline requires notes");
+    const auto changed = capture(32.0, 27, true);
+    require(!changed.empty(), "intermediate key must remain musically active");
+    const auto after = capture(64.0, 33, true);
+    require(before == after,
+            "A -> D# -> A must restore exact 5-role note onsets and pitches");
+}
+
+void testOctaveOnlyRootChangeDoesNotRetriggerUnchangedCompanions() {
+    MidiatorProcessor processor;
+    require(processor.setProcessing(true) == kResultOk,
+            "octave retune test starts");
+    EventList input;
+    input.events.push_back(makeNoteOn(0, 33));    // A1
+    input.events.push_back(makeNoteOn(1200, 45)); // A2: same pitch class
+    auto context = makeContext(0.0, true);
+    EventList output;
+    auto data = makeProcessData(context, output, 4000, nullptr, &input);
+    require(processor.process(data) == kResultOk,
+            "octave-only MIDI key change must process");
+    bool guitarShifted = false;
+    for (const auto& e : output.events) {
+        if (e.sampleOffset != 1200) continue;
+        if (e.busIndex == kGuitarOutBus &&
+            e.type == Event::kNoteOnEvent && e.noteOn.pitch == 45) {
+            guitarShifted = true;
+            require(e.noteOn.length == 0,
+                    "retuned held NoteOn has no invented 100 ms MIDI duration");
+        }
+        require(e.busIndex != kBassOutBus &&
+                e.busIndex != kPadOutBus &&
+                e.busIndex != kSynthOutBus &&
+                e.busIndex != kDrumsOutBus,
+                "octave-only Guitar changes must not retrigger or flush any unchanged role");
+    }
+    require(guitarShifted,
+            "A1 to A2 must immediately retune the held Guitar at sample 1200");
+}
+
 } // namespace
 
 int main() {
+    testOctaveOnlyRootChangeDoesNotRetriggerUnchangedCompanions();
+    testRapidPianoRollInputsAboveOld64RootLimit();
+    testRootReturnKeepsFiveRoleArrangementUnchanged();
     testTimedMidiRootPreservesEarlierSamplesAndDrumEvents();
     testAllTwelveTimedMidiPitchesAndRepeatedNotes();
     testDrawnPianoRollNotesUseExactSamplePositions();

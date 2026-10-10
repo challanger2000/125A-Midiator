@@ -3,6 +3,7 @@
 #include "DrumBrain.h"
 #include "PadBrain.h"
 #include "SynthBrain.h"
+#include "TonalRetune.h"
 
 #include <algorithm>
 #include <array>
@@ -33,9 +34,65 @@ bool isExactOctavePair(const PadStep& step) {
     return false;
 }
 
+void testReferenceRootTranspositionIsReversibleAtAllRegisterEdges() {
+    // Every possible source note in a role's usable register must be restored
+    // after changing to ANY chromatic key and returning to the original.
+    // A low octave-doubled Pad chord must stay an octave after moving down
+    // one semitone, not collapse into two identical MIDI notes.
+    {
+        PadPhrase reference{}, shifted{};
+        reference.bars = 1;
+        reference.steps[0].noteCount = 2;
+        reference.steps[0].notes[0].pitch = 45;
+        reference.steps[0].notes[1].pitch = 57;
+        retunePhraseFromReference(shifted, reference, 8, 9, 45, 88);
+        require(shifted.steps[0].notes[0].pitch == 56 &&
+                shifted.steps[0].notes[1].pitch == 68,
+                "low Pad octave pair must shift together, keeping 12 semitones");
+        retunePhraseFromReference(shifted, reference, 9, 9, 45, 88);
+        require(shifted.steps[0].notes[0].pitch == 45 &&
+                shifted.steps[0].notes[1].pitch == 57,
+                "Pad octave pair must return to its precise original register");
+    }
+    for (int bus=0; bus<3; ++bus) {
+        const int lo = bus == 0 ? 24 : bus == 1 ? 45 : 48;
+        const int hi = bus == 0 ? 60 : bus == 1 ? 88 : 96;
+        for (int original = lo; original <= hi; ++original) {
+            for (int targetRoot = 0; targetRoot < 12; ++targetRoot) {
+                if (bus == 1) {
+                    PadPhrase ref{}, destination{};
+                    ref.bars = 1;
+                    ref.steps[0].noteCount = 1;
+                    ref.steps[0].notes[0].pitch = original;
+                    retunePhraseFromReference(destination, ref, targetRoot, 9, lo, hi);
+                    require(destination.steps[0].notes[0].pitch >= lo &&
+                            destination.steps[0].notes[0].pitch <= hi,
+                            "Pad retune must stay in permitted MIDI register");
+                    retunePhraseFromReference(destination, ref, 9, 9, lo, hi);
+                    require(destination.steps[0].notes[0].pitch == original,
+                            "Pad A -> any key -> A must exactly restore octave");
+                } else {
+                    Phrase ref{}, destination{};
+                    ref.bars = 1;
+                    ref.steps[0].noteCount = 1;
+                    ref.steps[0].notes[0].pitch = original;
+                    retunePhraseFromReference(destination, ref, targetRoot, 9, lo, hi);
+                    require(destination.steps[0].notes[0].pitch >= lo &&
+                            destination.steps[0].notes[0].pitch <= hi,
+                            "Bass/Synth retune must stay in MIDI register");
+                    retunePhraseFromReference(destination, ref, 9, 9, lo, hi);
+                    require(destination.steps[0].notes[0].pitch == original,
+                            "Bass/Synth A -> any key -> A must exactly restore octave");
+                }
+            }
+        }
+    }
+}
+
 } // namespace
 
 int main() {
+    testReferenceRootTranspositionIsReversibleAtAllRegisterEdges();
     static_assert(static_cast<int>(StyleId::NDHIndustrial) == 0);
     static_assert(static_cast<int>(StyleId::DarkRockGothic) == 1);
     static_assert(static_cast<int>(StyleId::HeavyIndustrial) == 2);
